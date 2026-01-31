@@ -1,0 +1,21 @@
+{
+  "name": "@codelegate/desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "dependencies": {
+    "@codelegate/shared": "workspace:*",
+    "@tauri-apps/api": "^2.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}

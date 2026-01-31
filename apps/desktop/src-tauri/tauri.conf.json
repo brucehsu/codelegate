@@ -1,0 +1,23 @@
+{
+  "productName": "Codelegate",
+  "identifier": "com.codelegate.app",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Codelegate",
+        "width": 1000,
+        "height": 700
+      }
+    ]
+  },
+  "bundle": {
+    "active": true
+  }
+}

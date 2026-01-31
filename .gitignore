@@ -1,0 +1,6 @@
+.turbo
+dist
+node_modules
+target
+*.tsbuildinfo
+.DS_Store
