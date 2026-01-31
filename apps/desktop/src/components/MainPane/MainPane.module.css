@@ -6,25 +6,6 @@
   overflow: hidden;
 }
 
-.banner {
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  font-size: 0.9rem;
-}
-
-.bannerError {
-  background: rgba(239, 106, 95, 0.12);
-  border-color: rgba(239, 106, 95, 0.4);
-  color: var(--text);
-}
-
-.bannerInfo {
-  background: rgba(79, 209, 197, 0.12);
-  border-color: rgba(79, 209, 197, 0.4);
-  color: var(--text);
-}
-
 .tabPane {
   display: flex;
   flex-direction: column;

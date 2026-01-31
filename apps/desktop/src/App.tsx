@@ -5,25 +5,27 @@ import Sidebar from "./components/Sidebar/Sidebar";
 import MainPane from "./components/MainPane/MainPane";
 import NewSessionDialog from "./components/NewSessionDialog/NewSessionDialog";
 import { useAppState } from "./hooks/useAppState";
+import { useToasts } from "./hooks/useToasts";
+import Toasts from "./components/Toasts/Toasts";
 import type { AgentId, EnvVar, RepoConfig } from "./types";
 import { getRepoName, validateEnvVars } from "./utils/session";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
 
 export default function App() {
+  const { toasts, pushToast, removeToast } = useToasts();
+
   const {
     config,
     sessions,
     activeSessionId,
     filter,
-    banner,
     setFilter,
-    setBanner,
     setActiveSessionId,
     updateRecentDirs,
     startSession,
     registerTerminal,
-  } = useAppState();
+  } = useAppState(pushToast);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("claude");
@@ -75,8 +77,6 @@ export default function App() {
 
   const handleSubmit = async () => {
     setRepoHint("");
-    setBanner(null);
-
     const trimmedPath = repoPath.trim();
     if (!trimmedPath) {
       setRepoHint("Select a repository path.");
@@ -85,12 +85,12 @@ export default function App() {
 
     const envError = validateEnvVars(envVars);
     if (envError) {
-      setBanner({ message: envError, tone: "error" });
+      pushToast({ message: envError, tone: "error" });
       return;
     }
 
     if (worktreeEnabled && !worktreePath.trim()) {
-      setBanner({ message: "Worktree path is required when enabled.", tone: "error" });
+      pushToast({ message: "Worktree path is required when enabled.", tone: "error" });
       return;
     }
 
@@ -124,12 +124,7 @@ export default function App() {
         onSelectSession={setActiveSessionId}
         onNewSession={handleOpenDialog}
       />
-      <MainPane
-        banner={banner}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onRegisterTerminal={registerTerminal}
-      />
+      <MainPane sessions={sessions} activeSessionId={activeSessionId} onRegisterTerminal={registerTerminal} />
       <NewSessionDialog
         open={dialogOpen}
         selectedAgent={selectedAgent}
@@ -153,6 +148,7 @@ export default function App() {
         onClose={handleCloseDialog}
         onSubmit={handleSubmit}
       />
+      <Toasts toasts={toasts} onDismiss={removeToast} />
     </div>
   );
 }

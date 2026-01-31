@@ -49,7 +49,13 @@ export interface PtyExit {
   session_id: number;
 }
 
-export interface BannerMessage {
+export interface ToastMessage {
+  id: string;
   message: string;
   tone: "error" | "info";
+}
+
+export interface ToastInput {
+  message: string;
+  tone?: "error" | "info";
 }

@@ -1,0 +1,36 @@
+.container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.toast {
+  min-width: 240px;
+  max-width: 360px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.error {
+  border-color: rgba(239, 106, 95, 0.5);
+  background: rgba(239, 106, 95, 0.12);
+}
+
+.info {
+  border-color: rgba(79, 209, 197, 0.5);
+  background: rgba(79, 209, 197, 0.12);
+}
+
+.message {
+  font-size: 0.9rem;
+}

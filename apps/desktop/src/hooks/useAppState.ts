@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
-import type { AppConfig, BannerMessage, PtyExit, PtyOutput, RepoConfig, Session } from "../types";
+import type { AppConfig, PtyExit, PtyOutput, RepoConfig, Session, ToastInput } from "../types";
 import { createSessionId, envListToMap } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 
@@ -25,12 +25,11 @@ const defaultConfig: AppConfig = {
   },
 };
 
-export function useAppState() {
+export function useAppState(notify: (toast: ToastInput) => void) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-  const [banner, setBanner] = useState<BannerMessage | null>(null);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
   const ptyToSessionRef = useRef(new Map<number, string>());
@@ -164,8 +163,6 @@ export function useAppState() {
 
   const startSession = useCallback(
     async (repo: RepoConfig) => {
-      setBanner(null);
-
       const sessionId = createSessionId(repo.repoPath);
       const session: Session = {
         id: sessionId,
@@ -181,7 +178,7 @@ export function useAppState() {
         shell = await invoke<string>("get_default_shell");
       } catch (error) {
         updateSession(sessionId, { status: "error", lastError: String(error) });
-        setBanner({ message: String(error), tone: "error" });
+        notify({ message: String(error), tone: "error" });
         return;
       }
 
@@ -228,7 +225,7 @@ export function useAppState() {
         });
       } catch (error) {
         updateSession(sessionId, { status: "error", lastError: String(error) });
-        setBanner({ message: `Failed to start session: ${String(error)}`, tone: "error" });
+        notify({ message: `Failed to start session: ${String(error)}`, tone: "error" });
         return;
       }
 
@@ -282,7 +279,7 @@ export function useAppState() {
           }
           const elapsed = session.startedAt ? Date.now() - session.startedAt : null;
           if (elapsed !== null && elapsed < 2000) {
-            setBanner({ message: "Agent exited unexpectedly. Check repository and agent configuration.", tone: "error" });
+            notify({ message: "Agent exited unexpectedly. Check repository and agent configuration.", tone: "error" });
             return { ...session, status: "error", lastError: "Agent exited unexpectedly.", ptyId: undefined };
           }
           return { ...session, status: "stopped", ptyId: undefined };
@@ -354,7 +351,7 @@ export function useAppState() {
             await invoke("exit_app");
           } catch (error) {
             closeInProgressRef.current = false;
-            setBanner({ message: `Unable to close app: ${String(error)}`, tone: "error" });
+            notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
           }
           return;
         }
@@ -368,7 +365,7 @@ export function useAppState() {
             await invoke("exit_app");
           } catch (error) {
             closeInProgressRef.current = false;
-            setBanner({ message: `Unable to close app: ${String(error)}`, tone: "error" });
+            notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
           }
         }
       })
@@ -385,9 +382,7 @@ export function useAppState() {
     sessions,
     activeSessionId,
     filter,
-    banner,
     setFilter,
-    setBanner,
     setActiveSessionId,
     updateRecentDirs,
     startSession,

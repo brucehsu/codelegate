@@ -1,27 +1,18 @@
-import type { BannerMessage, Session } from "../../types";
+import type { Session } from "../../types";
 import styles from "./MainPane.module.css";
 import { Command } from "lucide-react";
 
 interface MainPaneProps {
-  banner: BannerMessage | null;
   sessions: Session[];
   activeSessionId: string | null;
   onRegisterTerminal: (sessionId: string, element: HTMLDivElement | null) => void;
 }
 
-export default function MainPane({ banner, sessions, activeSessionId, onRegisterTerminal }: MainPaneProps) {
+export default function MainPane({ sessions, activeSessionId, onRegisterTerminal }: MainPaneProps) {
   const showTabPane = Boolean(activeSessionId);
 
   return (
     <main className={styles.main}>
-      {banner ? (
-        <div
-          className={`${styles.banner} ${banner.tone === "error" ? styles.bannerError : styles.bannerInfo}`}
-        >
-          {banner.message}
-        </div>
-      ) : null}
-
       <div className={`${styles.tabPane} ${showTabPane ? "" : styles.hidden}`}>
         <div className={styles.tabStrip}>
           <button className={`${styles.tab} ${styles.tabActive}`} type="button" disabled>
