@@ -57,6 +57,11 @@ interface PtyExit {
   session_id: number;
 }
 
+const X_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  <line x1="18" y1="6" x2="6" y2="18"></line>
+  <line x1="6" y1="6" x2="18" y2="18"></line>
+</svg>`;
+
 const agentCatalog = [
   {
     id: "claude" as const,
@@ -509,11 +514,12 @@ export async function initApp() {
     valueInput.placeholder = "value";
     valueInput.value = value;
 
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "ghost";
-    removeBtn.textContent = "Remove";
-    removeBtn.addEventListener("click", () => row.remove());
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "ghost icon-button remove-button";
+  removeBtn.setAttribute("aria-label", "Remove");
+  removeBtn.innerHTML = X_ICON;
+  removeBtn.addEventListener("click", () => row.remove());
 
     row.append(keyInput, valueInput, removeBtn);
     envList.appendChild(row);

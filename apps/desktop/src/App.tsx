@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ChevronDown, Command, Plus } from "lucide-react";
+import { ChevronDown, Command, Plus, X } from "lucide-react";
 import { initApp } from "./app";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 
@@ -58,8 +58,8 @@ export default function App() {
               <h3>New Session</h3>
               <p>Launch a local agent session for a repository.</p>
             </div>
-            <button type="button" className="ghost" data-close>
-              Close
+            <button type="button" className="ghost icon-button close-button" data-close aria-label="Close">
+              <X aria-hidden="true" />
             </button>
           </div>
 

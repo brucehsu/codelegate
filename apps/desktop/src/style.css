@@ -399,6 +399,56 @@ button.ghost {
   cursor: pointer;
 }
 
+.icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.icon-button.close-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  padding: 0;
+  aspect-ratio: 1 / 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.close-button:hover {
+  background: var(--danger);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.remove-button svg {
+  width: 32px;
+  height: 32px;
+}
+
+.remove-button:hover {
+  background: var(--danger);
+  border-color: transparent;
+  color: #ffffff;
+}
+
 button.danger {
   background: var(--danger);
   color: white;
@@ -519,6 +569,7 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
   gap: 8px;
+  align-items: center;
 }
 
 .agent-picker {
