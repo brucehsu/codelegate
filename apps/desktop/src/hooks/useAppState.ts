@@ -36,6 +36,23 @@ export function useAppState(notify: (toast: ToastInput) => void) {
   const sessionsRef = useRef<Session[]>([]);
   const activeSessionRef = useRef<string | null>(null);
   const closeInProgressRef = useRef(false);
+  const pendingFocusRef = useRef<string | null>(null);
+
+  const focusSession = useCallback((sessionId: string) => {
+    const runtime = runtimeRef.current.get(sessionId);
+    if (runtime?.term) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          runtime.term?.focus();
+        });
+      });
+      setTimeout(() => {
+        runtime.term?.focus();
+      }, 0);
+      return true;
+    }
+    return false;
+  }, []);
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -143,6 +160,13 @@ export function useAppState(notify: (toast: ToastInput) => void) {
         runtime.fit = fit;
       }
 
+      if (runtime.term) {
+        if (pendingFocusRef.current === sessionId || activeSessionRef.current === sessionId) {
+          focusSession(sessionId);
+          pendingFocusRef.current = null;
+        }
+      }
+
       if (runtime.fit) {
         runtime.fit.fit();
       }
@@ -163,6 +187,10 @@ export function useAppState(notify: (toast: ToastInput) => void) {
 
   const startSession = useCallback(
     async (repo: RepoConfig) => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement) {
+        activeElement.blur();
+      }
       const sessionId = createSessionId(repo.repoPath);
       const session: Session = {
         id: sessionId,
@@ -172,6 +200,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
 
       setSessions((prev) => [...prev, session]);
       setActiveSessionId(sessionId);
+      pendingFocusRef.current = sessionId;
 
       let shell = "";
       try {
@@ -324,6 +353,9 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     if (!sessionId) {
       return;
     }
+    if (!focusSession(sessionId)) {
+      pendingFocusRef.current = sessionId;
+    }
     const runtime = runtimeRef.current.get(sessionId);
     if (!runtime?.fit || !runtime.ptyId || !runtime.term) {
       return;
@@ -334,7 +366,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       cols: runtime.term.cols,
       rows: runtime.term.rows,
     });
-  }, [activeSessionId]);
+  }, [activeSessionId, focusSession]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
