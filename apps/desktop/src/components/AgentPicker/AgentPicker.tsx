@@ -13,7 +13,7 @@ function ClaudeLogo() {
 }
 
 function CodexLogo() {
-  return <OpenaiIconIcon color="#ffffff" strokeWidth={2.5} />;
+  return <OpenaiIconIcon color="#ffffff" strokeWidth={6} />;
 }
 
 const iconById: Record<AgentId, JSX.Element> = {
