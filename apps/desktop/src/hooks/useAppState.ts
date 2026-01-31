@@ -156,6 +156,28 @@ export function useAppState(notify: (toast: ToastInput) => void) {
           }
         });
 
+        const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+        term.attachCustomKeyEventHandler((event) => {
+          if (event.type !== "keydown") {
+            return true;
+          }
+          const key = event.key.toLowerCase();
+          const isCopy = isMac ? event.metaKey && key === "c" : event.ctrlKey && event.shiftKey && key === "c";
+
+          if (isCopy) {
+            if (term.hasSelection()) {
+              const text = term.getSelection();
+              if (text) {
+                navigator.clipboard.writeText(text).catch(() => {});
+              }
+              term.clearSelection();
+            }
+            return false;
+          }
+
+          return true;
+        });
+
         runtime.term = term;
         runtime.fit = fit;
       }
