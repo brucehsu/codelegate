@@ -72,6 +72,29 @@ body {
   flex: 1;
 }
 
+.fab {
+  align-self: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.fab svg {
+  width: 18px;
+  height: 18px;
+}
+
+.fab:hover {
+  border-color: var(--accent);
+}
+
 .session-item {
   background: transparent;
   border: 1px solid transparent;
@@ -217,8 +240,12 @@ body {
   place-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  font-size: 1.6rem;
   color: var(--accent);
+}
+
+.empty-logo svg {
+  width: 28px;
+  height: 28px;
 }
 
 .empty-state.hidden {
@@ -276,16 +303,15 @@ body {
   position: relative;
 }
 
-.select-trigger::after {
-  content: "";
+.select-icon {
   position: absolute;
-  right: 14px;
+  right: 12px;
   top: 50%;
-  width: 6px;
-  height: 6px;
-  border-right: 2px solid var(--muted);
-  border-bottom: 2px solid var(--muted);
-  transform: translateY(-50%) rotate(45deg);
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .select-trigger.placeholder {
@@ -295,6 +321,11 @@ body {
 .select-field.open .select-trigger {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+}
+
+.select-field.open .select-icon {
+  color: var(--accent);
+  transform: translateY(-50%) rotate(180deg);
 }
 
 .select-menu {
