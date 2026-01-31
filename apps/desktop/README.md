@@ -9,3 +9,4 @@ TypeScript frontend + Rust backend using Tauri 2.
 - Run `pnpm --filter @codelegate/desktop dev` to start Vite.
 - Run `pnpm --filter @codelegate/desktop tauri dev` to launch the desktop app.
 - Add app icons in `src-tauri/icons` before bundling for release.
+- Session config is stored locally in `~/.codelegate/config.json`.

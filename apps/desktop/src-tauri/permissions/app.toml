@@ -1,0 +1,29 @@
+[[permission]]
+identifier = "default"
+description = "Default permissions for app commands"
+commands.allow = [
+  "get_default_shell",
+  "exit_app",
+  "resolve_repo_root",
+  "load_config",
+  "save_config",
+  "spawn_pty",
+  "write_pty",
+  "resize_pty",
+  "kill_pty"
+]
+
+[[permission]]
+identifier = "all"
+description = "Allow all app commands for the desktop app"
+commands.allow = [
+  "get_default_shell",
+  "exit_app",
+  "resolve_repo_root",
+  "load_config",
+  "save_config",
+  "spawn_pty",
+  "write_pty",
+  "resize_pty",
+  "kill_pty"
+]

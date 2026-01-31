@@ -4,8 +4,8 @@
   "build": {
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "pnpm --filter @codelegate/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @codelegate/desktop build"
   },
   "app": {
     "windows": [
