@@ -1,0 +1,57 @@
+.picker {
+  display: grid;
+  grid-template-columns: repeat(2, 128px);
+  gap: 16px;
+  justify-content: flex-start;
+}
+
+.card {
+  width: 128px;
+  height: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: inherit;
+  cursor: pointer;
+  transition: border 0.2s ease, transform 0.2s ease;
+}
+
+.cardActive {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  overflow: hidden;
+}
+
+.logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.codex {
+  color: #ffffff;
+}
+
+.claude {
+  color: #f59e0b;
+}
+
+.label {
+  font-weight: 600;
+  text-align: center;
+}

@@ -1,0 +1,77 @@
+.button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.sizeSM {
+  width: 32px;
+  height: 32px;
+}
+
+.sizeLG {
+  width: 44px;
+  height: 44px;
+}
+
+.variantGhost {
+  background: transparent;
+}
+
+.variantFab {
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.variantFab:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15), var(--shadow);
+}
+
+.variantFab:active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.2);
+}
+
+.variantRaised {
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.shapeRounded {
+  border-radius: 10px;
+}
+
+.shapeCircle {
+  border-radius: 50%;
+}
+
+.dangerHover:hover {
+  background: var(--danger);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.icon svg {
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
