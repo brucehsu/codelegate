@@ -5,7 +5,12 @@
     "rootDir": "src",
     "noEmit": true,
     "types": ["vite/client"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@codelegate/shared": ["../../packages/shared/src/index.ts"],
+      "@codelegate/shared/icons": ["../../packages/shared/src/icons/index.ts"]
+    }
   },
   "include": ["src"],
   "references": [

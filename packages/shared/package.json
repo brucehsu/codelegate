@@ -8,10 +8,20 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./icons": {
+      "types": "./dist/icons/index.d.ts",
+      "default": "./dist/icons/index.js"
     }
+  },
+  "peerDependencies": {
+    "react": ">=18"
   },
   "scripts": {
     "build": "tsc -p .",
     "clean": "tsc -p . --clean"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3"
   }
 }

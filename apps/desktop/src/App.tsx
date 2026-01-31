@@ -1,27 +1,14 @@
 import { useEffect } from "react";
 import { ChevronDown, Command, Plus } from "lucide-react";
 import { initApp } from "./app";
+import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 
 function ClaudeLogo() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2.5l7 4v8l-7 4-7-4v-8l7-4z" fill="currentColor" opacity="0.2" />
-      <path d="M12 5.2l4.9 2.8v5.9L12 16.7 7.1 14V8l4.9-2.8z" fill="currentColor" />
-    </svg>
-  );
+  return <ClaudeIconIcon color="currentColor" strokeWidth={0} />;
 }
 
 function CodexLogo() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 4a6 6 0 106 6h-2.2A3.8 3.8 0 1112 6.2V4z" fill="currentColor" />
-      <path
-        d="M12 20a6 6 0 10-6-6h2.2A3.8 3.8 0 0012 17.8V20z"
-        fill="currentColor"
-        opacity="0.6"
-      />
-    </svg>
-  );
+  return <OpenaiIconIcon color="#ffffff" strokeWidth={6} />;
 }
 
 export default function App() {
