@@ -191,6 +191,22 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     });
   }, [config.settings.terminalFontFamily, config.settings.terminalFontSize]);
 
+  const cycleSession = useCallback(() => {
+    const list = sessionsRef.current;
+    if (list.length === 0) {
+      return;
+    }
+
+    const currentId = activeSessionRef.current;
+    let index = list.findIndex((session) => session.id === currentId);
+    if (index < 0) {
+      index = 0;
+    }
+
+    const nextIndex = (index - 1 + list.length) % list.length;
+    setActiveSessionId(list[nextIndex].id);
+  }, [setActiveSessionId]);
+
   const ensureRuntime = useCallback((sessionId: string) => {
     const map = runtimeRef.current;
     let runtime = map.get(sessionId);
@@ -239,6 +255,8 @@ export function useAppState(notify: (toast: ToastInput) => void) {
           }
           const key = event.key.toLowerCase();
           const isCopy = isMac ? event.metaKey && key === "c" : event.ctrlKey && event.shiftKey && key === "c";
+          const isCycle =
+            event.ctrlKey && !event.metaKey && !event.altKey && (event.key === "Tab" || key === "tab");
 
           if (isCopy) {
             if (term.hasSelection()) {
@@ -248,6 +266,11 @@ export function useAppState(notify: (toast: ToastInput) => void) {
               }
               term.clearSelection();
             }
+            return false;
+          }
+
+          if (isCycle) {
+            cycleSession();
             return false;
           }
 
@@ -281,6 +304,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       config.settings.terminalFontFamily,
       config.settings.terminalFontSize,
       ensureRuntime,
+      cycleSession,
     ]
   );
 
@@ -567,6 +591,21 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       unlisten?.();
     };
   }, []);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.key !== "Tab") {
+        return;
+      }
+      event.preventDefault();
+      cycleSession();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+    };
+  }, [cycleSession]);
 
   return {
     config,
