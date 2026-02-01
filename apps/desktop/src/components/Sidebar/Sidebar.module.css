@@ -41,12 +41,9 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 12px;
-  padding: 10px 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
   color: inherit;
-  cursor: pointer;
   transition: border 0.2s ease, background 0.2s ease;
 }
 
@@ -60,9 +57,41 @@
   border-color: var(--border);
 }
 
+.sessionButton {
+  flex: 1;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
 .sessionLabel {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
+  min-width: 0;
+}
+
+.sessionBranch {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actions {
@@ -112,4 +141,53 @@
 
 .agentCodex {
   color: #ffffff;
+}
+
+.sessionMenu {
+  position: relative;
+  margin-right: 6px;
+}
+
+.menuTrigger {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.menuTrigger:hover {
+  color: var(--text);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  z-index: 12;
+}
+
+.menuItem {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: var(--surface-2);
 }

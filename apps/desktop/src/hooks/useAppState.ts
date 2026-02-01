@@ -288,6 +288,31 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     setSessions((prev) => prev.map((session) => (session.id === sessionId ? { ...session, ...partial } : session)));
   }, []);
 
+  const renameBranch = useCallback(
+    async (sessionId: string, newName: string) => {
+      const session = sessionsRef.current.find((item) => item.id === sessionId);
+      const cwd = session?.cwd ?? session?.repo.repoPath;
+      if (!cwd) {
+        notify({ message: "Unable to resolve session path.", tone: "error" });
+        return false;
+      }
+      const trimmed = newName.trim();
+      if (!trimmed) {
+        notify({ message: "Branch name cannot be empty.", tone: "error" });
+        return false;
+      }
+      try {
+        const branch = await invoke<string>("rename_git_branch", { path: cwd, name: trimmed });
+        updateSession(sessionId, { branch: branch.trim() || trimmed });
+        return true;
+      } catch (error) {
+        notify({ message: `Failed to rename branch: ${String(error)}`, tone: "error" });
+        return false;
+      }
+    },
+    [notify, updateSession]
+  );
+
   const startSession = useCallback(
     async (repo: RepoConfig) => {
       const activeElement = document.activeElement;
@@ -356,6 +381,23 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       initCommands.push(agentCommandById[repo.agent] ?? repo.agent);
       const commandLine = initCommands.filter((line) => line.trim().length > 0).join(" && ");
       updateSession(sessionId, { cwd: sessionCwd });
+
+      const resolveBranch = async (attempts: number) => {
+        try {
+          const branch = await invoke<string>("get_git_branch", { path: sessionCwd });
+          if (branch && branch.trim().length > 0) {
+            updateSession(sessionId, { branch: branch.trim() });
+            return;
+          }
+        } catch {
+          // Ignore and retry below.
+        }
+        if (attempts > 0) {
+          setTimeout(() => resolveBranch(attempts - 1), 500);
+        }
+      };
+
+      resolveBranch(repo.worktree?.enabled ? 5 : 1);
 
       const runtime = ensureRuntime(sessionId);
 
@@ -537,6 +579,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     updateTerminalSettings,
     startSession,
     registerTerminal,
+    renameBranch,
     focusActiveSession,
   };
 }

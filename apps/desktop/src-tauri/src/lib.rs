@@ -116,6 +116,77 @@ fn resolve_repo_root(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_git_branch(path: String) -> Result<String, String> {
+  if !Path::new(&path).exists() {
+    return Err(format!("Path '{}' does not exist", path));
+  }
+
+  let output = std::process::Command::new("git")
+    .arg("-C")
+    .arg(&path)
+    .arg("rev-parse")
+    .arg("--abbrev-ref")
+    .arg("HEAD")
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  if output.status.success() {
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+      return Err("Unable to determine git branch".to_string());
+    }
+    if branch == "HEAD" {
+      let detached = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&path)
+        .arg("rev-parse")
+        .arg("--short")
+        .arg("HEAD")
+        .output()
+        .map_err(|error| format!("Failed to run git: {error}"))?;
+      if detached.status.success() {
+        let sha = String::from_utf8_lossy(&detached.stdout).trim().to_string();
+        if !sha.is_empty() {
+          return Ok(sha);
+        }
+      }
+      return Err("Unable to determine git branch".to_string());
+    }
+    Ok(branch)
+  } else {
+    let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if err.is_empty() { "Selected directory is not a git repository".to_string() } else { err })
+  }
+}
+
+#[tauri::command]
+fn rename_git_branch(path: String, name: String) -> Result<String, String> {
+  let trimmed = name.trim();
+  if trimmed.is_empty() {
+    return Err("Branch name cannot be empty".to_string());
+  }
+  if !Path::new(&path).exists() {
+    return Err(format!("Path '{}' does not exist", path));
+  }
+
+  let output = std::process::Command::new("git")
+    .arg("-C")
+    .arg(&path)
+    .arg("branch")
+    .arg("-m")
+    .arg(trimmed)
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  if output.status.success() {
+    Ok(trimmed.to_string())
+  } else {
+    let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if err.is_empty() { "Failed to rename branch".to_string() } else { err })
+  }
+}
+
+#[tauri::command]
 fn load_config() -> Result<AppConfig, String> {
   let file = config_file()?;
   if !file.exists() {
@@ -303,6 +374,8 @@ pub fn run() {
       get_home_dir,
       exit_app,
       resolve_repo_root,
+      get_git_branch,
+      rename_git_branch,
       load_config,
       save_config,
       spawn_pty,

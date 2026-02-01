@@ -5,6 +5,7 @@ import Sidebar from "./components/Sidebar/Sidebar";
 import MainPane from "./components/MainPane/MainPane";
 import NewSessionDialog from "./components/NewSessionDialog/NewSessionDialog";
 import SettingsDialog from "./components/SettingsDialog/SettingsDialog";
+import RenameDialog from "./components/RenameDialog/RenameDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
@@ -27,6 +28,7 @@ export default function App() {
     updateTerminalSettings,
     startSession,
     registerTerminal,
+    renameBranch,
     focusActiveSession,
   } = useAppState(pushToast);
 
@@ -40,6 +42,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fontFamily, setFontFamily] = useState(config.settings.terminalFontFamily);
   const [fontSize, setFontSize] = useState(config.settings.terminalFontSize);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     setFontFamily(config.settings.terminalFontFamily);
@@ -88,6 +93,31 @@ export default function App() {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     requestAnimationFrame(() => focusActiveSession());
+  };
+
+  const openRename = (sessionId: string) => {
+    const session = sessions.find((item) => item.id === sessionId);
+    setRenameSessionId(sessionId);
+    setRenameValue(session?.branch ?? "");
+    setRenameOpen(true);
+  };
+
+  const closeRename = () => {
+    setRenameOpen(false);
+    setRenameSessionId(null);
+    requestAnimationFrame(() => focusActiveSession());
+  };
+
+  const saveRename = async () => {
+    if (!renameSessionId) {
+      return;
+    }
+    const ok = await renameBranch(renameSessionId, renameValue);
+    if (ok) {
+      setRenameOpen(false);
+      setRenameSessionId(null);
+      requestAnimationFrame(() => focusActiveSession());
+    }
   };
 
   const handleSelectRepo = (path: string) => {
@@ -145,6 +175,7 @@ export default function App() {
         onSelectSession={setActiveSessionId}
         onNewSession={handleOpenDialog}
         onOpenSettings={openSettings}
+        onRenameSession={openRename}
       />
       <MainPane sessions={sessions} activeSessionId={activeSessionId} onRegisterTerminal={registerTerminal} />
       <NewSessionDialog
@@ -174,6 +205,20 @@ export default function App() {
         onChangeFontSize={setFontSize}
         onClose={closeSettings}
         onSave={saveSettings}
+      />
+      <RenameDialog
+        open={renameOpen}
+        title={
+          renameSessionId
+            ? `Rename branch for ${getRepoName(
+                sessions.find((item) => item.id === renameSessionId)?.repo.repoPath ?? ""
+              )}`
+            : undefined
+        }
+        value={renameValue}
+        onChange={setRenameValue}
+        onClose={closeRename}
+        onSave={saveRename}
       />
       <Toasts toasts={toasts} onDismiss={removeToast} />
     </div>

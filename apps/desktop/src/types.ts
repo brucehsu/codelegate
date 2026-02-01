@@ -35,6 +35,7 @@ export interface Session {
   id: string;
   repo: RepoConfig;
   cwd?: string;
+  branch?: string;
   status: SessionStatus;
   ptyId?: number;
   lastError?: string;
