@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -15,6 +15,54 @@ interface SessionRuntime {
   term?: Terminal;
   fit?: FitAddon;
   ptyId?: number;
+}
+
+interface Hotkey {
+  key: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  meta?: boolean;
+  preventDefault?: boolean;
+  stopPropagation?: boolean;
+  handler: (event: KeyboardEvent) => void;
+}
+
+function matchesHotkey(event: KeyboardEvent, hotkey: Hotkey) {
+  const key = event.key.toLowerCase();
+  if (key !== hotkey.key) {
+    return false;
+  }
+  if (hotkey.ctrl !== undefined && hotkey.ctrl !== event.ctrlKey) {
+    return false;
+  }
+  if (hotkey.shift !== undefined && hotkey.shift !== event.shiftKey) {
+    return false;
+  }
+  if (hotkey.alt !== undefined && hotkey.alt !== event.altKey) {
+    return false;
+  }
+  if (hotkey.meta !== undefined && hotkey.meta !== event.metaKey) {
+    return false;
+  }
+  return true;
+}
+
+function runHotkeys(event: KeyboardEvent, hotkeys: Hotkey[]) {
+  for (const hotkey of hotkeys) {
+    if (!matchesHotkey(event, hotkey)) {
+      continue;
+    }
+    if (hotkey.preventDefault) {
+      event.preventDefault();
+    }
+    if (hotkey.stopPropagation) {
+      event.stopPropagation();
+    }
+    hotkey.handler(event);
+    return true;
+  }
+  return false;
 }
 
 const defaultSettings = {
@@ -207,9 +255,44 @@ export function useAppState(
       index = 0;
     }
 
-    const nextIndex = (index - 1 + list.length) % list.length;
+    const nextIndex = (index + 1) % list.length;
     setActiveSessionId(list[nextIndex].id);
   }, [setActiveSessionId]);
+
+  const globalHotkeys = useMemo<Hotkey[]>(
+    () => [
+      {
+        key: "tab",
+        ctrl: true,
+        shift: false,
+        alt: false,
+        meta: false,
+        preventDefault: true,
+        handler: () => cycleSession(),
+      },
+      {
+        key: "t",
+        ctrl: true,
+        shift: true,
+        alt: false,
+        meta: false,
+        preventDefault: true,
+        handler: () => onOpenNewSession?.(),
+      },
+      {
+        key: "s",
+        ctrl: true,
+        shift: true,
+        alt: false,
+        meta: false,
+        preventDefault: true,
+        handler: () => onFocusSearch?.(),
+      },
+    ],
+    [cycleSession, onOpenNewSession, onFocusSearch]
+  );
+
+  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   const ensureRuntime = useCallback((sessionId: string) => {
     const map = runtimeRef.current;
@@ -252,45 +335,48 @@ export function useAppState(
           }
         });
 
-        const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
         term.attachCustomKeyEventHandler((event) => {
           if (event.type !== "keydown") {
             return true;
           }
-          const key = event.key.toLowerCase();
-          const isCopy = isMac ? event.metaKey && key === "c" : event.ctrlKey && event.shiftKey && key === "c";
-          const isCycle =
-            event.ctrlKey && !event.metaKey && !event.altKey && (event.key === "Tab" || key === "tab");
-          const isOpenNewSession =
-            key === "t" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
-
-          if (isCopy) {
-            if (term.hasSelection()) {
-              const text = term.getSelection();
-              if (text) {
-                navigator.clipboard.writeText(text).catch(() => {});
+          const copyHotkey: Hotkey = isMac
+            ? {
+                key: "c",
+                ctrl: false,
+                shift: false,
+                alt: false,
+                meta: true,
+                preventDefault: true,
+                handler: () => {
+                  if (term.hasSelection()) {
+                    const text = term.getSelection();
+                    if (text) {
+                      navigator.clipboard.writeText(text).catch(() => {});
+                    }
+                    term.clearSelection();
+                  }
+                },
               }
-              term.clearSelection();
-            }
-            return false;
-          }
+            : {
+                key: "c",
+                ctrl: true,
+                shift: true,
+                alt: false,
+                meta: false,
+                preventDefault: true,
+                handler: () => {
+                  if (term.hasSelection()) {
+                    const text = term.getSelection();
+                    if (text) {
+                      navigator.clipboard.writeText(text).catch(() => {});
+                    }
+                    term.clearSelection();
+                  }
+                },
+              };
 
-          if (isCycle) {
-            cycleSession();
-            return false;
-          }
-
-          if (isOpenNewSession) {
-            onOpenNewSession?.();
-            return false;
-          }
-
-          if (key === "s" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey) {
-            onFocusSearch?.();
-            return false;
-          }
-
-          return true;
+          const handled = runHotkeys(event, [...globalHotkeys, copyHotkey]);
+          return !handled;
         });
 
         runtime.term = term;
@@ -320,8 +406,8 @@ export function useAppState(
       config.settings.terminalFontFamily,
       config.settings.terminalFontSize,
       ensureRuntime,
-      cycleSession,
-      onOpenNewSession,
+      globalHotkeys,
+      isMac,
     ]
   );
 
@@ -614,36 +700,14 @@ export function useAppState(
       if (event.defaultPrevented) {
         return;
       }
-      const key = event.key.toLowerCase();
-      const isOpenNewSession =
-        key === "t" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
-      const isFocusSearch =
-        key === "s" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
-
-      if (isOpenNewSession) {
-        event.preventDefault();
-        onOpenNewSession?.();
-        return;
-      }
-
-      if (isFocusSearch) {
-        event.preventDefault();
-        onFocusSearch?.();
-        return;
-      }
-
-      if (!event.ctrlKey || event.metaKey || event.altKey || event.key !== "Tab") {
-        return;
-      }
-      event.preventDefault();
-      cycleSession();
+      runHotkeys(event, globalHotkeys);
     };
 
     window.addEventListener("keydown", handler);
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [cycleSession, onOpenNewSession, onFocusSearch]);
+  }, [globalHotkeys]);
 
   return {
     config,
