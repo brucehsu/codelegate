@@ -70,6 +70,7 @@ const defaultSettings = {
   recentDirs: [],
   terminalFontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
   terminalFontSize: 13,
+  batterySaver: false,
 };
 
 const defaultConfig: AppConfig = {
@@ -167,9 +168,11 @@ export function useAppState(
         } as AppConfig;
         setConfig(nextConfig);
         applyTheme("dark");
+        document.body.dataset.batterySaver = nextConfig.settings.batterySaver ? "on" : "off";
       })
       .catch(() => {
         applyTheme("dark");
+        document.body.dataset.batterySaver = "off";
       });
     return () => {
       mounted = false;
@@ -222,6 +225,21 @@ export function useAppState(
         }
       }
     });
+  }, []);
+
+  const updateBatterySaver = useCallback((enabled: boolean) => {
+    setConfig((prev) => {
+      const next = {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          batterySaver: enabled,
+        },
+      };
+      invoke("save_config", { config: next });
+      return next;
+    });
+    document.body.dataset.batterySaver = enabled ? "on" : "off";
   }, []);
 
   useEffect(() => {
@@ -718,6 +736,7 @@ export function useAppState(
     setActiveSessionId,
     updateRecentDirs,
     updateTerminalSettings,
+    updateBatterySaver,
     startSession,
     registerTerminal,
     renameBranch,

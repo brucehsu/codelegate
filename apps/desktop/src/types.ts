@@ -22,6 +22,7 @@ export interface AppSettings {
   recentDirs: string[];
   terminalFontFamily: string;
   terminalFontSize: number;
+  batterySaver: boolean;
 }
 
 export interface AppConfig {

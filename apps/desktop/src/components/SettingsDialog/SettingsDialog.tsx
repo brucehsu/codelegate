@@ -8,8 +8,10 @@ interface SettingsDialogProps {
   open: boolean;
   fontFamily: string;
   fontSize: number;
+  batterySaver: boolean;
   onChangeFontFamily: (value: string) => void;
   onChangeFontSize: (value: number) => void;
+  onToggleBatterySaver: (value: boolean) => void;
   onClose: () => void;
   onSave: () => void;
 }
@@ -18,8 +20,10 @@ export default function SettingsDialog({
   open,
   fontFamily,
   fontSize,
+  batterySaver,
   onChangeFontFamily,
   onChangeFontSize,
+  onToggleBatterySaver,
   onClose,
   onSave,
 }: SettingsDialogProps) {
@@ -94,6 +98,20 @@ export default function SettingsDialog({
               onChange={(event) => onChangeFontSize(Number(event.target.value))}
             />
           </label>
+          <div className={styles.toggleRow}>
+            <div>
+              <span>Battery saver</span>
+              <p className={styles.toggleHint}>Disable animated background to save battery.</p>
+            </div>
+            <button
+              type="button"
+              className={`${styles.toggle} ${batterySaver ? styles.toggleActive : ""}`}
+              aria-pressed={batterySaver}
+              onClick={() => onToggleBatterySaver(!batterySaver)}
+            >
+              <span className={styles.toggleKnob} />
+            </button>
+          </div>
         </div>
 
         <div className={styles.actions}>

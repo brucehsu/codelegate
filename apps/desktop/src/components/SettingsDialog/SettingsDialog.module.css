@@ -67,3 +67,47 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.toggleHint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.toggle {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  padding: 3px;
+  display: grid;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  transition: border 0.2s ease, background 0.2s ease;
+}
+
+.toggleActive {
+  border-color: var(--accent);
+  background: rgba(79, 209, 197, 0.22);
+  justify-content: flex-end;
+}
+
+.toggleKnob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text);
+}

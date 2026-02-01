@@ -54,6 +54,8 @@ struct AppSettings {
   terminal_font_family: String,
   #[serde(default = "default_terminal_font_size")]
   terminal_font_size: u16,
+  #[serde(default = "default_battery_saver", alias = "backgroundAnimation")]
+  battery_saver: bool,
 }
 
 #[tauri::command]
@@ -195,7 +197,17 @@ fn load_config() -> Result<AppConfig, String> {
 
   let raw = std::fs::read_to_string(&file)
     .map_err(|error| format!("Failed to read config: {error}"))?;
-  let config: AppConfig = serde_json::from_str(&raw)
+  let mut value: serde_json::Value = serde_json::from_str(&raw)
+    .map_err(|error| format!("Failed to parse config: {error}"))?;
+  if let Some(settings) = value.get_mut("settings") {
+    let has_battery = settings.get("batterySaver").is_some();
+    if !has_battery {
+      if let Some(background) = settings.get("backgroundAnimation").and_then(|val| val.as_bool()) {
+        settings["batterySaver"] = serde_json::Value::Bool(!background);
+      }
+    }
+  }
+  let config: AppConfig = serde_json::from_value(value)
     .map_err(|error| format!("Failed to parse config: {error}"))?;
   Ok(config)
 }
@@ -345,6 +357,7 @@ fn default_config() -> AppConfig {
       recent_dirs: Vec::new(),
       terminal_font_family: default_terminal_font_family(),
       terminal_font_size: default_terminal_font_size(),
+      battery_saver: default_battery_saver(),
     },
   }
 }
@@ -362,6 +375,10 @@ fn default_terminal_font_family() -> String {
 
 fn default_terminal_font_size() -> u16 {
   13
+}
+
+fn default_battery_saver() -> bool {
+  false
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

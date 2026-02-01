@@ -181,6 +181,11 @@
   display: none;
 }
 
+:global(body[data-battery-saver="on"]) .main::before,
+:global(body[data-battery-saver="on"]) .main::after {
+  animation: none;
+}
+
 @keyframes gradientDrift {
   0% {
     background-position: 0% 0%;
