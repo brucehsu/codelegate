@@ -76,8 +76,15 @@
   gap: 4px;
 }
 
-.fab {
-  align-self: center;
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.actions > :last-child {
+  margin-left: auto;
 }
 
 .status {

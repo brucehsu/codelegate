@@ -22,6 +22,8 @@ export interface RepoConfig {
 export interface AppSettings {
   theme: "dark" | "light";
   recentDirs: string[];
+  terminalFontFamily: string;
+  terminalFontSize: number;
 }
 
 export interface AppConfig {

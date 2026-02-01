@@ -50,6 +50,10 @@ struct AppSettings {
   theme: String,
   #[serde(default)]
   recent_dirs: Vec<String>,
+  #[serde(default = "default_terminal_font_family")]
+  terminal_font_family: String,
+  #[serde(default = "default_terminal_font_size")]
+  terminal_font_size: u16,
 }
 
 #[tauri::command]
@@ -260,6 +264,8 @@ fn default_config() -> AppConfig {
     settings: AppSettings {
       theme: "dark".to_string(),
       recent_dirs: Vec::new(),
+      terminal_font_family: default_terminal_font_family(),
+      terminal_font_size: default_terminal_font_size(),
     },
   }
 }
@@ -269,6 +275,14 @@ fn config_file() -> Result<PathBuf, String> {
     .map(PathBuf::from)
     .ok_or_else(|| "Unable to locate home directory".to_string())?;
   Ok(home.join(".codelegate").join("config.json"))
+}
+
+fn default_terminal_font_family() -> String {
+  "\"JetBrains Mono\", \"SF Mono\", \"Fira Code\", monospace".to_string()
+}
+
+fn default_terminal_font_size() -> u16 {
+  13
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

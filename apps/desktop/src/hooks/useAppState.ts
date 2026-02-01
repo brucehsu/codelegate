@@ -17,12 +17,16 @@ interface SessionRuntime {
   ptyId?: number;
 }
 
+const defaultSettings = {
+  theme: "dark" as const,
+  recentDirs: [],
+  terminalFontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
+  terminalFontSize: 13,
+};
+
 const defaultConfig: AppConfig = {
   version: 1,
-  settings: {
-    theme: "dark",
-    recentDirs: [],
-  },
+  settings: defaultSettings,
 };
 
 export function useAppState(notify: (toast: ToastInput) => void) {
@@ -54,6 +58,16 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     return false;
   }, []);
 
+  const focusActiveSession = useCallback(() => {
+    const sessionId = activeSessionRef.current;
+    if (!sessionId) {
+      return;
+    }
+    if (!focusSession(sessionId)) {
+      pendingFocusRef.current = sessionId;
+    }
+  }, [focusSession]);
+
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
@@ -81,9 +95,10 @@ export function useAppState(notify: (toast: ToastInput) => void) {
         const nextConfig = {
           ...loaded,
           settings: {
+            ...defaultSettings,
             ...loaded.settings,
             theme: "dark",
-            recentDirs: loaded.settings?.recentDirs ?? [],
+            recentDirs: loaded.settings?.recentDirs ?? defaultSettings.recentDirs,
           },
         } as AppConfig;
         setConfig(nextConfig);
@@ -115,6 +130,55 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     });
   }, []);
 
+  const updateTerminalSettings = useCallback((updates: { terminalFontFamily: string; terminalFontSize: number }) => {
+    setConfig((prev) => {
+      const next = {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          terminalFontFamily: updates.terminalFontFamily,
+          terminalFontSize: updates.terminalFontSize,
+        },
+      };
+      invoke("save_config", { config: next });
+      return next;
+    });
+
+    runtimeRef.current.forEach((runtime) => {
+      if (runtime.term) {
+        runtime.term.options.fontFamily = updates.terminalFontFamily;
+        runtime.term.options.fontSize = updates.terminalFontSize;
+        runtime.fit?.fit();
+        if (runtime.ptyId && runtime.term) {
+          invoke("resize_pty", {
+            sessionId: runtime.ptyId,
+            cols: runtime.term.cols,
+            rows: runtime.term.rows,
+          });
+        }
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const fontFamily = config.settings.terminalFontFamily;
+    const fontSize = config.settings.terminalFontSize;
+    runtimeRef.current.forEach((runtime) => {
+      if (runtime.term) {
+        runtime.term.options.fontFamily = fontFamily;
+        runtime.term.options.fontSize = fontSize;
+        runtime.fit?.fit();
+        if (runtime.ptyId && runtime.term) {
+          invoke("resize_pty", {
+            sessionId: runtime.ptyId,
+            cols: runtime.term.cols,
+            rows: runtime.term.rows,
+          });
+        }
+      }
+    });
+  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize]);
+
   const ensureRuntime = useCallback((sessionId: string) => {
     const map = runtimeRef.current;
     let runtime = map.get(sessionId);
@@ -139,9 +203,9 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       if (!runtime.term) {
         const term = new Terminal({
           cursorBlink: true,
-          fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
+          fontFamily: config.settings.terminalFontFamily,
           theme: config.settings.theme === "dark" ? darkTerminalTheme : lightTerminalTheme,
-          fontSize: 13,
+          fontSize: config.settings.terminalFontSize,
           lineHeight: 1.25,
           scrollback: 1000,
         });
@@ -200,7 +264,12 @@ export function useAppState(notify: (toast: ToastInput) => void) {
         });
       }
     },
-    [config.settings.theme, ensureRuntime]
+    [
+      config.settings.theme,
+      config.settings.terminalFontFamily,
+      config.settings.terminalFontSize,
+      ensureRuntime,
+    ]
   );
 
   const updateSession = useCallback((sessionId: string, partial: Partial<Session>) => {
@@ -439,7 +508,9 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     setFilter,
     setActiveSessionId,
     updateRecentDirs,
+    updateTerminalSettings,
     startSession,
     registerTerminal,
+    focusActiveSession,
   };
 }

@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import type { Session } from "../../types";
 import { agentCatalog } from "../../constants";
 import { getRepoName } from "../../utils/session";
@@ -12,6 +12,7 @@ interface SidebarProps {
   onFilterChange: (value: string) => void;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
+  onOpenSettings: () => void;
 }
 
 export default function Sidebar({
@@ -21,6 +22,7 @@ export default function Sidebar({
   onFilterChange,
   onSelectSession,
   onNewSession,
+  onOpenSettings,
 }: SidebarProps) {
   return (
     <aside className={styles.sidebar}>
@@ -61,17 +63,28 @@ export default function Sidebar({
           );
         })}
       </div>
-      <IconButton
-        aria-label="New session"
-        variant="fab"
-        shape="circle"
-        size="lg"
-        iconSize={18}
-        onClick={onNewSession}
-        className={styles.fab}
-      >
-        <Plus aria-hidden="true" />
-      </IconButton>
+      <div className={styles.actions}>
+        <IconButton
+          aria-label="New session"
+          variant="fab"
+          shape="circle"
+          size="lg"
+          iconSize={18}
+          onClick={onNewSession}
+        >
+          <Plus aria-hidden="true" />
+        </IconButton>
+        <IconButton
+          aria-label="Settings"
+          variant="fab"
+          shape="circle"
+          size="lg"
+          iconSize={18}
+          onClick={onOpenSettings}
+        >
+          <Settings aria-hidden="true" />
+        </IconButton>
+      </div>
     </aside>
   );
 }

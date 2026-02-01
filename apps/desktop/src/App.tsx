@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
 import MainPane from "./components/MainPane/MainPane";
 import NewSessionDialog from "./components/NewSessionDialog/NewSessionDialog";
+import SettingsDialog from "./components/SettingsDialog/SettingsDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
@@ -23,8 +24,10 @@ export default function App() {
     setFilter,
     setActiveSessionId,
     updateRecentDirs,
+    updateTerminalSettings,
     startSession,
     registerTerminal,
+    focusActiveSession,
   } = useAppState(pushToast);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -36,6 +39,14 @@ export default function App() {
   const [worktreeBranch, setWorktreeBranch] = useState("");
   const [envVars, setEnvVars] = useState<EnvVar[]>(emptyEnv);
   const [preCommands, setPreCommands] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fontFamily, setFontFamily] = useState(config.settings.terminalFontFamily);
+  const [fontSize, setFontSize] = useState(config.settings.terminalFontSize);
+
+  useEffect(() => {
+    setFontFamily(config.settings.terminalFontFamily);
+    setFontSize(config.settings.terminalFontSize);
+  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize]);
 
   const filteredSessions = useMemo(() => {
     const needle = filter.toLowerCase();
@@ -53,6 +64,26 @@ export default function App() {
     setPreCommands("");
   };
 
+  const openSettings = () => {
+    setFontFamily(config.settings.terminalFontFamily);
+    setFontSize(config.settings.terminalFontSize);
+    setSettingsOpen(true);
+  };
+
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    requestAnimationFrame(() => focusActiveSession());
+  };
+
+  const saveSettings = () => {
+    updateTerminalSettings({
+      terminalFontFamily: fontFamily.trim() || config.settings.terminalFontFamily,
+      terminalFontSize: Number.isNaN(fontSize) ? config.settings.terminalFontSize : fontSize,
+    });
+    setSettingsOpen(false);
+    requestAnimationFrame(() => focusActiveSession());
+  };
+
   const handleOpenDialog = () => {
     resetForm();
     setDialogOpen(true);
@@ -60,6 +91,7 @@ export default function App() {
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
+    requestAnimationFrame(() => focusActiveSession());
   };
 
   const handleSelectRepo = (path: string) => {
@@ -123,6 +155,7 @@ export default function App() {
         onFilterChange={setFilter}
         onSelectSession={setActiveSessionId}
         onNewSession={handleOpenDialog}
+        onOpenSettings={openSettings}
       />
       <MainPane sessions={sessions} activeSessionId={activeSessionId} onRegisterTerminal={registerTerminal} />
       <NewSessionDialog
@@ -147,6 +180,15 @@ export default function App() {
         startEnabled={startEnabled}
         onClose={handleCloseDialog}
         onSubmit={handleSubmit}
+      />
+      <SettingsDialog
+        open={settingsOpen}
+        fontFamily={fontFamily}
+        fontSize={fontSize}
+        onChangeFontFamily={setFontFamily}
+        onChangeFontSize={setFontSize}
+        onClose={closeSettings}
+        onSave={saveSettings}
       />
       <Toasts toasts={toasts} onDismiss={removeToast} />
     </div>
