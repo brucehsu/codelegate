@@ -3,6 +3,7 @@ identifier = "default"
 description = "Default permissions for app commands"
 commands.allow = [
   "get_default_shell",
+  "get_home_dir",
   "exit_app",
   "resolve_repo_root",
   "load_config",
@@ -18,6 +19,7 @@ identifier = "all"
 description = "Allow all app commands for the desktop app"
 commands.allow = [
   "get_default_shell",
+  "get_home_dir",
   "exit_app",
   "resolve_repo_root",
   "load_config",

@@ -7,7 +7,7 @@ import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
 import type { AppConfig, PtyExit, PtyOutput, RepoConfig, Session, ToastInput } from "../types";
-import { createSessionId, envListToMap } from "../utils/session";
+import { createSessionId, envListToMap, getRepoName } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 
 interface SessionRuntime {
@@ -28,6 +28,18 @@ const defaultConfig: AppConfig = {
   version: 1,
   settings: defaultSettings,
 };
+
+function formatWorktreeStamp(date: Date) {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(
+    date.getMinutes()
+  )}`;
+}
+
+function sanitizeRepoSlug(name: string) {
+  const safe = name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return safe || "repo";
+}
 
 export function useAppState(notify: (toast: ToastInput) => void) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
@@ -309,14 +321,26 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       let sessionCwd = repoRoot;
       const initCommands: string[] = [];
 
-      if (repo.worktree?.enabled && repo.worktree.path.trim()) {
-        const wtPath = repo.worktree.path.trim();
-        const branch = repo.worktree.branch.trim();
+      if (repo.worktree?.enabled) {
+        let homeDir = "";
+        try {
+          homeDir = await invoke<string>("get_home_dir");
+        } catch (error) {
+          updateSession(sessionId, { status: "error", lastError: String(error) });
+          notify({ message: `Failed to resolve home directory: ${String(error)}`, tone: "error" });
+          return;
+        }
+
+        const repoSlug = sanitizeRepoSlug(getRepoName(repoRoot));
+        const stamp = formatWorktreeStamp(new Date());
+        const worktreeRoot = `${homeDir}/.codelegate/worktrees/${repoSlug}`;
+        const worktreePath = `${worktreeRoot}/${stamp}-${repo.agent}`;
         const base = escapeShellArg(repoRoot);
-        const target = escapeShellArg(wtPath);
-        const branchArg = branch ? ` ${escapeShellArg(branch)}` : "";
-        initCommands.push(`git -C ${base} worktree add ${target}${branchArg}`);
-        sessionCwd = wtPath;
+        const target = escapeShellArg(worktreePath);
+
+        initCommands.push(`mkdir -p ${escapeShellArg(worktreeRoot)}`);
+        initCommands.push(`git -C ${base} worktree add ${target}`);
+        sessionCwd = worktreePath;
       }
 
       initCommands.push(`cd ${escapeShellArg(sessionCwd)}`);

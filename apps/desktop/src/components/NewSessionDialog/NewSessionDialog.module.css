@@ -55,46 +55,6 @@
   font-size: 0.9rem;
 }
 
-.checkboxRow {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.9rem;
-}
-
-.checkboxRow input[type="checkbox"] {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-soft);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-
-.checkboxRow input[type="checkbox"]::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--accent);
-  opacity: 0;
-  transform: scale(0.6);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.checkboxRow input[type="checkbox"]:checked {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
-}
-
-.checkboxRow input[type="checkbox"]:checked::after {
-  opacity: 1;
-  transform: scale(1);
-}
 
 .input {
   width: 100%;
@@ -116,21 +76,10 @@
   color: var(--muted);
 }
 
-.worktreeFields {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.hidden {
-  display: none;
 }
 
 @media (max-width: 900px) {
@@ -138,7 +87,4 @@
     grid-template-columns: 1fr;
   }
 
-  .worktreeFields {
-    grid-template-columns: 1fr;
-  }
 }

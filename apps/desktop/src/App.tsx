@@ -35,8 +35,6 @@ export default function App() {
   const [repoPath, setRepoPath] = useState("");
   const [repoHint, setRepoHint] = useState("");
   const [worktreeEnabled, setWorktreeEnabled] = useState(false);
-  const [worktreePath, setWorktreePath] = useState("");
-  const [worktreeBranch, setWorktreeBranch] = useState("");
   const [envVars, setEnvVars] = useState<EnvVar[]>(emptyEnv);
   const [preCommands, setPreCommands] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -58,8 +56,6 @@ export default function App() {
     setRepoPath("");
     setRepoHint("");
     setWorktreeEnabled(false);
-    setWorktreePath("");
-    setWorktreeBranch("");
     setEnvVars(emptyEnv);
     setPreCommands("");
   };
@@ -121,11 +117,6 @@ export default function App() {
       return;
     }
 
-    if (worktreeEnabled && !worktreePath.trim()) {
-      pushToast({ message: "Worktree path is required when enabled.", tone: "error" });
-      return;
-    }
-
     const repoConfig: RepoConfig = {
       repoPath: trimmedPath,
       agent: selectedAgent,
@@ -134,8 +125,6 @@ export default function App() {
       worktree: worktreeEnabled
         ? {
             enabled: true,
-            path: worktreePath.trim(),
-            branch: worktreeBranch.trim(),
           }
         : undefined,
     };
@@ -169,10 +158,6 @@ export default function App() {
         repoHint={repoHint}
         worktreeEnabled={worktreeEnabled}
         onToggleWorktree={setWorktreeEnabled}
-        worktreePath={worktreePath}
-        onWorktreePathChange={setWorktreePath}
-        worktreeBranch={worktreeBranch}
-        onWorktreeBranchChange={setWorktreeBranch}
         envVars={envVars}
         onEnvChange={setEnvVars}
         preCommands={preCommands}

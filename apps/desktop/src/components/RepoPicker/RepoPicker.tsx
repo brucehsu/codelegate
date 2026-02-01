@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GitBranch } from "lucide-react";
 import styles from "./RepoPicker.module.css";
 import Button from "../Button/Button";
 
@@ -8,9 +8,18 @@ interface RepoPickerProps {
   recentDirs: string[];
   onSelect: (path: string) => void;
   onBrowse: () => void;
+  worktreeEnabled: boolean;
+  onToggleWorktree: (next: boolean) => void;
 }
 
-export default function RepoPicker({ value, recentDirs, onSelect, onBrowse }: RepoPickerProps) {
+export default function RepoPicker({
+  value,
+  recentDirs,
+  onSelect,
+  onBrowse,
+  worktreeEnabled,
+  onToggleWorktree,
+}: RepoPickerProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +78,15 @@ export default function RepoPicker({ value, recentDirs, onSelect, onBrowse }: Re
       <Button variant="ghost" onClick={onBrowse}>
         Browse
       </Button>
+      <button
+        type="button"
+        className={`${styles.toggle} ${worktreeEnabled ? styles.toggleActive : ""}`}
+        onClick={() => onToggleWorktree(!worktreeEnabled)}
+        aria-pressed={worktreeEnabled}
+      >
+        <GitBranch className={styles.toggleIcon} aria-hidden="true" />
+        <span>Git Worktree</span>
+      </button>
     </div>
   );
 }

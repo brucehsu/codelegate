@@ -6,7 +6,7 @@
 
 .selectField {
   position: relative;
-  width: 100%;
+  flex: 1;
 }
 
 .trigger {
@@ -85,4 +85,33 @@
 .disabled {
   cursor: default;
   color: var(--muted);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toggle:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.1);
+}
+
+.toggleActive {
+  border-color: var(--accent);
+  background: rgba(79, 209, 197, 0.12);
+  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.2);
+}
+
+.toggleIcon {
+  width: 16px;
+  height: 16px;
 }

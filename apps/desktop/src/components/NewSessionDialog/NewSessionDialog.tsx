@@ -19,10 +19,6 @@ interface NewSessionDialogProps {
   repoHint?: string;
   worktreeEnabled: boolean;
   onToggleWorktree: (next: boolean) => void;
-  worktreePath: string;
-  onWorktreePathChange: (value: string) => void;
-  worktreeBranch: string;
-  onWorktreeBranchChange: (value: string) => void;
   envVars: EnvVar[];
   onEnvChange: (vars: EnvVar[]) => void;
   preCommands: string;
@@ -43,10 +39,6 @@ export default function NewSessionDialog({
   repoHint,
   worktreeEnabled,
   onToggleWorktree,
-  worktreePath,
-  onWorktreePathChange,
-  worktreeBranch,
-  onWorktreeBranchChange,
   envVars,
   onEnvChange,
   preCommands,
@@ -89,8 +81,7 @@ export default function NewSessionDialog({
       >
         <div className={styles.header}>
           <div>
-            <h3>New Session</h3>
-            <p>Launch a local agent session for a repository.</p>
+            <h2>New Session</h2>
           </div>
           <IconButton
             aria-label="Close"
@@ -108,53 +99,25 @@ export default function NewSessionDialog({
         <div className={styles.grid}>
           <div className={styles.fieldFull}>
             <span>Agent CLI</span>
-            <AgentPicker selected={selectedAgent} onSelect={onSelectAgent} />
-          </div>
+        <AgentPicker selected={selectedAgent} onSelect={onSelectAgent} />
+      </div>
 
-          <label className={styles.fieldFull}>
-            <span>Repository path</span>
-            <RepoPicker
-              value={repoPath}
-              recentDirs={recentDirs}
-              onSelect={onSelectRepo}
-              onBrowse={onBrowseRepo}
-            />
-            {repoHint ? <span className={styles.hint}>{repoHint}</span> : null}
-          </label>
+      <label className={styles.fieldFull}>
+        <span>Repository path</span>
+        <RepoPicker
+          value={repoPath}
+          recentDirs={recentDirs}
+          onSelect={onSelectRepo}
+          onBrowse={onBrowseRepo}
+          worktreeEnabled={worktreeEnabled}
+          onToggleWorktree={onToggleWorktree}
+        />
+        {repoHint ? <span className={styles.hint}>{repoHint}</span> : null}
+      </label>
 
-          <label className={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              checked={worktreeEnabled}
-              onChange={(event) => onToggleWorktree(event.target.checked)}
-            />
-            <span>Create git worktree</span>
-          </label>
-
-          <div className={`${styles.worktreeFields} ${worktreeEnabled ? "" : styles.hidden}`}>
-            <label className={styles.field}>
-              <span>Worktree path</span>
-              <input
-                className={styles.input}
-                placeholder="/path/to/worktree"
-                value={worktreePath}
-                onChange={(event) => onWorktreePathChange(event.target.value)}
-              />
-            </label>
-            <label className={styles.field}>
-              <span>Branch (optional)</span>
-              <input
-                className={styles.input}
-                placeholder="feature/my-branch"
-                value={worktreeBranch}
-                onChange={(event) => onWorktreeBranchChange(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className={styles.fieldFull}>
-            <span>Environment variables (optional)</span>
-            <EnvList envVars={envVars} onChange={onEnvChange} />
+      <div className={styles.fieldFull}>
+        <span>Environment variables (optional)</span>
+        <EnvList envVars={envVars} onChange={onEnvChange} />
           </div>
 
           <label className={styles.fieldFull}>

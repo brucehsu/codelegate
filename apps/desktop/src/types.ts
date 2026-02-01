@@ -7,8 +7,6 @@ export interface EnvVar {
 
 export interface WorktreeConfig {
   enabled: boolean;
-  path: string;
-  branch: string;
 }
 
 export interface RepoConfig {

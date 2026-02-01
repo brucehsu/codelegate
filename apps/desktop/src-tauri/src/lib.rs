@@ -76,6 +76,14 @@ fn get_default_shell() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_home_dir() -> Result<String, String> {
+  let home = std::env::var_os("HOME")
+    .map(PathBuf::from)
+    .ok_or_else(|| "Unable to locate home directory".to_string())?;
+  Ok(home.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn exit_app() {
   std::process::exit(0);
 }
@@ -292,6 +300,7 @@ pub fn run() {
     .manage(AppState::default())
     .invoke_handler(tauri::generate_handler![
       get_default_shell,
+      get_home_dir,
       exit_app,
       resolve_repo_root,
       load_config,
