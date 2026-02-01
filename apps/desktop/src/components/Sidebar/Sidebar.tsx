@@ -1,6 +1,6 @@
 import { Plus, Settings } from "lucide-react";
 import type { Session } from "../../types";
-import { agentCatalog } from "../../constants";
+import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import { getRepoName } from "../../utils/session";
 import IconButton from "../IconButton/IconButton";
 import styles from "./Sidebar.module.css";
@@ -24,6 +24,16 @@ export default function Sidebar({
   onNewSession,
   onOpenSettings,
 }: SidebarProps) {
+  const iconById = {
+    claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
+    codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
+  } as const;
+
+  const classById = {
+    claude: styles.agentClaude,
+    codex: styles.agentCodex,
+  } as const;
+
   return (
     <aside className={styles.sidebar}>
       <div className={styles.controls}>
@@ -36,7 +46,7 @@ export default function Sidebar({
       </div>
       <div className={styles.sessionList}>
         {sessions.map((session) => {
-          const agent = agentCatalog.find((item) => item.id === session.repo.agent);
+          const agentId = session.repo.agent;
           return (
             <button
               key={session.id}
@@ -46,19 +56,19 @@ export default function Sidebar({
               type="button"
               onClick={() => onSelectSession(session.id)}
             >
+              <span className={`${styles.agentIcon} ${classById[agentId]}`}>
+                {iconById[agentId]}
+              </span>
               <div className={styles.sessionLabel}>{getRepoName(session.repo.repoPath)}</div>
-              <div className={styles.sessionRight}>
-                <span
-                  className={`${styles.status} ${
-                    session.status === "running"
-                      ? styles.statusRunning
-                      : session.status === "error"
-                        ? styles.statusError
-                        : ""
-                  }`}
-                />
-                <div className={styles.sessionMeta}>{agent?.label ?? session.repo.agent}</div>
-              </div>
+              <span
+                className={`${styles.status} ${
+                  session.status === "running"
+                    ? styles.statusRunning
+                    : session.status === "error"
+                      ? styles.statusError
+                      : ""
+                }`}
+              />
             </button>
           );
         })}
