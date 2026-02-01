@@ -34,6 +34,7 @@ export type SessionStatus = "running" | "stopped" | "error";
 export interface Session {
   id: string;
   repo: RepoConfig;
+  cwd?: string;
   status: SessionStatus;
   ptyId?: number;
   lastError?: string;

@@ -298,6 +298,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       const session: Session = {
         id: sessionId,
         repo,
+        cwd: repo.repoPath,
         status: "stopped",
       };
 
@@ -354,6 +355,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       }
       initCommands.push(agentCommandById[repo.agent] ?? repo.agent);
       const commandLine = initCommands.filter((line) => line.trim().length > 0).join(" && ");
+      updateSession(sessionId, { cwd: sessionCwd });
 
       const runtime = ensureRuntime(sessionId);
 
