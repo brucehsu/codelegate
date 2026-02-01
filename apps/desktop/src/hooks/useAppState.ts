@@ -41,7 +41,7 @@ function sanitizeRepoSlug(name: string) {
   return safe || "repo";
 }
 
-export function useAppState(notify: (toast: ToastInput) => void) {
+export function useAppState(notify: (toast: ToastInput) => void, onOpenNewSession?: () => void) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -257,6 +257,8 @@ export function useAppState(notify: (toast: ToastInput) => void) {
           const isCopy = isMac ? event.metaKey && key === "c" : event.ctrlKey && event.shiftKey && key === "c";
           const isCycle =
             event.ctrlKey && !event.metaKey && !event.altKey && (event.key === "Tab" || key === "tab");
+          const isOpenNewSession =
+            key === "t" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
 
           if (isCopy) {
             if (term.hasSelection()) {
@@ -271,6 +273,11 @@ export function useAppState(notify: (toast: ToastInput) => void) {
 
           if (isCycle) {
             cycleSession();
+            return false;
+          }
+
+          if (isOpenNewSession) {
+            onOpenNewSession?.();
             return false;
           }
 
@@ -305,6 +312,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
       config.settings.terminalFontSize,
       ensureRuntime,
       cycleSession,
+      onOpenNewSession,
     ]
   );
 
@@ -594,6 +602,19 @@ export function useAppState(notify: (toast: ToastInput) => void) {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      const isOpenNewSession =
+        key === "t" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+
+      if (isOpenNewSession) {
+        event.preventDefault();
+        onOpenNewSession?.();
+        return;
+      }
+
       if (!event.ctrlKey || event.metaKey || event.altKey || event.key !== "Tab") {
         return;
       }
@@ -605,7 +626,7 @@ export function useAppState(notify: (toast: ToastInput) => void) {
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [cycleSession]);
+  }, [cycleSession, onOpenNewSession]);
 
   return {
     config,

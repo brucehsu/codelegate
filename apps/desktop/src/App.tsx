@@ -30,7 +30,7 @@ export default function App() {
     registerTerminal,
     renameBranch,
     focusActiveSession,
-  } = useAppState(pushToast);
+  } = useAppState(pushToast, handleOpenDialog);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("claude");
@@ -56,14 +56,14 @@ export default function App() {
     return sessions.filter((session) => getRepoName(session.repo.repoPath).toLowerCase().includes(needle));
   }, [sessions, filter]);
 
-  const resetForm = () => {
+  function resetForm() {
     setSelectedAgent("claude");
     setRepoPath("");
     setRepoHint("");
     setWorktreeEnabled(false);
     setEnvVars(emptyEnv);
     setPreCommands("");
-  };
+  }
 
   const openSettings = () => {
     setFontFamily(config.settings.terminalFontFamily);
@@ -85,10 +85,10 @@ export default function App() {
     requestAnimationFrame(() => focusActiveSession());
   };
 
-  const handleOpenDialog = () => {
+  function handleOpenDialog() {
     resetForm();
     setDialogOpen(true);
-  };
+  }
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
