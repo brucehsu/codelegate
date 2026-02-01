@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
@@ -16,6 +16,14 @@ const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
 
 export default function App() {
   const { toasts, pushToast, removeToast } = useToasts();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  function focusSearch() {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+      searchInputRef.current.select();
+    }
+  }
 
   const {
     config,
@@ -30,7 +38,7 @@ export default function App() {
     registerTerminal,
     renameBranch,
     focusActiveSession,
-  } = useAppState(pushToast, handleOpenDialog);
+  } = useAppState(pushToast, handleOpenDialog, focusSearch);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("claude");
@@ -176,6 +184,7 @@ export default function App() {
         onNewSession={handleOpenDialog}
         onOpenSettings={openSettings}
         onRenameSession={openRename}
+        searchRef={searchInputRef}
       />
       <MainPane sessions={sessions} activeSessionId={activeSessionId} onRegisterTerminal={registerTerminal} />
       <NewSessionDialog

@@ -15,6 +15,7 @@ interface SidebarProps {
   onNewSession: () => void;
   onOpenSettings: () => void;
   onRenameSession: (sessionId: string) => void;
+  searchRef?: React.RefObject<HTMLInputElement>;
 }
 
 export default function Sidebar({
@@ -26,6 +27,7 @@ export default function Sidebar({
   onNewSession,
   onOpenSettings,
   onRenameSession,
+  searchRef,
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -67,6 +69,7 @@ export default function Sidebar({
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
           placeholder="Search sessions"
+          ref={searchRef}
         />
       </div>
       <div className={styles.sessionList}>

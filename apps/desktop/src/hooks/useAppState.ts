@@ -41,7 +41,11 @@ function sanitizeRepoSlug(name: string) {
   return safe || "repo";
 }
 
-export function useAppState(notify: (toast: ToastInput) => void, onOpenNewSession?: () => void) {
+export function useAppState(
+  notify: (toast: ToastInput) => void,
+  onOpenNewSession?: () => void,
+  onFocusSearch?: () => void
+) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -278,6 +282,11 @@ export function useAppState(notify: (toast: ToastInput) => void, onOpenNewSessio
 
           if (isOpenNewSession) {
             onOpenNewSession?.();
+            return false;
+          }
+
+          if (key === "s" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey) {
+            onFocusSearch?.();
             return false;
           }
 
@@ -608,10 +617,18 @@ export function useAppState(notify: (toast: ToastInput) => void, onOpenNewSessio
       const key = event.key.toLowerCase();
       const isOpenNewSession =
         key === "t" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+      const isFocusSearch =
+        key === "s" && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
 
       if (isOpenNewSession) {
         event.preventDefault();
         onOpenNewSession?.();
+        return;
+      }
+
+      if (isFocusSearch) {
+        event.preventDefault();
+        onFocusSearch?.();
         return;
       }
 
@@ -626,7 +643,7 @@ export function useAppState(notify: (toast: ToastInput) => void, onOpenNewSessio
     return () => {
       window.removeEventListener("keydown", handler);
     };
-  }, [cycleSession, onOpenNewSession]);
+  }, [cycleSession, onOpenNewSession, onFocusSearch]);
 
   return {
     config,
