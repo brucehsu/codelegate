@@ -9,7 +9,7 @@ import RenameDialog from "./components/RenameDialog/RenameDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
-import type { AgentId, EnvVar, RepoConfig } from "./types";
+import type { AgentId, EnvVar, RepoConfig, TerminalKind } from "./types";
 import { getRepoName, validateEnvVars } from "./utils/session";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
@@ -37,6 +37,7 @@ export default function App() {
     updateBatterySaver,
     startSession,
     registerTerminal,
+    setActiveTerminalKind,
     renameBranch,
     focusActiveSession,
   } = useAppState(pushToast, handleOpenDialog, focusSearch);
@@ -55,6 +56,7 @@ export default function App() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [activeTerminalKind, setActiveTerminalKindState] = useState<TerminalKind>("agent");
 
   useEffect(() => {
     setFontFamily(config.settings.terminalFontFamily);
@@ -164,6 +166,9 @@ export default function App() {
       return;
     }
 
+    setActiveTerminalKindState("agent");
+    setActiveTerminalKind("agent");
+
     const repoConfig: RepoConfig = {
       repoPath: trimmedPath,
       agent: selectedAgent,
@@ -181,6 +186,10 @@ export default function App() {
   };
 
   const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent);
+  const handleSelectTerminalKind = (kind: TerminalKind) => {
+    setActiveTerminalKindState(kind);
+    setActiveTerminalKind(kind);
+  };
 
   return (
     <div className={styles.shell}>
@@ -195,7 +204,13 @@ export default function App() {
         onRenameSession={openRename}
         searchRef={searchInputRef}
       />
-      <MainPane sessions={sessions} activeSessionId={activeSessionId} onRegisterTerminal={registerTerminal} />
+      <MainPane
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        activeTerminalKind={activeTerminalKind}
+        onSelectTerminalKind={handleSelectTerminalKind}
+        onRegisterTerminal={registerTerminal}
+      />
       <NewSessionDialog
         open={dialogOpen}
         selectedAgent={selectedAgent}

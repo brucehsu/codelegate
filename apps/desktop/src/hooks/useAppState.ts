@@ -6,15 +6,21 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
-import type { AppConfig, PtyExit, PtyOutput, RepoConfig, Session, ToastInput } from "../types";
+import type { AppConfig, PtyExit, PtyOutput, RepoConfig, Session, TerminalKind, ToastInput } from "../types";
 import { createSessionId, envListToMap, getRepoName } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 
-interface SessionRuntime {
+interface TerminalRuntime {
   container?: HTMLDivElement | null;
   term?: Terminal;
   fit?: FitAddon;
   ptyId?: number;
+  starting?: boolean;
+}
+
+interface SessionRuntime {
+  agent: TerminalRuntime;
+  terminal: TerminalRuntime;
 }
 
 interface Hotkey {
@@ -101,14 +107,15 @@ export function useAppState(
   const [filter, setFilter] = useState("");
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
-  const ptyToSessionRef = useRef(new Map<number, string>());
+  const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: TerminalKind }>());
   const sessionsRef = useRef<Session[]>([]);
   const activeSessionRef = useRef<string | null>(null);
+  const activeTerminalKindRef = useRef<TerminalKind>("agent");
   const closeInProgressRef = useRef(false);
-  const pendingFocusRef = useRef<string | null>(null);
+  const pendingFocusRef = useRef<{ sessionId: string; kind: TerminalKind } | null>(null);
 
-  const focusSession = useCallback((sessionId: string) => {
-    const runtime = runtimeRef.current.get(sessionId);
+  const focusSession = useCallback((sessionId: string, kind: TerminalKind) => {
+    const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (runtime?.term) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -128,8 +135,9 @@ export function useAppState(
     if (!sessionId) {
       return;
     }
-    if (!focusSession(sessionId)) {
-      pendingFocusRef.current = sessionId;
+    const kind = activeTerminalKindRef.current;
+    if (!focusSession(sessionId, kind)) {
+      pendingFocusRef.current = { sessionId, kind };
     }
   }, [focusSession]);
 
@@ -144,9 +152,11 @@ export function useAppState(
   const applyTheme = useCallback((theme: "dark" | "light") => {
     document.body.dataset.theme = theme;
     runtimeRef.current.forEach((runtime) => {
-      if (runtime.term) {
-        runtime.term.options.theme = theme === "dark" ? darkTerminalTheme : lightTerminalTheme;
-      }
+      [runtime.agent, runtime.terminal].forEach((terminal) => {
+        if (terminal.term) {
+          terminal.term.options.theme = theme === "dark" ? darkTerminalTheme : lightTerminalTheme;
+        }
+      });
     });
   }, []);
 
@@ -212,18 +222,20 @@ export function useAppState(
     });
 
     runtimeRef.current.forEach((runtime) => {
-      if (runtime.term) {
-        runtime.term.options.fontFamily = updates.terminalFontFamily;
-        runtime.term.options.fontSize = updates.terminalFontSize;
-        runtime.fit?.fit();
-        if (runtime.ptyId && runtime.term) {
-          invoke("resize_pty", {
-            sessionId: runtime.ptyId,
-            cols: runtime.term.cols,
-            rows: runtime.term.rows,
-          });
+      [runtime.agent, runtime.terminal].forEach((terminal) => {
+        if (terminal.term) {
+          terminal.term.options.fontFamily = updates.terminalFontFamily;
+          terminal.term.options.fontSize = updates.terminalFontSize;
+          terminal.fit?.fit();
+          if (terminal.ptyId && terminal.term) {
+            invoke("resize_pty", {
+              sessionId: terminal.ptyId,
+              cols: terminal.term.cols,
+              rows: terminal.term.rows,
+            });
+          }
         }
-      }
+      });
     });
   }, []);
 
@@ -246,18 +258,20 @@ export function useAppState(
     const fontFamily = config.settings.terminalFontFamily;
     const fontSize = config.settings.terminalFontSize;
     runtimeRef.current.forEach((runtime) => {
-      if (runtime.term) {
-        runtime.term.options.fontFamily = fontFamily;
-        runtime.term.options.fontSize = fontSize;
-        runtime.fit?.fit();
-        if (runtime.ptyId && runtime.term) {
-          invoke("resize_pty", {
-            sessionId: runtime.ptyId,
-            cols: runtime.term.cols,
-            rows: runtime.term.rows,
-          });
+      [runtime.agent, runtime.terminal].forEach((terminal) => {
+        if (terminal.term) {
+          terminal.term.options.fontFamily = fontFamily;
+          terminal.term.options.fontSize = fontSize;
+          terminal.fit?.fit();
+          if (terminal.ptyId && terminal.term) {
+            invoke("resize_pty", {
+              sessionId: terminal.ptyId,
+              cols: terminal.term.cols,
+              rows: terminal.term.rows,
+            });
+          }
         }
-      }
+      });
     });
   }, [config.settings.terminalFontFamily, config.settings.terminalFontSize]);
 
@@ -312,28 +326,60 @@ export function useAppState(
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
-  const ensureRuntime = useCallback((sessionId: string) => {
+  const ensureSessionRuntime = useCallback((sessionId: string) => {
     const map = runtimeRef.current;
     let runtime = map.get(sessionId);
     if (!runtime) {
-      runtime = {};
+      runtime = { agent: {}, terminal: {} };
       map.set(sessionId, runtime);
     }
     return runtime;
   }, []);
 
+  const ensureTerminalRuntime = useCallback(
+    (sessionId: string, kind: TerminalKind) => {
+      const runtime = ensureSessionRuntime(sessionId);
+      return runtime[kind];
+    },
+    [ensureSessionRuntime]
+  );
+
+  const setActiveTerminalKind = useCallback(
+    (kind: TerminalKind) => {
+      activeTerminalKindRef.current = kind;
+      const sessionId = activeSessionRef.current;
+      if (!sessionId) {
+        return;
+      }
+      if (!focusSession(sessionId, kind)) {
+        pendingFocusRef.current = { sessionId, kind };
+      }
+      const runtime = runtimeRef.current.get(sessionId)?.[kind];
+      if (runtime?.fit && runtime.ptyId && runtime.term) {
+        runtime.fit.fit();
+        invoke("resize_pty", {
+          sessionId: runtime.ptyId,
+          cols: runtime.term.cols,
+          rows: runtime.term.rows,
+        });
+      }
+    },
+    [focusSession]
+  );
+
   const registerTerminal = useCallback(
-    (sessionId: string, element: HTMLDivElement | null) => {
+    (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => {
       if (!element) {
         return;
       }
-      const runtime = ensureRuntime(sessionId);
-      if (runtime.container === element) {
-        return;
-      }
+      const runtime = ensureTerminalRuntime(sessionId, kind);
       runtime.container = element;
+      const allowTerminalStart = kind !== "terminal" || activeTerminalKindRef.current === "terminal";
 
       if (!runtime.term) {
+        if (!allowTerminalStart) {
+          return;
+        }
         const term = new Terminal({
           cursorBlink: true,
           fontFamily: config.settings.terminalFontFamily,
@@ -402,8 +448,12 @@ export function useAppState(
       }
 
       if (runtime.term) {
-        if (pendingFocusRef.current === sessionId || activeSessionRef.current === sessionId) {
-          focusSession(sessionId);
+        const pending = pendingFocusRef.current;
+        if (
+          (pending && pending.sessionId === sessionId && pending.kind === kind) ||
+          (activeSessionRef.current === sessionId && activeTerminalKindRef.current === kind)
+        ) {
+          focusSession(sessionId, kind);
           pendingFocusRef.current = null;
         }
       }
@@ -418,14 +468,57 @@ export function useAppState(
           rows: runtime.term.rows,
         });
       }
+
+      if (kind === "terminal" && runtime.term && !runtime.ptyId && !runtime.starting && allowTerminalStart) {
+        runtime.starting = true;
+        const session = sessionsRef.current.find((item) => item.id === sessionId);
+        const sessionCwd = session?.cwd ?? session?.repo.repoPath;
+        if (!session || !sessionCwd) {
+          runtime.starting = false;
+          return;
+        }
+        invoke<string>("get_default_shell")
+          .then((shell) => {
+            const envMap = envListToMap(session.repo.env);
+            envMap.TERM = envMap.TERM || "xterm-256color";
+            return invoke<number>("spawn_pty", {
+              shell,
+              args: shellArgs(shell),
+              cwd: sessionCwd,
+              env: envMap,
+              cols: runtime.term?.cols ?? 80,
+              rows: runtime.term?.rows ?? 24,
+            });
+          })
+          .then((ptyId) => {
+            runtime.ptyId = ptyId;
+            ptyToSessionRef.current.set(ptyId, { sessionId, kind: "terminal" });
+            if (runtime.term && runtime.fit) {
+              runtime.fit.fit();
+              invoke("resize_pty", {
+                sessionId: ptyId,
+                cols: runtime.term.cols,
+                rows: runtime.term.rows,
+              });
+            }
+          })
+          .catch((error) => {
+            notify({ message: `Failed to start terminal: ${String(error)}`, tone: "error" });
+          })
+          .finally(() => {
+            runtime.starting = false;
+          });
+      }
     },
     [
       config.settings.theme,
       config.settings.terminalFontFamily,
       config.settings.terminalFontSize,
-      ensureRuntime,
+      ensureTerminalRuntime,
       globalHotkeys,
       isMac,
+      focusSession,
+      notify,
     ]
   );
 
@@ -474,7 +567,7 @@ export function useAppState(
 
       setSessions((prev) => [...prev, session]);
       setActiveSessionId(sessionId);
-      pendingFocusRef.current = sessionId;
+      pendingFocusRef.current = { sessionId, kind: activeTerminalKindRef.current };
 
       let shell = "";
       try {
@@ -544,7 +637,7 @@ export function useAppState(
 
       resolveBranch(repo.worktree?.enabled ? 5 : 1);
 
-      const runtime = ensureRuntime(sessionId);
+      const runtime = ensureTerminalRuntime(sessionId, "agent");
 
       let ptyId: number;
       try {
@@ -563,7 +656,7 @@ export function useAppState(
       }
 
       runtime.ptyId = ptyId;
-      ptyToSessionRef.current.set(ptyId, sessionId);
+      ptyToSessionRef.current.set(ptyId, { sessionId, kind: "agent" });
 
       updateSession(sessionId, { status: "running", lastError: undefined, startedAt: Date.now(), ptyId });
 
@@ -576,7 +669,7 @@ export function useAppState(
         });
       }
     },
-    [ensureRuntime, updateSession]
+    [ensureTerminalRuntime, updateSession]
   );
 
   useEffect(() => {
@@ -584,30 +677,34 @@ export function useAppState(
     let unlistenExit: (() => void) | undefined;
 
     listen<PtyOutput>("pty-output", (event) => {
-      const sessionId = ptyToSessionRef.current.get(event.payload.session_id);
-      if (!sessionId) {
+      const info = ptyToSessionRef.current.get(event.payload.session_id);
+      if (!info) {
         return;
       }
-      const runtime = runtimeRef.current.get(sessionId);
+      const runtime = runtimeRef.current.get(info.sessionId)?.[info.kind];
       runtime?.term?.write(event.payload.data);
     }).then((unlisten) => {
       unlistenOutput = unlisten;
     });
 
     listen<PtyExit>("pty-exit", (event) => {
-      const sessionId = ptyToSessionRef.current.get(event.payload.session_id);
-      if (!sessionId) {
+      const info = ptyToSessionRef.current.get(event.payload.session_id);
+      if (!info) {
         return;
       }
-      const runtime = runtimeRef.current.get(sessionId);
+      const runtime = runtimeRef.current.get(info.sessionId)?.[info.kind];
       if (runtime) {
         runtime.ptyId = undefined;
       }
       ptyToSessionRef.current.delete(event.payload.session_id);
 
+      if (info.kind !== "agent") {
+        return;
+      }
+
       setSessions((prev) =>
         prev.map((session) => {
-          if (session.id !== sessionId) {
+          if (session.id !== info.sessionId) {
             return session;
           }
           const elapsed = session.startedAt ? Date.now() - session.startedAt : null;
@@ -634,7 +731,7 @@ export function useAppState(
       if (!sessionId) {
         return;
       }
-      const runtime = runtimeRef.current.get(sessionId);
+      const runtime = runtimeRef.current.get(sessionId)?.[activeTerminalKindRef.current];
       if (!runtime?.fit || !runtime.ptyId || !runtime.term) {
         return;
       }
@@ -657,10 +754,11 @@ export function useAppState(
     if (!sessionId) {
       return;
     }
-    if (!focusSession(sessionId)) {
-      pendingFocusRef.current = sessionId;
+    const kind = activeTerminalKindRef.current;
+    if (!focusSession(sessionId, kind)) {
+      pendingFocusRef.current = { sessionId, kind };
     }
-    const runtime = runtimeRef.current.get(sessionId);
+    const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (!runtime?.fit || !runtime.ptyId || !runtime.term) {
       return;
     }
@@ -739,6 +837,7 @@ export function useAppState(
     updateBatterySaver,
     startSession,
     registerTerminal,
+    setActiveTerminalKind,
     renameBranch,
     focusActiveSession,
   };

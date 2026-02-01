@@ -1,4 +1,5 @@
 export type AgentId = "claude" | "codex";
+export type TerminalKind = "agent" | "terminal";
 
 export interface EnvVar {
   key: string;
