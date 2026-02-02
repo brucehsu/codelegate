@@ -24,6 +24,10 @@ interface TerminalRuntime {
     cols: number;
     rows: number;
   };
+  isFollowing?: boolean;
+  scrollDisposable?: { dispose: () => void };
+  viewportEl?: HTMLDivElement | null;
+  viewportHandler?: (() => void) | null;
 }
 
 interface SessionRuntime {
@@ -141,6 +145,12 @@ export function useAppState(
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [unreadOutput, setUnreadOutput] = useState<Record<string, boolean>>({});
+
+  const unreadOutputRef = useRef(unreadOutput);
+  useEffect(() => {
+    unreadOutputRef.current = unreadOutput;
+  }, [unreadOutput]);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
   const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: TerminalKind }>());
@@ -195,6 +205,31 @@ export function useAppState(
       }
     });
   }, []);
+
+  const getUnreadKey = useCallback((sessionId: string, kind: TerminalKind) => `${sessionId}:${kind}`, []);
+
+  const setUnreadFor = useCallback(
+    (sessionId: string, kind: TerminalKind, value: boolean) => {
+      const key = getUnreadKey(sessionId, kind);
+      const current = Boolean(unreadOutputRef.current[key]);
+      if (current === value) {
+        return;
+      }
+      setUnreadOutput((prev) => {
+        const exists = Boolean(prev[key]);
+        if (exists === value) {
+          return prev;
+        }
+        if (!value) {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        }
+        return { ...prev, [key]: true };
+      });
+    },
+    [getUnreadKey]
+  );
 
   const focusSession = useCallback((sessionId: string, kind: TerminalKind) => {
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
@@ -452,6 +487,20 @@ export function useAppState(
     [focusSession, scheduleTerminalFit]
   );
 
+  const jumpToBottom = useCallback(
+    (sessionId: string, kind: TerminalKind) => {
+      const runtime = runtimeRef.current.get(sessionId)?.[kind];
+      if (!runtime?.term) {
+        return;
+      }
+      runtime.isFollowing = true;
+      runtime.term.scrollToBottom();
+      setUnreadFor(sessionId, kind, false);
+      scheduleTerminalFit(runtime);
+    },
+    [scheduleTerminalFit, setUnreadFor]
+  );
+
   const registerTerminal = useCallback(
     (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => {
       if (!element) {
@@ -461,10 +510,18 @@ export function useAppState(
         }
         runtime.container = null;
         runtime.lastFit = undefined;
+        runtime.isFollowing = undefined;
         if (runtime.resizeObserver) {
           runtime.resizeObserver.disconnect();
           runtime.resizeObserver = undefined;
         }
+        runtime.scrollDisposable?.dispose();
+        runtime.scrollDisposable = undefined;
+        if (runtime.viewportEl && runtime.viewportHandler) {
+          runtime.viewportEl.removeEventListener("scroll", runtime.viewportHandler);
+        }
+        runtime.viewportEl = null;
+        runtime.viewportHandler = null;
         if (runtime.resizeRaf !== undefined) {
           window.cancelAnimationFrame(runtime.resizeRaf);
           runtime.resizeRaf = undefined;
@@ -494,6 +551,8 @@ export function useAppState(
           fontSize: config.settings.terminalFontSize,
           lineHeight: 1.25,
           modifyOtherKeys: 2,
+          scrollOnOutput: false,
+          scrollOnUserInput: false,
           scrollback: 1000,
         });
         const fit = new FitAddon();
@@ -501,6 +560,11 @@ export function useAppState(
         term.open(element);
 
         term.onData((data) => {
+          if (runtime.isFollowing === false) {
+            runtime.isFollowing = true;
+            term.scrollToBottom();
+            setUnreadFor(sessionId, kind, false);
+          }
           if (runtime.ptyId) {
             invoke("write_pty", { sessionId: runtime.ptyId, data });
           }
@@ -567,6 +631,44 @@ export function useAppState(
         runtime.term = term;
         runtime.fit = fit;
       }
+      if (runtime.term && !runtime.scrollDisposable) {
+        runtime.scrollDisposable = runtime.term.onScroll(() => {
+          const buffer = runtime.term?.buffer.active;
+          if (!buffer) {
+            return;
+          }
+          const distanceFromBottom = buffer.baseY - buffer.viewportY;
+          runtime.isFollowing = distanceFromBottom <= 1;
+          setUnreadFor(sessionId, kind, !runtime.isFollowing);
+        });
+      }
+      if (runtime.term) {
+        const viewport = element.querySelector(".xterm-viewport") as HTMLDivElement | null;
+        if (viewport && (runtime.viewportEl !== viewport || !runtime.viewportHandler)) {
+          if (runtime.viewportEl && runtime.viewportHandler) {
+            runtime.viewportEl.removeEventListener("scroll", runtime.viewportHandler);
+          }
+          const handler = () => {
+            const buffer = runtime.term?.buffer.active;
+            if (!buffer) {
+              return;
+            }
+            const distanceFromBottom = buffer.baseY - buffer.viewportY;
+            runtime.isFollowing = distanceFromBottom <= 1;
+            setUnreadFor(sessionId, kind, !runtime.isFollowing);
+          };
+          runtime.viewportEl = viewport;
+          runtime.viewportHandler = handler;
+          viewport.addEventListener("scroll", handler, { passive: true });
+          handler();
+        }
+      }
+      if (runtime.term) {
+        const buffer = runtime.term.buffer.active;
+        const distanceFromBottom = buffer.baseY - buffer.viewportY;
+        runtime.isFollowing = distanceFromBottom <= 1;
+        setUnreadFor(sessionId, kind, !runtime.isFollowing);
+      }
 
       if (runtime.term) {
         const pending = pendingFocusRef.current;
@@ -624,6 +726,7 @@ export function useAppState(
       isMac,
       focusSession,
       scheduleTerminalFit,
+      setUnreadFor,
       notify,
     ]
   );
@@ -842,10 +945,24 @@ export function useAppState(
         return;
       }
       const runtime = runtimeRef.current.get(info.sessionId)?.[info.kind];
-      if (runtime) {
-        scheduleTerminalFit(runtime);
+      if (!runtime?.term) {
+        return;
       }
-      runtime?.term?.write(event.payload.data);
+      const buffer = runtime.term.buffer.active;
+      const distanceFromBottom = buffer.baseY - buffer.viewportY;
+      const shouldFollow = distanceFromBottom <= 1;
+      runtime.isFollowing = shouldFollow;
+      if (shouldFollow) {
+        scheduleTerminalFit(runtime);
+        setUnreadFor(info.sessionId, info.kind, false);
+      } else {
+        setUnreadFor(info.sessionId, info.kind, true);
+      }
+      runtime.term.write(event.payload.data, () => {
+        if (shouldFollow) {
+          runtime.term?.scrollToBottom();
+        }
+      });
     }).then((unlisten) => {
       unlistenOutput = unlisten;
     });
@@ -995,5 +1112,7 @@ export function useAppState(
     closeSessionTab,
     terminateSession,
     focusActiveSession,
+    unreadOutput,
+    jumpToBottom,
   };
 }

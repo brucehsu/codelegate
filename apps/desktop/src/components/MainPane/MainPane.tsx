@@ -1,6 +1,6 @@
 import type { Session, TerminalKind } from "../../types";
 import styles from "./MainPane.module.css";
-import { Command, Copy } from "lucide-react";
+import { ChevronDown, Command, Copy } from "lucide-react";
 
 interface MainPaneProps {
   sessions: Session[];
@@ -8,6 +8,8 @@ interface MainPaneProps {
   activeTerminalKind: TerminalKind;
   onSelectTerminalKind: (kind: TerminalKind) => void;
   onRegisterTerminal: (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => void;
+  unreadOutput: Record<string, boolean>;
+  onJumpToBottom: (sessionId: string, kind: TerminalKind) => void;
 }
 
 export default function MainPane({
@@ -16,9 +18,17 @@ export default function MainPane({
   activeTerminalKind,
   onSelectTerminalKind,
   onRegisterTerminal,
+  unreadOutput,
+  onJumpToBottom,
 }: MainPaneProps) {
   const showTabPane = Boolean(activeSessionId);
   const activeSession = sessions.find((session) => session.id === activeSessionId);
+  const activeAgentKey = activeSessionId ? `${activeSessionId}:agent` : null;
+  const activeTerminalKey = activeSessionId ? `${activeSessionId}:terminal` : null;
+  const showAgentUpdates =
+    activeTerminalKind === "agent" && activeAgentKey ? Boolean(unreadOutput[activeAgentKey]) : false;
+  const showTerminalUpdates =
+    activeTerminalKind === "terminal" && activeTerminalKey ? Boolean(unreadOutput[activeTerminalKey]) : false;
 
   return (
     <main className={styles.main}>
@@ -50,6 +60,16 @@ export default function MainPane({
                 } ${activeSessionId === session.id ? "" : styles.terminalHidden}`}
               />
             ))}
+            {showAgentUpdates && activeSessionId ? (
+              <button
+                type="button"
+                className={styles.newUpdates}
+                onClick={() => onJumpToBottom(activeSessionId, "agent")}
+              >
+                <span>Jump to latest</span>
+                <ChevronDown aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
           <div className={`${styles.terminalStack} ${activeTerminalKind === "terminal" ? "" : styles.terminalHidden}`}>
             {sessions.map((session) => (
@@ -61,6 +81,16 @@ export default function MainPane({
                 } ${activeSessionId === session.id ? "" : styles.terminalHidden}`}
               />
             ))}
+            {showTerminalUpdates && activeSessionId ? (
+              <button
+                type="button"
+                className={styles.newUpdates}
+                onClick={() => onJumpToBottom(activeSessionId, "terminal")}
+              >
+                <span>Jump to latest</span>
+                <ChevronDown aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
         </div>
         <div className={styles.sessionFooter}>

@@ -51,6 +51,8 @@ export default function App() {
     setActiveTerminalKind,
     renameBranch,
     focusActiveSession,
+    unreadOutput,
+    jumpToBottom,
   } = useAppState(pushToast, handleOpenDialog, focusSearch);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -335,6 +337,8 @@ export default function App() {
         activeTerminalKind={activeTerminalKind}
         onSelectTerminalKind={handleSelectTerminalKind}
         onRegisterTerminal={registerTerminal}
+        unreadOutput={unreadOutput}
+        onJumpToBottom={jumpToBottom}
       />
       <NewSessionDialog
         open={dialogOpen}
