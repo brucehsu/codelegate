@@ -117,6 +117,13 @@ function sanitizeRepoSlug(name: string) {
   return safe || "repo";
 }
 
+function ensureTermEnv(env: Record<string, string>) {
+  if (!env.TERM) {
+    env.TERM = "xterm-256color";
+  }
+  return env;
+}
+
 function getNextVisibleSessionId(sessions: Session[], closingId: string) {
   const visible = sessions.filter((session) => !session.isTabClosed && session.id !== closingId);
   if (visible.length === 0) {
@@ -217,6 +224,15 @@ export function useAppState(
     });
   }, []);
 
+  const registerPty = useCallback(
+    (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, ptyId: number) => {
+      runtime.ptyId = ptyId;
+      ptyToSessionRef.current.set(ptyId, { sessionId, kind });
+      scheduleTerminalFit(runtime);
+    },
+    [scheduleTerminalFit]
+  );
+
   const getUnreadKey = useCallback((sessionId: string, kind: TerminalKind) => `${sessionId}:${kind}`, []);
 
   const setUnreadFor = useCallback(
@@ -299,6 +315,18 @@ export function useAppState(
     activeSessionRef.current = activeSessionId;
   }, [activeSessionId]);
 
+  const setBatterySaverDataset = useCallback((enabled: boolean) => {
+    document.body.dataset.batterySaver = enabled ? "on" : "off";
+  }, []);
+
+  const saveConfig = useCallback((updater: (prev: AppConfig) => AppConfig) => {
+    setConfig((prev) => {
+      const next = updater(prev);
+      invoke("save_config", { config: next });
+      return next;
+    });
+  }, []);
+
   const applyTheme = useCallback((theme: "dark" | "light") => {
     document.body.dataset.theme = theme;
     runtimeRef.current.forEach((runtime) => {
@@ -328,88 +356,75 @@ export function useAppState(
         } as AppConfig;
         setConfig(nextConfig);
         applyTheme("dark");
-        document.body.dataset.batterySaver = nextConfig.settings.batterySaver ? "on" : "off";
+        setBatterySaverDataset(nextConfig.settings.batterySaver);
       })
       .catch(() => {
         applyTheme("dark");
-        document.body.dataset.batterySaver = "off";
+        setBatterySaverDataset(false);
       });
     return () => {
       mounted = false;
     };
-  }, [applyTheme]);
+  }, [applyTheme, setBatterySaverDataset]);
 
   const updateRecentDirs = useCallback((path: string) => {
     const trimmed = path.trim();
     if (!trimmed) {
       return;
     }
-    setConfig((prev) => {
-      const next = {
-        ...prev,
-        settings: {
-          ...prev.settings,
-          recentDirs: [trimmed, ...prev.settings.recentDirs.filter((entry) => entry !== trimmed)].slice(0, 10),
-        },
+    saveConfig((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        recentDirs: [trimmed, ...prev.settings.recentDirs.filter((entry) => entry !== trimmed)].slice(0, 10),
+      },
+    }));
+  }, [saveConfig]);
+
+  const applyTerminalFontSettings = useCallback(
+    (fontFamily: string, fontSize: number) => {
+      const applyTo = (terminal: TerminalRuntime) => {
+        if (!terminal.term) {
+          return;
+        }
+        terminal.term.options.fontFamily = fontFamily;
+        terminal.term.options.fontSize = fontSize;
+        scheduleTerminalFit(terminal, true);
       };
-      invoke("save_config", { config: next });
-      return next;
-    });
-  }, []);
+      runtimeRef.current.forEach((runtime) => {
+        applyTo(runtime.agent);
+        applyTo(runtime.terminal);
+      });
+    },
+    [scheduleTerminalFit]
+  );
 
   const updateTerminalSettings = useCallback((updates: { terminalFontFamily: string; terminalFontSize: number }) => {
-    setConfig((prev) => {
-      const next = {
-        ...prev,
-        settings: {
-          ...prev.settings,
-          terminalFontFamily: updates.terminalFontFamily,
-          terminalFontSize: updates.terminalFontSize,
-        },
-      };
-      invoke("save_config", { config: next });
-      return next;
-    });
-
-    runtimeRef.current.forEach((runtime) => {
-      [runtime.agent, runtime.terminal].forEach((terminal) => {
-        if (terminal.term) {
-          terminal.term.options.fontFamily = updates.terminalFontFamily;
-          terminal.term.options.fontSize = updates.terminalFontSize;
-          scheduleTerminalFit(terminal, true);
-        }
-      });
-    });
-  }, [scheduleTerminalFit]);
+    saveConfig((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        terminalFontFamily: updates.terminalFontFamily,
+        terminalFontSize: updates.terminalFontSize,
+      },
+    }));
+    applyTerminalFontSettings(updates.terminalFontFamily, updates.terminalFontSize);
+  }, [applyTerminalFontSettings, saveConfig]);
 
   const updateBatterySaver = useCallback((enabled: boolean) => {
-    setConfig((prev) => {
-      const next = {
-        ...prev,
-        settings: {
-          ...prev.settings,
-          batterySaver: enabled,
-        },
-      };
-      invoke("save_config", { config: next });
-      return next;
-    });
-    document.body.dataset.batterySaver = enabled ? "on" : "off";
-  }, []);
+    saveConfig((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        batterySaver: enabled,
+      },
+    }));
+    setBatterySaverDataset(enabled);
+  }, [saveConfig, setBatterySaverDataset]);
 
   useEffect(() => {
-    const fontFamily = config.settings.terminalFontFamily;
-    const fontSize = config.settings.terminalFontSize;
-    runtimeRef.current.forEach((runtime) => {
-      [runtime.agent, runtime.terminal].forEach((terminal) => {
-        if (terminal.term) {
-          terminal.term.options.fontFamily = fontFamily;
-          terminal.term.options.fontSize = fontSize;
-          scheduleTerminalFit(terminal, true);
-        }
-      });
-    });
-  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize, scheduleTerminalFit]);
+    applyTerminalFontSettings(config.settings.terminalFontFamily, config.settings.terminalFontSize);
+  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize, applyTerminalFontSettings]);
 
   useEffect(() => {
     if (!document.fonts?.ready) {
@@ -421,11 +436,12 @@ export function useAppState(
         return;
       }
       runtimeRef.current.forEach((runtime) => {
-        [runtime.agent, runtime.terminal].forEach((terminal) => {
-          if (terminal.term) {
-            scheduleTerminalFit(terminal, true);
-          }
-        });
+        if (runtime.agent.term) {
+          scheduleTerminalFit(runtime.agent, true);
+        }
+        if (runtime.terminal.term) {
+          scheduleTerminalFit(runtime.terminal, true);
+        }
       });
     });
     return () => {
@@ -483,6 +499,117 @@ export function useAppState(
   );
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+
+  const configureTerminalOptions = useCallback((term: Terminal) => {
+    const termOptions = (term as Terminal & {
+      options: { modifyOtherKeys?: number; scrollOnOutput?: boolean; scrollOnUserInput?: boolean };
+    }).options;
+    termOptions.modifyOtherKeys = 2;
+    termOptions.scrollOnOutput = false;
+    termOptions.scrollOnUserInput = false;
+  }, []);
+
+  const attachTerminalHandlers = useCallback(
+    (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: TerminalKind) => {
+      term.onData((data) => {
+        if (runtime.isFollowing === false) {
+          runtime.isFollowing = true;
+          term.scrollToBottom();
+          setUnreadFor(sessionId, kind, false);
+        }
+        if (runtime.ptyId) {
+          invoke("write_pty", { sessionId: runtime.ptyId, data });
+        }
+      });
+
+      term.attachCustomKeyEventHandler((event) => {
+        if (event.type !== "keydown") {
+          return true;
+        }
+        if (
+          event.shiftKey &&
+          (event.key === "Enter" || event.key === "Return" || event.code === "NumpadEnter")
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          const sequence = "\x1b[13;2u";
+          if (runtime.ptyId) {
+            invoke("write_pty", { sessionId: runtime.ptyId, data: sequence });
+          } else {
+            term.write(sequence);
+          }
+          return false;
+        }
+        const copyHotkey: Hotkey = isMac
+          ? {
+              key: "c",
+              ctrl: false,
+              shift: false,
+              alt: false,
+              meta: true,
+              preventDefault: true,
+              handler: () => {
+                if (term.hasSelection()) {
+                  const text = term.getSelection();
+                  if (text) {
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }
+                  term.clearSelection();
+                }
+              },
+            }
+          : {
+              key: "c",
+              ctrl: true,
+              shift: true,
+              alt: false,
+              meta: false,
+              preventDefault: true,
+              handler: () => {
+                if (term.hasSelection()) {
+                  const text = term.getSelection();
+                  if (text) {
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }
+                  term.clearSelection();
+                }
+              },
+            };
+
+        const handled = runHotkeys(event, [...globalHotkeys, copyHotkey]);
+        return !handled;
+      });
+    },
+    [globalHotkeys, isMac, setUnreadFor]
+  );
+
+  const createTerminal = useCallback(
+    (element: HTMLDivElement, runtime: TerminalRuntime, sessionId: string, kind: TerminalKind) => {
+      const term = new Terminal({
+        allowProposedApi: true,
+        cursorBlink: true,
+        fontFamily: config.settings.terminalFontFamily,
+        theme: config.settings.theme === "dark" ? darkTerminalTheme : lightTerminalTheme,
+        fontSize: config.settings.terminalFontSize,
+        lineHeight: 1.25,
+        scrollback: 1000,
+      });
+      configureTerminalOptions(term);
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(element);
+      attachTerminalHandlers(term, runtime, sessionId, kind);
+      runtime.term = term;
+      runtime.fit = fit;
+    },
+    [
+      attachTerminalHandlers,
+      config.settings.terminalFontFamily,
+      config.settings.terminalFontSize,
+      config.settings.theme,
+      configureTerminalOptions,
+    ]
+  );
 
   const ensureSessionRuntime = useCallback((sessionId: string) => {
     const map = runtimeRef.current;
@@ -576,96 +703,7 @@ export function useAppState(
         if (!allowTerminalStart) {
           return;
         }
-        const term = new Terminal({
-          allowProposedApi: true,
-          cursorBlink: true,
-          fontFamily: config.settings.terminalFontFamily,
-          theme: config.settings.theme === "dark" ? darkTerminalTheme : lightTerminalTheme,
-          fontSize: config.settings.terminalFontSize,
-          lineHeight: 1.25,
-          scrollback: 1000,
-        });
-        const termOptions = (term as Terminal & {
-          options: { modifyOtherKeys?: number; scrollOnOutput?: boolean; scrollOnUserInput?: boolean };
-        }).options;
-        termOptions.modifyOtherKeys = 2;
-        termOptions.scrollOnOutput = false;
-        termOptions.scrollOnUserInput = false;
-        const fit = new FitAddon();
-        term.loadAddon(fit);
-        term.open(element);
-
-        term.onData((data) => {
-          if (runtime.isFollowing === false) {
-            runtime.isFollowing = true;
-            term.scrollToBottom();
-            setUnreadFor(sessionId, kind, false);
-          }
-          if (runtime.ptyId) {
-            invoke("write_pty", { sessionId: runtime.ptyId, data });
-          }
-        });
-
-        term.attachCustomKeyEventHandler((event) => {
-          if (event.type !== "keydown") {
-            return true;
-          }
-          if (
-            event.shiftKey &&
-            (event.key === "Enter" || event.key === "Return" || event.code === "NumpadEnter")
-          ) {
-            event.preventDefault();
-            event.stopPropagation();
-            const sequence = "\x1b[13;2u";
-            if (runtime.ptyId) {
-              invoke("write_pty", { sessionId: runtime.ptyId, data: sequence });
-            } else {
-              term.write(sequence);
-            }
-            return false;
-          }
-          const copyHotkey: Hotkey = isMac
-            ? {
-                key: "c",
-                ctrl: false,
-                shift: false,
-                alt: false,
-                meta: true,
-                preventDefault: true,
-                handler: () => {
-                  if (term.hasSelection()) {
-                    const text = term.getSelection();
-                    if (text) {
-                      navigator.clipboard.writeText(text).catch(() => {});
-                    }
-                    term.clearSelection();
-                  }
-                },
-              }
-            : {
-                key: "c",
-                ctrl: true,
-                shift: true,
-                alt: false,
-                meta: false,
-                preventDefault: true,
-                handler: () => {
-                  if (term.hasSelection()) {
-                    const text = term.getSelection();
-                    if (text) {
-                      navigator.clipboard.writeText(text).catch(() => {});
-                    }
-                    term.clearSelection();
-                  }
-                },
-              };
-
-          const handled = runHotkeys(event, [...globalHotkeys, copyHotkey]);
-          return !handled;
-        });
-
-        runtime.term = term;
-        runtime.fit = fit;
+        createTerminal(element, runtime, sessionId, kind);
       }
       if (runtime.term && !runtime.scrollDisposable) {
         runtime.scrollDisposable = runtime.term.onScroll(() => {
@@ -714,8 +752,7 @@ export function useAppState(
         }
         invoke<string>("get_default_shell")
           .then((shell) => {
-            const envMap = envListToMap(session.repo.env);
-            envMap.TERM = envMap.TERM || "xterm-256color";
+            const envMap = ensureTermEnv(envListToMap(session.repo.env));
             return invoke<number>("spawn_pty", {
               shell,
               args: shellArgs(shell),
@@ -726,9 +763,7 @@ export function useAppState(
             });
           })
           .then((ptyId) => {
-            runtime.ptyId = ptyId;
-            ptyToSessionRef.current.set(ptyId, { sessionId, kind: "terminal" });
-            scheduleTerminalFit(runtime);
+            registerPty(runtime, sessionId, "terminal", ptyId);
           })
           .catch((error) => {
             notify({ message: `Failed to start terminal: ${String(error)}`, tone: "error" });
@@ -739,15 +774,11 @@ export function useAppState(
       }
     },
     [
-      config.settings.theme,
-      config.settings.terminalFontFamily,
-      config.settings.terminalFontSize,
+      createTerminal,
       ensureTerminalRuntime,
-      globalHotkeys,
-      isMac,
       focusSession,
+      registerPty,
       scheduleTerminalFit,
-      setUnreadFor,
       updateFollowState,
       notify,
     ]
@@ -868,8 +899,7 @@ export function useAppState(
         return;
       }
 
-      const envMap = envListToMap(repo.env);
-      envMap.TERM = envMap.TERM || "xterm-256color";
+      const envMap = ensureTermEnv(envListToMap(repo.env));
 
       const repoRoot = repo.repoPath;
       let sessionCwd = repoRoot;
@@ -945,16 +975,10 @@ export function useAppState(
         return;
       }
 
-      runtime.ptyId = ptyId;
-      ptyToSessionRef.current.set(ptyId, { sessionId, kind: "agent" });
-
+      registerPty(runtime, sessionId, "agent", ptyId);
       updateSession(sessionId, { status: "running", lastError: undefined, startedAt: Date.now(), ptyId });
-
-      if (runtime.term && runtime.fit) {
-        scheduleTerminalFit(runtime);
-      }
     },
-    [ensureTerminalRuntime, scheduleTerminalFit, updateSession]
+    [ensureTerminalRuntime, registerPty, updateSession]
   );
 
   useEffect(() => {
