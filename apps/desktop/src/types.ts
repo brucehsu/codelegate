@@ -47,7 +47,7 @@ export interface Session {
 
 export interface PtyOutput {
   session_id: number;
-  data: string;
+  data_base64: string;
 }
 
 export interface PtyExit {

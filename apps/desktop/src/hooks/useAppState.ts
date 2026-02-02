@@ -83,6 +83,15 @@ function runHotkeys(event: KeyboardEvent, hotkeys: Hotkey[]) {
   return false;
 }
 
+function decodeBase64ToUint8(data: string) {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 const defaultSettings = {
   theme: "dark" as const,
   recentDirs: [],
@@ -192,17 +201,19 @@ export function useAppState(
       ) {
         return;
       }
-      runtime.fit?.fit();
-      const cols = runtime.term?.cols ?? 0;
-      const rows = runtime.term?.rows ?? 0;
-      runtime.lastFit = { width, height, cols, rows };
-      if (runtime.ptyId && runtime.term && (!previous || cols !== previous.cols || rows !== previous.rows)) {
-        invoke("resize_pty", {
-          sessionId: runtime.ptyId,
-          cols,
-          rows,
-        });
-      }
+      runtime.term.write("", () => {
+        runtime.fit?.fit();
+        const cols = runtime.term?.cols ?? 0;
+        const rows = runtime.term?.rows ?? 0;
+        runtime.lastFit = { width, height, cols, rows };
+        if (runtime.ptyId && runtime.term && (!previous || cols !== previous.cols || rows !== previous.rows)) {
+          invoke("resize_pty", {
+            sessionId: runtime.ptyId,
+            cols,
+            rows,
+          });
+        }
+      });
     });
   }, []);
 
@@ -229,6 +240,28 @@ export function useAppState(
       });
     },
     [getUnreadKey]
+  );
+
+  const updateFollowState = useCallback(
+    (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, viewport?: HTMLDivElement | null) => {
+      const buffer = runtime.term?.buffer.active;
+      if (!buffer) {
+        return;
+      }
+      const distanceFromBottom = buffer.baseY - buffer.viewportY;
+      const isDomBottom = viewport
+        ? viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1
+        : false;
+      if (isDomBottom && distanceFromBottom > 1) {
+        runtime.term?.scrollToBottom();
+      }
+      const nextDistance = runtime.term?.buffer.active
+        ? runtime.term.buffer.active.baseY - runtime.term.buffer.active.viewportY
+        : distanceFromBottom;
+      runtime.isFollowing = nextDistance <= 1;
+      setUnreadFor(sessionId, kind, !runtime.isFollowing);
+    },
+    [setUnreadFor]
   );
 
   const focusSession = useCallback((sessionId: string, kind: TerminalKind) => {
@@ -636,13 +669,7 @@ export function useAppState(
       }
       if (runtime.term && !runtime.scrollDisposable) {
         runtime.scrollDisposable = runtime.term.onScroll(() => {
-          const buffer = runtime.term?.buffer.active;
-          if (!buffer) {
-            return;
-          }
-          const distanceFromBottom = buffer.baseY - buffer.viewportY;
-          runtime.isFollowing = distanceFromBottom <= 1;
-          setUnreadFor(sessionId, kind, !runtime.isFollowing);
+          updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
         });
       }
       if (runtime.term) {
@@ -652,13 +679,7 @@ export function useAppState(
             runtime.viewportEl.removeEventListener("scroll", runtime.viewportHandler);
           }
           const handler = () => {
-            const buffer = runtime.term?.buffer.active;
-            if (!buffer) {
-              return;
-            }
-            const distanceFromBottom = buffer.baseY - buffer.viewportY;
-            runtime.isFollowing = distanceFromBottom <= 1;
-            setUnreadFor(sessionId, kind, !runtime.isFollowing);
+            updateFollowState(runtime, sessionId, kind, viewport);
           };
           runtime.viewportEl = viewport;
           runtime.viewportHandler = handler;
@@ -667,10 +688,7 @@ export function useAppState(
         }
       }
       if (runtime.term) {
-        const buffer = runtime.term.buffer.active;
-        const distanceFromBottom = buffer.baseY - buffer.viewportY;
-        runtime.isFollowing = distanceFromBottom <= 1;
-        setUnreadFor(sessionId, kind, !runtime.isFollowing);
+        updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
       }
 
       if (runtime.term) {
@@ -730,6 +748,7 @@ export function useAppState(
       focusSession,
       scheduleTerminalFit,
       setUnreadFor,
+      updateFollowState,
       notify,
     ]
   );
@@ -956,12 +975,12 @@ export function useAppState(
       const shouldFollow = distanceFromBottom <= 1;
       runtime.isFollowing = shouldFollow;
       if (shouldFollow) {
-        scheduleTerminalFit(runtime);
         setUnreadFor(info.sessionId, info.kind, false);
       } else {
         setUnreadFor(info.sessionId, info.kind, true);
       }
-      runtime.term.write(event.payload.data, () => {
+      const data = decodeBase64ToUint8(event.payload.data_base64);
+      runtime.term.write(data, () => {
         if (shouldFollow) {
           runtime.term?.scrollToBottom();
         }

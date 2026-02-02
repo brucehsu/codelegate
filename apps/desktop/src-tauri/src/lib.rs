@@ -1,4 +1,5 @@
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -29,7 +30,7 @@ struct PtySession {
 #[derive(Debug, Serialize, Clone)]
 struct PtyOutput {
   session_id: u32,
-  data: String,
+  data_base64: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -287,8 +288,8 @@ fn spawn_pty(
       match reader.read(&mut buf) {
         Ok(0) => break,
         Ok(n) => {
-          let data = String::from_utf8_lossy(&buf[..n]).to_string();
-          let _ = app.emit("pty-output", PtyOutput { session_id: id, data });
+          let data_base64 = general_purpose::STANDARD.encode(&buf[..n]);
+          let _ = app.emit("pty-output", PtyOutput { session_id: id, data_base64 });
         }
         Err(_) => break,
       }
