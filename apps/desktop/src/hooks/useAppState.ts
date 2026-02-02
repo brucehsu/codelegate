@@ -550,11 +550,14 @@ export function useAppState(
           theme: config.settings.theme === "dark" ? darkTerminalTheme : lightTerminalTheme,
           fontSize: config.settings.terminalFontSize,
           lineHeight: 1.25,
-          modifyOtherKeys: 2,
-          scrollOnOutput: false,
-          scrollOnUserInput: false,
           scrollback: 1000,
         });
+        const termOptions = (term as Terminal & {
+          options: { modifyOtherKeys?: number; scrollOnOutput?: boolean; scrollOnUserInput?: boolean };
+        }).options;
+        termOptions.modifyOtherKeys = 2;
+        termOptions.scrollOnOutput = false;
+        termOptions.scrollOnUserInput = false;
         const fit = new FitAddon();
         term.loadAddon(fit);
         term.open(element);
