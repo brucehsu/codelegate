@@ -1,11 +1,51 @@
 .shell {
+  --sidebar-width: 360px;
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: clamp(320px, var(--sidebar-width), 80%) 1fr;
   height: 100vh;
+  position: relative;
+}
+
+.sidebarPane {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+}
+
+.sidebarResizeHandle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.sidebarResizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.sidebarResizeHandle:hover::after,
+.sidebarResizeHandle:focus-visible::after {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
+  }
+
+  .sidebarResizeHandle {
+    display: none;
   }
 }

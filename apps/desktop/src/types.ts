@@ -42,6 +42,7 @@ export interface Session {
   ptyId?: number;
   lastError?: string;
   startedAt?: number;
+  isTabClosed?: boolean;
 }
 
 export interface PtyOutput {

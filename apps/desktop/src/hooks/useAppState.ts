@@ -96,6 +96,34 @@ function sanitizeRepoSlug(name: string) {
   return safe || "repo";
 }
 
+function getNextVisibleSessionId(sessions: Session[], closingId: string) {
+  const visible = sessions.filter((session) => !session.isTabClosed && session.id !== closingId);
+  if (visible.length === 0) {
+    return null;
+  }
+
+  const index = sessions.findIndex((session) => session.id === closingId);
+  if (index < 0) {
+    return visible[0].id;
+  }
+
+  for (let i = index + 1; i < sessions.length; i += 1) {
+    const session = sessions[i];
+    if (session && !session.isTabClosed && session.id !== closingId) {
+      return session.id;
+    }
+  }
+
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const session = sessions[i];
+    if (session && !session.isTabClosed && session.id !== closingId) {
+      return session.id;
+    }
+  }
+
+  return visible[0].id;
+}
+
 export function useAppState(
   notify: (toast: ToastInput) => void,
   onOpenNewSession?: () => void,
@@ -551,6 +579,65 @@ export function useAppState(
     [notify, updateSession]
   );
 
+  const closeSessionTab = useCallback(
+    (sessionId: string) => {
+      const closingActive = activeSessionRef.current === sessionId;
+      const nextActiveId = closingActive ? getNextVisibleSessionId(sessionsRef.current, sessionId) : null;
+
+      setSessions((prev) =>
+        prev.map((session) => (session.id === sessionId ? { ...session, isTabClosed: true } : session))
+      );
+
+      if (closingActive) {
+        setActiveSessionId(nextActiveId);
+      }
+    },
+    [setActiveSessionId]
+  );
+
+  const terminateSession = useCallback(
+    async (sessionId: string) => {
+      const runtime = runtimeRef.current.get(sessionId);
+      const ptyIds = new Set<number>();
+
+      if (runtime?.agent.ptyId) {
+        ptyIds.add(runtime.agent.ptyId);
+      }
+      if (runtime?.terminal.ptyId) {
+        ptyIds.add(runtime.terminal.ptyId);
+      }
+
+      const closingActive = activeSessionRef.current === sessionId;
+      const nextActiveId = closingActive ? getNextVisibleSessionId(sessionsRef.current, sessionId) : null;
+
+      if (ptyIds.size > 0) {
+        await Promise.all(
+          Array.from(ptyIds).map((ptyId) =>
+            invoke("kill_pty", { sessionId: ptyId }).catch((error) => {
+              notify({ message: `Failed to terminate session: ${String(error)}`, tone: "error" });
+            })
+          )
+        );
+      }
+
+      ptyIds.forEach((ptyId) => {
+        ptyToSessionRef.current.delete(ptyId);
+      });
+
+      if (pendingFocusRef.current?.sessionId === sessionId) {
+        pendingFocusRef.current = null;
+      }
+
+      runtimeRef.current.delete(sessionId);
+      setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+
+      if (closingActive) {
+        setActiveSessionId(nextActiveId);
+      }
+    },
+    [notify, setActiveSessionId]
+  );
+
   const startSession = useCallback(
     async (repo: RepoConfig) => {
       const activeElement = document.activeElement;
@@ -839,6 +926,8 @@ export function useAppState(
     registerTerminal,
     setActiveTerminalKind,
     renameBranch,
+    closeSessionTab,
+    terminateSession,
     focusActiveSession,
   };
 }

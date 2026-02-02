@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
@@ -17,6 +17,9 @@ const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
 export default function App() {
   const { toasts, pushToast, removeToast } = useToasts();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const sidebarPaneRef = useRef<HTMLDivElement | null>(null);
+  const resizeStateRef = useRef({ startX: 0, startWidth: 360 });
 
   function focusSearch() {
     if (searchInputRef.current) {
@@ -57,6 +60,8 @@ export default function App() {
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [activeTerminalKind, setActiveTerminalKindState] = useState<TerminalKind>("agent");
+  const [sidebarWidth, setSidebarWidth] = useState(360);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
   useEffect(() => {
     setFontFamily(config.settings.terminalFontFamily);
@@ -68,10 +73,74 @@ export default function App() {
     config.settings.batterySaver,
   ]);
 
+  useEffect(() => {
+    if (!isResizingSidebar) {
+      return;
+    }
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const shell = shellRef.current;
+      if (!shell) {
+        return;
+      }
+      const shellWidth = shell.getBoundingClientRect().width;
+      if (shellWidth <= 0) {
+        return;
+      }
+      const maxWidth = Math.floor(shellWidth * 0.8);
+      const minWidth = Math.min(320, maxWidth);
+      const delta = event.clientX - resizeStateRef.current.startX;
+      const nextWidth = Math.min(
+        maxWidth,
+        Math.max(minWidth, resizeStateRef.current.startWidth + delta),
+      );
+      setSidebarWidth(nextWidth);
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingSidebar(false);
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isResizingSidebar]);
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const shell = shellRef.current;
+      if (!shell) {
+        return;
+      }
+      const shellWidth = shell.getBoundingClientRect().width;
+      if (shellWidth <= 0) {
+        return;
+      }
+      const maxWidth = Math.floor(shellWidth * 0.8);
+      setSidebarWidth((current) => Math.min(current, maxWidth));
+    };
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, []);
+
+  const visibleSessions = useMemo(() => sessions.filter((session) => !session.isTabClosed), [sessions]);
+
   const filteredSessions = useMemo(() => {
     const needle = filter.toLowerCase();
-    return sessions.filter((session) => getRepoName(session.repo.repoPath).toLowerCase().includes(needle));
-  }, [sessions, filter]);
+    return visibleSessions.filter((session) => getRepoName(session.repo.repoPath).toLowerCase().includes(needle));
+  }, [visibleSessions, filter]);
 
   function resetForm() {
     setSelectedAgent("claude");
@@ -191,21 +260,50 @@ export default function App() {
     setActiveTerminalKind(kind);
   };
 
+  const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const sidebarPane = sidebarPaneRef.current;
+    if (!sidebarPane) {
+      return;
+    }
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: sidebarPane.getBoundingClientRect().width,
+    };
+    setIsResizingSidebar(true);
+    event.preventDefault();
+  };
+
   return (
-    <div className={styles.shell}>
-      <Sidebar
-        filter={filter}
-        sessions={filteredSessions}
-        activeSessionId={activeSessionId}
-        onFilterChange={setFilter}
+    <div
+      className={styles.shell}
+      ref={shellRef}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+    >
+      <div className={styles.sidebarPane} ref={sidebarPaneRef}>
+        <Sidebar
+          filter={filter}
+          sessions={filteredSessions}
+          activeSessionId={activeSessionId}
+          onFilterChange={setFilter}
         onSelectSession={setActiveSessionId}
         onNewSession={handleOpenDialog}
         onOpenSettings={openSettings}
         onRenameSession={openRename}
         searchRef={searchInputRef}
       />
+        <div
+          className={styles.sidebarResizeHandle}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          onPointerDown={handleSidebarResizeStart}
+        />
+      </div>
       <MainPane
-        sessions={sessions}
+        sessions={visibleSessions}
         activeSessionId={activeSessionId}
         activeTerminalKind={activeTerminalKind}
         onSelectTerminalKind={handleSelectTerminalKind}
