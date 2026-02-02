@@ -16,6 +16,8 @@ interface TerminalRuntime {
   fit?: FitAddon;
   ptyId?: number;
   starting?: boolean;
+  resizeObserver?: ResizeObserver;
+  resizeRaf?: number;
 }
 
 interface SessionRuntime {
@@ -372,6 +374,34 @@ export function useAppState(
     [ensureSessionRuntime]
   );
 
+  const scheduleTerminalFit = useCallback((runtime: TerminalRuntime) => {
+    if (!runtime.term || !runtime.fit || !runtime.container) {
+      return;
+    }
+    if (runtime.resizeRaf !== undefined) {
+      return;
+    }
+    runtime.resizeRaf = window.requestAnimationFrame(() => {
+      runtime.resizeRaf = undefined;
+      const container = runtime.container;
+      if (!container || !container.isConnected) {
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 8) {
+        return;
+      }
+      runtime.fit?.fit();
+      if (runtime.ptyId && runtime.term) {
+        invoke("resize_pty", {
+          sessionId: runtime.ptyId,
+          cols: runtime.term.cols,
+          rows: runtime.term.rows,
+        });
+      }
+    });
+  }, []);
+
   const setActiveTerminalKind = useCallback(
     (kind: TerminalKind) => {
       activeTerminalKindRef.current = kind;
@@ -383,25 +413,39 @@ export function useAppState(
         pendingFocusRef.current = { sessionId, kind };
       }
       const runtime = runtimeRef.current.get(sessionId)?.[kind];
-      if (runtime?.fit && runtime.ptyId && runtime.term) {
-        runtime.fit.fit();
-        invoke("resize_pty", {
-          sessionId: runtime.ptyId,
-          cols: runtime.term.cols,
-          rows: runtime.term.rows,
-        });
+      if (runtime) {
+        scheduleTerminalFit(runtime);
       }
     },
-    [focusSession]
+    [focusSession, scheduleTerminalFit]
   );
 
   const registerTerminal = useCallback(
     (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => {
       if (!element) {
+        const runtime = runtimeRef.current.get(sessionId)?.[kind];
+        if (!runtime) {
+          return;
+        }
+        runtime.container = null;
+        if (runtime.resizeObserver) {
+          runtime.resizeObserver.disconnect();
+          runtime.resizeObserver = undefined;
+        }
+        if (runtime.resizeRaf !== undefined) {
+          window.cancelAnimationFrame(runtime.resizeRaf);
+          runtime.resizeRaf = undefined;
+        }
         return;
       }
       const runtime = ensureTerminalRuntime(sessionId, kind);
       runtime.container = element;
+      if (!runtime.resizeObserver) {
+        runtime.resizeObserver = new ResizeObserver(() => scheduleTerminalFit(runtime));
+      } else {
+        runtime.resizeObserver.disconnect();
+      }
+      runtime.resizeObserver.observe(element);
       const allowTerminalStart = kind !== "terminal" || activeTerminalKindRef.current === "terminal";
 
       if (!runtime.term) {
@@ -419,7 +463,6 @@ export function useAppState(
         const fit = new FitAddon();
         term.loadAddon(fit);
         term.open(element);
-        fit.fit();
 
         term.onData((data) => {
           if (runtime.ptyId) {
@@ -486,16 +529,7 @@ export function useAppState(
         }
       }
 
-      if (runtime.fit) {
-        runtime.fit.fit();
-      }
-      if (runtime.ptyId && runtime.term) {
-        invoke("resize_pty", {
-          sessionId: runtime.ptyId,
-          cols: runtime.term.cols,
-          rows: runtime.term.rows,
-        });
-      }
+      scheduleTerminalFit(runtime);
 
       if (kind === "terminal" && runtime.term && !runtime.ptyId && !runtime.starting && allowTerminalStart) {
         runtime.starting = true;
@@ -521,14 +555,7 @@ export function useAppState(
           .then((ptyId) => {
             runtime.ptyId = ptyId;
             ptyToSessionRef.current.set(ptyId, { sessionId, kind: "terminal" });
-            if (runtime.term && runtime.fit) {
-              runtime.fit.fit();
-              invoke("resize_pty", {
-                sessionId: ptyId,
-                cols: runtime.term.cols,
-                rows: runtime.term.rows,
-              });
-            }
+            scheduleTerminalFit(runtime);
           })
           .catch((error) => {
             notify({ message: `Failed to start terminal: ${String(error)}`, tone: "error" });
@@ -546,6 +573,7 @@ export function useAppState(
       globalHotkeys,
       isMac,
       focusSession,
+      scheduleTerminalFit,
       notify,
     ]
   );
@@ -748,15 +776,10 @@ export function useAppState(
       updateSession(sessionId, { status: "running", lastError: undefined, startedAt: Date.now(), ptyId });
 
       if (runtime.term && runtime.fit) {
-        runtime.fit.fit();
-        invoke("resize_pty", {
-          sessionId: ptyId,
-          cols: runtime.term.cols,
-          rows: runtime.term.rows,
-        });
+        scheduleTerminalFit(runtime);
       }
     },
-    [ensureTerminalRuntime, updateSession]
+    [ensureTerminalRuntime, scheduleTerminalFit, updateSession]
   );
 
   useEffect(() => {
@@ -819,22 +842,17 @@ export function useAppState(
         return;
       }
       const runtime = runtimeRef.current.get(sessionId)?.[activeTerminalKindRef.current];
-      if (!runtime?.fit || !runtime.ptyId || !runtime.term) {
+      if (!runtime) {
         return;
       }
-      runtime.fit.fit();
-      invoke("resize_pty", {
-        sessionId: runtime.ptyId,
-        cols: runtime.term.cols,
-        rows: runtime.term.rows,
-      });
+      scheduleTerminalFit(runtime);
     };
 
     window.addEventListener("resize", handler);
     return () => {
       window.removeEventListener("resize", handler);
     };
-  }, []);
+  }, [scheduleTerminalFit]);
 
   useEffect(() => {
     const sessionId = activeSessionId;
@@ -846,16 +864,11 @@ export function useAppState(
       pendingFocusRef.current = { sessionId, kind };
     }
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
-    if (!runtime?.fit || !runtime.ptyId || !runtime.term) {
+    if (!runtime) {
       return;
     }
-    runtime.fit.fit();
-    invoke("resize_pty", {
-      sessionId: runtime.ptyId,
-      cols: runtime.term.cols,
-      rows: runtime.term.rows,
-    });
-  }, [activeSessionId, focusSession]);
+    scheduleTerminalFit(runtime);
+  }, [activeSessionId, focusSession, scheduleTerminalFit]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;

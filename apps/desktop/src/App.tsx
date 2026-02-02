@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
@@ -20,6 +27,7 @@ export default function App() {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const sidebarPaneRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef({ startX: 0, startWidth: 360 });
+  const terminalResizeRafRef = useRef<number | null>(null);
 
   function focusSearch() {
     if (searchInputRef.current) {
@@ -63,6 +71,16 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
+  const requestTerminalResize = useCallback(() => {
+    if (terminalResizeRafRef.current !== null) {
+      return;
+    }
+    terminalResizeRafRef.current = window.requestAnimationFrame(() => {
+      terminalResizeRafRef.current = null;
+      window.dispatchEvent(new Event("resize"));
+    });
+  }, []);
+
   useEffect(() => {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
@@ -97,6 +115,7 @@ export default function App() {
         Math.max(minWidth, resizeStateRef.current.startWidth + delta),
       );
       setSidebarWidth(nextWidth);
+      requestTerminalResize();
     };
 
     const handlePointerUp = () => {
@@ -114,7 +133,15 @@ export default function App() {
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [isResizingSidebar]);
+  }, [isResizingSidebar, requestTerminalResize]);
+
+  useEffect(() => {
+    return () => {
+      if (terminalResizeRafRef.current !== null) {
+        window.cancelAnimationFrame(terminalResizeRafRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleWindowResize = () => {
