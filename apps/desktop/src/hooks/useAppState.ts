@@ -6,7 +6,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
-import type { AppConfig, PtyExit, PtyOutput, RepoConfig, Session, TerminalKind, ToastInput } from "../types";
+import type {
+  AppConfig,
+  AppSettings,
+  PtyExit,
+  PtyOutput,
+  RepoConfig,
+  Session,
+  TerminalKind,
+  ToastInput,
+} from "../types";
 import { createSessionId, envListToMap, getRepoName } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 
@@ -44,6 +53,16 @@ interface Hotkey {
   preventDefault?: boolean;
   stopPropagation?: boolean;
   handler: (event: KeyboardEvent) => void;
+}
+
+function forEachTerminalRuntime(
+  runtimeMap: Map<string, SessionRuntime>,
+  apply: (terminal: TerminalRuntime) => void
+) {
+  runtimeMap.forEach((runtime) => {
+    apply(runtime.agent);
+    apply(runtime.terminal);
+  });
 }
 
 function matchesHotkey(event: KeyboardEvent, hotkey: Hotkey) {
@@ -122,6 +141,10 @@ function ensureTermEnv(env: Record<string, string>) {
     env.TERM = "xterm-256color";
   }
   return env;
+}
+
+function resolveSessionCwd(session?: Session | null) {
+  return session?.cwd ?? session?.repo.repoPath ?? null;
 }
 
 function getNextVisibleSessionId(sessions: Session[], closingId: string) {
@@ -258,6 +281,14 @@ export function useAppState(
     [getUnreadKey]
   );
 
+  const setFollowingState = useCallback(
+    (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, isFollowing: boolean) => {
+      runtime.isFollowing = isFollowing;
+      setUnreadFor(sessionId, kind, !isFollowing);
+    },
+    [setUnreadFor]
+  );
+
   const updateFollowState = useCallback(
     (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, viewport?: HTMLDivElement | null) => {
       const buffer = runtime.term?.buffer.active;
@@ -274,10 +305,9 @@ export function useAppState(
       const nextDistance = runtime.term?.buffer.active
         ? runtime.term.buffer.active.baseY - runtime.term.buffer.active.viewportY
         : distanceFromBottom;
-      runtime.isFollowing = nextDistance <= 1;
-      setUnreadFor(sessionId, kind, !runtime.isFollowing);
+      setFollowingState(runtime, sessionId, kind, nextDistance <= 1);
     },
-    [setUnreadFor]
+    [setFollowingState]
   );
 
   const focusSession = useCallback((sessionId: string, kind: TerminalKind) => {
@@ -327,14 +357,22 @@ export function useAppState(
     });
   }, []);
 
+  const updateSettings = useCallback(
+    (updater: (settings: AppSettings) => AppSettings) => {
+      saveConfig((prev) => ({
+        ...prev,
+        settings: updater(prev.settings),
+      }));
+    },
+    [saveConfig]
+  );
+
   const applyTheme = useCallback((theme: "dark" | "light") => {
     document.body.dataset.theme = theme;
-    runtimeRef.current.forEach((runtime) => {
-      [runtime.agent, runtime.terminal].forEach((terminal) => {
-        if (terminal.term) {
-          terminal.term.options.theme = theme === "dark" ? darkTerminalTheme : lightTerminalTheme;
-        }
-      });
+    forEachTerminalRuntime(runtimeRef.current, (terminal) => {
+      if (terminal.term) {
+        terminal.term.options.theme = theme === "dark" ? darkTerminalTheme : lightTerminalTheme;
+      }
     });
   }, []);
 
@@ -372,55 +410,42 @@ export function useAppState(
     if (!trimmed) {
       return;
     }
-    saveConfig((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        recentDirs: [trimmed, ...prev.settings.recentDirs.filter((entry) => entry !== trimmed)].slice(0, 10),
-      },
+    updateSettings((settings) => ({
+      ...settings,
+      recentDirs: [trimmed, ...settings.recentDirs.filter((entry) => entry !== trimmed)].slice(0, 10),
     }));
-  }, [saveConfig]);
+  }, [updateSettings]);
 
   const applyTerminalFontSettings = useCallback(
     (fontFamily: string, fontSize: number) => {
-      const applyTo = (terminal: TerminalRuntime) => {
+      forEachTerminalRuntime(runtimeRef.current, (terminal) => {
         if (!terminal.term) {
           return;
         }
         terminal.term.options.fontFamily = fontFamily;
         terminal.term.options.fontSize = fontSize;
         scheduleTerminalFit(terminal, true);
-      };
-      runtimeRef.current.forEach((runtime) => {
-        applyTo(runtime.agent);
-        applyTo(runtime.terminal);
       });
     },
     [scheduleTerminalFit]
   );
 
   const updateTerminalSettings = useCallback((updates: { terminalFontFamily: string; terminalFontSize: number }) => {
-    saveConfig((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        terminalFontFamily: updates.terminalFontFamily,
-        terminalFontSize: updates.terminalFontSize,
-      },
+    updateSettings((settings) => ({
+      ...settings,
+      terminalFontFamily: updates.terminalFontFamily,
+      terminalFontSize: updates.terminalFontSize,
     }));
     applyTerminalFontSettings(updates.terminalFontFamily, updates.terminalFontSize);
-  }, [applyTerminalFontSettings, saveConfig]);
+  }, [applyTerminalFontSettings, updateSettings]);
 
   const updateBatterySaver = useCallback((enabled: boolean) => {
-    saveConfig((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        batterySaver: enabled,
-      },
+    updateSettings((settings) => ({
+      ...settings,
+      batterySaver: enabled,
     }));
     setBatterySaverDataset(enabled);
-  }, [saveConfig, setBatterySaverDataset]);
+  }, [setBatterySaverDataset, updateSettings]);
 
   useEffect(() => {
     applyTerminalFontSettings(config.settings.terminalFontFamily, config.settings.terminalFontSize);
@@ -435,12 +460,9 @@ export function useAppState(
       if (cancelled) {
         return;
       }
-      runtimeRef.current.forEach((runtime) => {
-        if (runtime.agent.term) {
-          scheduleTerminalFit(runtime.agent, true);
-        }
-        if (runtime.terminal.term) {
-          scheduleTerminalFit(runtime.terminal, true);
+      forEachTerminalRuntime(runtimeRef.current, (terminal) => {
+        if (terminal.term) {
+          scheduleTerminalFit(terminal, true);
         }
       });
     });
@@ -500,6 +522,17 @@ export function useAppState(
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
+  const copySelection = useCallback((term: Terminal) => {
+    if (!term.hasSelection()) {
+      return;
+    }
+    const text = term.getSelection();
+    if (text) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    term.clearSelection();
+  }, []);
+
   const configureTerminalOptions = useCallback((term: Terminal) => {
     const termOptions = (term as Terminal & {
       options: { modifyOtherKeys?: number; scrollOnOutput?: boolean; scrollOnUserInput?: boolean };
@@ -513,9 +546,8 @@ export function useAppState(
     (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: TerminalKind) => {
       term.onData((data) => {
         if (runtime.isFollowing === false) {
-          runtime.isFollowing = true;
+          setFollowingState(runtime, sessionId, kind, true);
           term.scrollToBottom();
-          setUnreadFor(sessionId, kind, false);
         }
         if (runtime.ptyId) {
           invoke("write_pty", { sessionId: runtime.ptyId, data });
@@ -548,15 +580,7 @@ export function useAppState(
               alt: false,
               meta: true,
               preventDefault: true,
-              handler: () => {
-                if (term.hasSelection()) {
-                  const text = term.getSelection();
-                  if (text) {
-                    navigator.clipboard.writeText(text).catch(() => {});
-                  }
-                  term.clearSelection();
-                }
-              },
+              handler: () => copySelection(term),
             }
           : {
               key: "c",
@@ -565,22 +589,14 @@ export function useAppState(
               alt: false,
               meta: false,
               preventDefault: true,
-              handler: () => {
-                if (term.hasSelection()) {
-                  const text = term.getSelection();
-                  if (text) {
-                    navigator.clipboard.writeText(text).catch(() => {});
-                  }
-                  term.clearSelection();
-                }
-              },
+              handler: () => copySelection(term),
             };
 
         const handled = runHotkeys(event, [...globalHotkeys, copyHotkey]);
         return !handled;
       });
     },
-    [globalHotkeys, isMac, setUnreadFor]
+    [copySelection, globalHotkeys, isMac, setFollowingState]
   );
 
   const createTerminal = useCallback(
@@ -653,12 +669,11 @@ export function useAppState(
       if (!runtime?.term) {
         return;
       }
-      runtime.isFollowing = true;
+      setFollowingState(runtime, sessionId, kind, true);
       runtime.term.scrollToBottom();
-      setUnreadFor(sessionId, kind, false);
       scheduleTerminalFit(runtime);
     },
-    [scheduleTerminalFit, setUnreadFor]
+    [scheduleTerminalFit, setFollowingState]
   );
 
   const registerTerminal = useCallback(
@@ -705,12 +720,13 @@ export function useAppState(
         }
         createTerminal(element, runtime, sessionId, kind);
       }
-      if (runtime.term && !runtime.scrollDisposable) {
-        runtime.scrollDisposable = runtime.term.onScroll(() => {
-          updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
-        });
-      }
-      if (runtime.term) {
+      const term = runtime.term;
+      if (term) {
+        if (!runtime.scrollDisposable) {
+          runtime.scrollDisposable = term.onScroll(() => {
+            updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
+          });
+        }
         const viewport = element.querySelector(".xterm-viewport") as HTMLDivElement | null;
         if (viewport && (runtime.viewportEl !== viewport || !runtime.viewportHandler)) {
           if (runtime.viewportEl && runtime.viewportHandler) {
@@ -724,12 +740,8 @@ export function useAppState(
           viewport.addEventListener("scroll", handler, { passive: true });
           handler();
         }
-      }
-      if (runtime.term) {
         updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
-      }
 
-      if (runtime.term) {
         const pending = pendingFocusRef.current;
         if (
           (pending && pending.sessionId === sessionId && pending.kind === kind) ||
@@ -742,10 +754,10 @@ export function useAppState(
 
       scheduleTerminalFit(runtime);
 
-      if (kind === "terminal" && runtime.term && !runtime.ptyId && !runtime.starting && allowTerminalStart) {
+      if (kind === "terminal" && term && !runtime.ptyId && !runtime.starting && allowTerminalStart) {
         runtime.starting = true;
         const session = sessionsRef.current.find((item) => item.id === sessionId);
-        const sessionCwd = session?.cwd ?? session?.repo.repoPath;
+        const sessionCwd = resolveSessionCwd(session);
         if (!session || !sessionCwd) {
           runtime.starting = false;
           return;
@@ -791,7 +803,7 @@ export function useAppState(
   const renameBranch = useCallback(
     async (sessionId: string, newName: string) => {
       const session = sessionsRef.current.find((item) => item.id === sessionId);
-      const cwd = session?.cwd ?? session?.repo.repoPath;
+      const cwd = resolveSessionCwd(session);
       if (!cwd) {
         notify({ message: "Unable to resolve session path.", tone: "error" });
         return false;
@@ -997,12 +1009,7 @@ export function useAppState(
       const buffer = runtime.term.buffer.active;
       const distanceFromBottom = buffer.baseY - buffer.viewportY;
       const shouldFollow = distanceFromBottom <= 1;
-      runtime.isFollowing = shouldFollow;
-      if (shouldFollow) {
-        setUnreadFor(info.sessionId, info.kind, false);
-      } else {
-        setUnreadFor(info.sessionId, info.kind, true);
-      }
+      setFollowingState(runtime, info.sessionId, info.kind, shouldFollow);
       const data = decodeBase64ToUint8(event.payload.data_base64);
       runtime.term.write(data, () => {
         if (shouldFollow) {
