@@ -18,6 +18,12 @@ interface TerminalRuntime {
   starting?: boolean;
   resizeObserver?: ResizeObserver;
   resizeRaf?: number;
+  lastFit?: {
+    width: number;
+    height: number;
+    cols: number;
+    rows: number;
+  };
 }
 
 interface SessionRuntime {
@@ -144,6 +150,52 @@ export function useAppState(
   const closeInProgressRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: TerminalKind } | null>(null);
 
+  const scheduleTerminalFit = useCallback((runtime: TerminalRuntime, force = false) => {
+    if (!runtime.term || !runtime.fit || !runtime.container) {
+      return;
+    }
+    if (runtime.resizeRaf !== undefined) {
+      return;
+    }
+    runtime.resizeRaf = window.requestAnimationFrame(() => {
+      runtime.resizeRaf = undefined;
+      const container = runtime.container;
+      if (!container || !container.isConnected) {
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      const width = Math.floor(rect.width);
+      const height = Math.floor(rect.height);
+      if (width < 8 || height < 8) {
+        return;
+      }
+      const previous = runtime.lastFit;
+      const currentCols = runtime.term?.cols ?? 0;
+      const currentRows = runtime.term?.rows ?? 0;
+      if (
+        !force &&
+        previous &&
+        previous.width === width &&
+        previous.height === height &&
+        previous.cols === currentCols &&
+        previous.rows === currentRows
+      ) {
+        return;
+      }
+      runtime.fit?.fit();
+      const cols = runtime.term?.cols ?? 0;
+      const rows = runtime.term?.rows ?? 0;
+      runtime.lastFit = { width, height, cols, rows };
+      if (runtime.ptyId && runtime.term && (!previous || cols !== previous.cols || rows !== previous.rows)) {
+        invoke("resize_pty", {
+          sessionId: runtime.ptyId,
+          cols,
+          rows,
+        });
+      }
+    });
+  }, []);
+
   const focusSession = useCallback((sessionId: string, kind: TerminalKind) => {
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (runtime?.term) {
@@ -256,18 +308,11 @@ export function useAppState(
         if (terminal.term) {
           terminal.term.options.fontFamily = updates.terminalFontFamily;
           terminal.term.options.fontSize = updates.terminalFontSize;
-          terminal.fit?.fit();
-          if (terminal.ptyId && terminal.term) {
-            invoke("resize_pty", {
-              sessionId: terminal.ptyId,
-              cols: terminal.term.cols,
-              rows: terminal.term.rows,
-            });
-          }
+          scheduleTerminalFit(terminal, true);
         }
       });
     });
-  }, []);
+  }, [scheduleTerminalFit]);
 
   const updateBatterySaver = useCallback((enabled: boolean) => {
     setConfig((prev) => {
@@ -292,18 +337,33 @@ export function useAppState(
         if (terminal.term) {
           terminal.term.options.fontFamily = fontFamily;
           terminal.term.options.fontSize = fontSize;
-          terminal.fit?.fit();
-          if (terminal.ptyId && terminal.term) {
-            invoke("resize_pty", {
-              sessionId: terminal.ptyId,
-              cols: terminal.term.cols,
-              rows: terminal.term.rows,
-            });
-          }
+          scheduleTerminalFit(terminal, true);
         }
       });
     });
-  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize]);
+  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize, scheduleTerminalFit]);
+
+  useEffect(() => {
+    if (!document.fonts?.ready) {
+      return;
+    }
+    let cancelled = false;
+    document.fonts.ready.then(() => {
+      if (cancelled) {
+        return;
+      }
+      runtimeRef.current.forEach((runtime) => {
+        [runtime.agent, runtime.terminal].forEach((terminal) => {
+          if (terminal.term) {
+            scheduleTerminalFit(terminal, true);
+          }
+        });
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [scheduleTerminalFit]);
 
   const cycleSession = useCallback(() => {
     const list = sessionsRef.current;
@@ -374,34 +434,6 @@ export function useAppState(
     [ensureSessionRuntime]
   );
 
-  const scheduleTerminalFit = useCallback((runtime: TerminalRuntime) => {
-    if (!runtime.term || !runtime.fit || !runtime.container) {
-      return;
-    }
-    if (runtime.resizeRaf !== undefined) {
-      return;
-    }
-    runtime.resizeRaf = window.requestAnimationFrame(() => {
-      runtime.resizeRaf = undefined;
-      const container = runtime.container;
-      if (!container || !container.isConnected) {
-        return;
-      }
-      const rect = container.getBoundingClientRect();
-      if (rect.width < 8 || rect.height < 8) {
-        return;
-      }
-      runtime.fit?.fit();
-      if (runtime.ptyId && runtime.term) {
-        invoke("resize_pty", {
-          sessionId: runtime.ptyId,
-          cols: runtime.term.cols,
-          rows: runtime.term.rows,
-        });
-      }
-    });
-  }, []);
-
   const setActiveTerminalKind = useCallback(
     (kind: TerminalKind) => {
       activeTerminalKindRef.current = kind;
@@ -428,6 +460,7 @@ export function useAppState(
           return;
         }
         runtime.container = null;
+        runtime.lastFit = undefined;
         if (runtime.resizeObserver) {
           runtime.resizeObserver.disconnect();
           runtime.resizeObserver = undefined;
@@ -440,6 +473,7 @@ export function useAppState(
       }
       const runtime = ensureTerminalRuntime(sessionId, kind);
       runtime.container = element;
+      runtime.lastFit = undefined;
       if (!runtime.resizeObserver) {
         runtime.resizeObserver = new ResizeObserver(() => scheduleTerminalFit(runtime));
       } else {
@@ -453,11 +487,13 @@ export function useAppState(
           return;
         }
         const term = new Terminal({
+          allowProposedApi: true,
           cursorBlink: true,
           fontFamily: config.settings.terminalFontFamily,
           theme: config.settings.theme === "dark" ? darkTerminalTheme : lightTerminalTheme,
           fontSize: config.settings.terminalFontSize,
           lineHeight: 1.25,
+          modifyOtherKeys: 2,
           scrollback: 1000,
         });
         const fit = new FitAddon();
@@ -473,6 +509,20 @@ export function useAppState(
         term.attachCustomKeyEventHandler((event) => {
           if (event.type !== "keydown") {
             return true;
+          }
+          if (
+            event.shiftKey &&
+            (event.key === "Enter" || event.key === "Return" || event.code === "NumpadEnter")
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            const sequence = "\x1b[13;2u";
+            if (runtime.ptyId) {
+              invoke("write_pty", { sessionId: runtime.ptyId, data: sequence });
+            } else {
+              term.write(sequence);
+            }
+            return false;
           }
           const copyHotkey: Hotkey = isMac
             ? {
@@ -792,6 +842,9 @@ export function useAppState(
         return;
       }
       const runtime = runtimeRef.current.get(info.sessionId)?.[info.kind];
+      if (runtime) {
+        scheduleTerminalFit(runtime);
+      }
       runtime?.term?.write(event.payload.data);
     }).then((unlisten) => {
       unlistenOutput = unlisten;
