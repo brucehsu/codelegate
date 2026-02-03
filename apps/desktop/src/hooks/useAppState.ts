@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Terminal } from "xterm";
+import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
 import type {
@@ -377,16 +377,7 @@ export function useAppState(
         return;
       }
       const distanceFromBottom = buffer.baseY - buffer.viewportY;
-      const isDomBottom = viewport
-        ? viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1
-        : false;
-      if (isDomBottom && distanceFromBottom > 1) {
-        runtime.term?.scrollToBottom();
-      }
-      const nextDistance = runtime.term?.buffer.active
-        ? runtime.term.buffer.active.baseY - runtime.term.buffer.active.viewportY
-        : distanceFromBottom;
-      setFollowingState(runtime, sessionId, kind, nextDistance <= 1);
+      setFollowingState(runtime, sessionId, kind, distanceFromBottom <= 1);
     },
     [setFollowingState]
   );
@@ -684,6 +675,36 @@ export function useAppState(
           }
           return false;
         }
+        /*
+        if (
+          !isMac &&
+          event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          (event.key === "ArrowLeft" ||
+            event.key === "ArrowRight" ||
+            event.key === "ArrowUp" ||
+            event.key === "ArrowDown")
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          const sequenceMap: Record<string, string> = {
+            ArrowLeft: "\x1b[1;5D",
+            ArrowRight: "\x1b[1;5C",
+            ArrowUp: "\x1b[1;5A",
+            ArrowDown: "\x1b[1;5B",
+          };
+          const sequence = sequenceMap[event.key];
+          if (sequence) {
+            if (runtime.ptyId) {
+              invoke("write_pty", { sessionId: runtime.ptyId, data: sequence });
+            } else {
+              term.write(sequence);
+            }
+            return false;
+          }
+        }
+        */
         const copyHotkey: Hotkey = isMac
           ? {
               key: "c",
@@ -1126,9 +1147,7 @@ export function useAppState(
           markAgentOutputting(info.sessionId);
         }
       }
-      const buffer = runtime.term.buffer.active;
-      const distanceFromBottom = buffer.baseY - buffer.viewportY;
-      const shouldFollow = distanceFromBottom <= 1;
+      const shouldFollow = runtime.isFollowing !== false;
       setFollowingState(runtime, info.sessionId, info.kind, shouldFollow);
       const data = decodeBase64ToUint8(event.payload.data_base64);
       runtime.term.write(data, () => {
