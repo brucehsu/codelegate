@@ -36,6 +36,20 @@
   font: inherit;
   flex: 1;
   text-align: left;
+  justify-content: flex-start;
+}
+
+.diffSummaryTitleWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  overflow: visible;
+}
+
+.diffSummaryActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .diffSummaryTitle {
@@ -93,25 +107,46 @@
   overflow: hidden;
 }
 
+.diffFileSection {
+  gap: 0;
+}
+
 .diffFileHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  width: 100%;
+}
+
+.diffFileHeaderUntracked {
+  background: color-mix(in srgb, var(--surface-2) 82%, rgba(14, 165, 233, 0.2));
+}
+
+.diffFileToggle {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
   padding: 10px 14px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  font-weight: 600;
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
   border: none;
+  background: transparent;
   color: inherit;
+  cursor: pointer;
+  text-align: left;
   font: inherit;
+  width: 100%;
 }
 
-.diffFileHeaderUntracked {
-  background: color-mix(in srgb, var(--surface-2) 82%, rgba(14, 165, 233, 0.2));
+.diffFileTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .diffFileName {
@@ -171,6 +206,7 @@
 .diffGrid {
   display: flex;
   flex-direction: column;
+  gap: 0;
   font-family: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
   font-size: 0.82rem;
 }

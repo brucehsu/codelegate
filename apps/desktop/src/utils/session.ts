@@ -1,9 +1,32 @@
-import type { EnvVar } from "../types";
+import type { EnvVar, Session } from "../types";
 
 export function getRepoName(path: string) {
   const cleaned = path.replace(/\/+$/, "");
   const parts = cleaned.split("/");
   return parts[parts.length - 1] || cleaned;
+}
+
+export interface SessionGroup {
+  key: string;
+  name: string;
+  sessions: Session[];
+}
+
+export function groupSessionsByRepo(sessions: Session[]): SessionGroup[] {
+  const groups: SessionGroup[] = [];
+  const groupMap = new Map<string, SessionGroup>();
+  sessions.forEach((session) => {
+    const key = session.repo.repoPath;
+    const name = getRepoName(key);
+    let group = groupMap.get(key);
+    if (!group) {
+      group = { key, name, sessions: [] };
+      groupMap.set(key, group);
+      groups.push(group);
+    }
+    group.sessions.push(session);
+  });
+  return groups;
 }
 
 export function createSessionId(repoPath: string) {

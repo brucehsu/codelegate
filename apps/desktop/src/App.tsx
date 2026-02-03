@@ -17,7 +17,7 @@ import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
 import type { AgentId, EnvVar, RepoConfig, PaneKind } from "./types";
-import { getRepoName, validateEnvVars } from "./utils/session";
+import { getRepoName, groupSessionsByRepo, validateEnvVars } from "./utils/session";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
 
@@ -75,6 +75,8 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [showShortcutHints, setShowShortcutHints] = useState(false);
+  const [collapsedRepoGroups, setCollapsedRepoGroups] = useState<Record<string, boolean>>({});
+  const [sessionHotkeyPage, setSessionHotkeyPage] = useState(0);
 
   const requestTerminalResize = useCallback(() => {
     if (terminalResizeRafRef.current !== null) {
@@ -173,6 +175,42 @@ export default function App() {
     const needle = filter.toLowerCase();
     return visibleSessions.filter((session) => getRepoName(session.repo.repoPath).toLowerCase().includes(needle));
   }, [visibleSessions, filter]);
+
+  const sessionGroups = useMemo(() => groupSessionsByRepo(filteredSessions), [filteredSessions]);
+
+  const visualSessions = useMemo(() => {
+    const ordered: typeof filteredSessions = [];
+    sessionGroups.forEach((group) => {
+      if (collapsedRepoGroups[group.key]) {
+        return;
+      }
+      ordered.push(...group.sessions);
+    });
+    return ordered;
+  }, [sessionGroups, collapsedRepoGroups]);
+
+  const hotkeyPageCount = useMemo(
+    () => Math.max(1, Math.ceil(visualSessions.length / 9)),
+    [visualSessions.length]
+  );
+
+  useEffect(() => {
+    if (sessionHotkeyPage >= hotkeyPageCount) {
+      setSessionHotkeyPage(0);
+    }
+  }, [hotkeyPageCount, sessionHotkeyPage]);
+
+  const sessionShortcuts = useMemo(() => {
+    const shortcuts: Record<string, string> = {};
+    const start = sessionHotkeyPage * 9;
+    const slice = visualSessions.slice(start, start + 9);
+    slice.forEach((session, index) => {
+      if (index < 9) {
+        shortcuts[session.id] = String(index + 1);
+      }
+    });
+    return shortcuts;
+  }, [sessionHotkeyPage, visualSessions]);
 
   function resetForm() {
     setSelectedAgent("claude");
@@ -310,11 +348,16 @@ export default function App() {
       } else if (event.code === "KeyT") {
         handleSelectPaneKind("terminal");
         handled = true;
+      } else if (event.code === "Digit0" || event.code === "Numpad0") {
+        if (hotkeyPageCount > 1) {
+          setSessionHotkeyPage((prev) => (prev + 1) % hotkeyPageCount);
+        }
+        handled = true;
       } else {
         const match = /^(Digit|Numpad)([1-9])$/.exec(event.code);
         if (match) {
           const index = Number(match[2]) - 1;
-          const target = filteredSessions[index];
+          const target = visualSessions[sessionHotkeyPage * 9 + index];
           if (target) {
             setActiveSessionId(target.id);
             handled = true;
@@ -330,11 +373,13 @@ export default function App() {
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key === "Alt") {
         setShowShortcutHints(false);
+        setSessionHotkeyPage(0);
       }
     };
 
     const handleBlur = () => {
       setShowShortcutHints(false);
+      setSessionHotkeyPage(0);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -345,7 +390,7 @@ export default function App() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [filteredSessions, handleSelectPaneKind, setActiveSessionId]);
+  }, [handleSelectPaneKind, hotkeyPageCount, setActiveSessionId, sessionHotkeyPage, visualSessions]);
 
   const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -372,7 +417,12 @@ export default function App() {
       <div className={styles.sidebarPane} ref={sidebarPaneRef}>
         <Sidebar
           filter={filter}
-          sessions={filteredSessions}
+          sessionGroups={sessionGroups}
+          collapsedRepoGroups={collapsedRepoGroups}
+          onToggleRepoGroup={(repoPath) =>
+            setCollapsedRepoGroups((prev) => ({ ...prev, [repoPath]: !prev[repoPath] }))
+          }
+          sessionShortcuts={sessionShortcuts}
           activeSessionId={activeSessionId}
           onFilterChange={setFilter}
           onSelectSession={setActiveSessionId}

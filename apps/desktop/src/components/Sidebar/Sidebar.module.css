@@ -43,6 +43,44 @@
   flex: 1;
 }
 
+.repoSection {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.repoHeader {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.repoToggle {
+  align-items: center;
+  gap: 10px;
+}
+
+.repoTitle {
+  font-size: 0.9rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repoChevron {
+  color: var(--muted);
+}
+
+.repoBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
 .sessionItem {
   background: transparent;
   border: 1px solid transparent;

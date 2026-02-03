@@ -1,15 +1,16 @@
 import { MoreHorizontal, Plus, Settings } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import type { Session } from "../../types";
+import type { SessionGroup } from "../../utils/session";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import { getRepoName } from "../../utils/session";
 import IconButton from "../ui/IconButton/IconButton";
+import CollapsibleSection from "../ui/CollapsibleSection/CollapsibleSection";
 import styles from "./Sidebar.module.css";
 
 interface SidebarProps {
   filter: string;
-  sessions: Session[];
+  sessionGroups: SessionGroup[];
   activeSessionId: string | null;
   onFilterChange: (value: string) => void;
   onSelectSession: (sessionId: string) => void;
@@ -18,13 +19,16 @@ interface SidebarProps {
   onRenameSession: (sessionId: string) => void;
   onTerminateSession: (sessionId: string) => void;
   agentOutputting: Record<string, boolean>;
+  sessionShortcuts: Record<string, string>;
+  collapsedRepoGroups: Record<string, boolean>;
+  onToggleRepoGroup: (repoPath: string) => void;
   searchRef?: React.RefObject<HTMLInputElement>;
   showShortcutHints?: boolean;
 }
 
 export default function Sidebar({
   filter,
-  sessions,
+  sessionGroups,
   activeSessionId,
   onFilterChange,
   onSelectSession,
@@ -33,6 +37,9 @@ export default function Sidebar({
   onRenameSession,
   onTerminateSession,
   agentOutputting,
+  sessionShortcuts,
+  collapsedRepoGroups,
+  onToggleRepoGroup,
   searchRef,
   showShortcutHints = false,
 }: SidebarProps) {
@@ -80,91 +87,111 @@ export default function Sidebar({
         />
       </div>
       <div className={styles.sessionList}>
-        {sessions.map((session, index) => {
-          const agentId = session.repo.agent;
-          const shortcut = index < 9 ? String(index + 1) : null;
-          const isOutputting = Boolean(agentOutputting[session.id]);
-          const isRunning = session.status === "running";
+        {sessionGroups.map((group) => {
+          const isOpen = !collapsedRepoGroups[group.key];
           return (
-            <div
-              key={session.id}
-              className={`${styles.sessionItem} ${
-                activeSessionId === session.id ? styles.sessionItemActive : ""
-              }`}
+            <CollapsibleSection
+              key={group.key}
+              title={group.name}
+              isOpen={isOpen}
+              onToggle={() => onToggleRepoGroup(group.key)}
+              className={styles.repoSection}
+              headerClassName={styles.repoHeader}
+              toggleClassName={styles.repoToggle}
+              titleClassName={styles.repoTitle}
+              chevronClassName={styles.repoChevron}
+              bodyClassName={styles.repoBody}
             >
-              <button
-                className={styles.sessionButton}
-                type="button"
-                onClick={() => onSelectSession(session.id)}
-              >
-                <span className={`${styles.agentIcon} ${classById[agentId]}`}>
-                  {iconById[agentId]}
-                </span>
-                <div className={styles.sessionText}>
-                  <div className={styles.sessionLabel}>{getRepoName(session.repo.repoPath)}</div>
-                  {session.branch ? <div className={styles.sessionBranch}>{session.branch}</div> : null}
-                </div>
-                <span
-                  className={[
-                    styles.status,
-                    isRunning ? styles.statusRunning : "",
-                    isRunning && isOutputting ? styles.statusOutputting : "",
-                    session.status === "error" ? styles.statusError : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                />
-              </button>
-              <div className={styles.sessionMenu} data-session-menu>
-                <button
-                  type="button"
-                  className={styles.menuTrigger}
-                  aria-label="Session menu"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setOpenMenuId((prev) => (prev === session.id ? null : session.id));
-                  }}
-                >
-                  <MoreHorizontal aria-hidden="true" />
-                </button>
-                {openMenuId === session.id ? (
-                  <div className={styles.menu}>
+              {group.sessions.map((session) => {
+                const agentId = session.repo.agent;
+                const shortcut = sessionShortcuts[session.id] ?? null;
+                const isOutputting = Boolean(agentOutputting[session.id]);
+                const isRunning = session.status === "running";
+                return (
+                  <div
+                    key={session.id}
+                    className={`${styles.sessionItem} ${
+                      activeSessionId === session.id ? styles.sessionItemActive : ""
+                    }`}
+                  >
                     <button
+                      className={styles.sessionButton}
                       type="button"
-                      className={styles.menuItem}
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        onRenameSession(session.id);
-                      }}
+                      onClick={() => onSelectSession(session.id)}
                     >
-                      Rename Branch
+                      <span className={`${styles.agentIcon} ${classById[agentId]}`}>
+                        {iconById[agentId]}
+                      </span>
+                      <div className={styles.sessionText}>
+                        <div className={styles.sessionLabel}>{getRepoName(session.repo.repoPath)}</div>
+                        {session.branch ? (
+                          <div className={styles.sessionBranch}>{session.branch}</div>
+                        ) : null}
+                      </div>
+                      <span
+                        className={[
+                          styles.status,
+                          isRunning ? styles.statusRunning : "",
+                          isRunning && isOutputting ? styles.statusOutputting : "",
+                          session.status === "error" ? styles.statusError : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      />
                     </button>
-                    <button
-                      type="button"
-                      className={`${styles.menuItem} ${styles.menuItemDanger}`}
-                      onClick={async () => {
-                        const confirmed = await confirm(
-                          "Terminate this session? This will close the tab and stop ongoing shell sessions.",
-                          { title: "Codelegate", kind: "warning" }
-                        );
-                        if (!confirmed) {
-                          return;
-                        }
-                        setOpenMenuId(null);
-                        onTerminateSession(session.id);
-                      }}
-                    >
-                      Terminate Session
-                    </button>
+                    <div className={styles.sessionMenu} data-session-menu>
+                      <button
+                        type="button"
+                        className={styles.menuTrigger}
+                        aria-label="Session menu"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId((prev) => (prev === session.id ? null : session.id));
+                        }}
+                      >
+                        <MoreHorizontal aria-hidden="true" />
+                      </button>
+                      {openMenuId === session.id ? (
+                        <div className={styles.menu}>
+                          <button
+                            type="button"
+                            className={styles.menuItem}
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              onRenameSession(session.id);
+                            }}
+                          >
+                            Rename Branch
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                            onClick={async () => {
+                              const confirmed = await confirm(
+                                "Terminate this session? This will close the tab and stop ongoing shell sessions.",
+                                { title: "Codelegate", kind: "warning" }
+                              );
+                              if (!confirmed) {
+                                return;
+                              }
+                              setOpenMenuId(null);
+                              onTerminateSession(session.id);
+                            }}
+                          >
+                            Terminate Session
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {showShortcutHints && shortcut ? (
+                      <span className={styles.sessionShortcut} aria-hidden="true">
+                        {shortcut}
+                      </span>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-              {showShortcutHints && shortcut ? (
-                <span className={styles.sessionShortcut} aria-hidden="true">
-                  {shortcut}
-                </span>
-              ) : null}
-            </div>
+                );
+              })}
+            </CollapsibleSection>
           );
         })}
       </div>
