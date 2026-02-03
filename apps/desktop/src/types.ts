@@ -1,5 +1,5 @@
 export type AgentId = "claude" | "codex";
-export type TerminalKind = "agent" | "git" | "terminal";
+export type PaneKind = "agent" | "git" | "terminal";
 
 export interface EnvVar {
   key: string;

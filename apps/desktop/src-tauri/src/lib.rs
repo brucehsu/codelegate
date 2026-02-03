@@ -215,10 +215,10 @@ fn run_git_diff(args: &[&str]) -> Result<String, String> {
   Ok(stdout)
 }
 
-fn get_untracked_files(path: &str) -> Result<Vec<String>, String> {
+fn get_untracked_files(root: &str) -> Result<Vec<String>, String> {
   let output = std::process::Command::new("git")
     .arg("-C")
-    .arg(path)
+    .arg(root)
     .arg("status")
     .arg("--porcelain=v1")
     .arg("--untracked-files=all")
@@ -240,7 +240,7 @@ fn get_untracked_files(path: &str) -> Result<Vec<String>, String> {
       let path_bytes = &entry[3..];
       let path = String::from_utf8_lossy(path_bytes).to_string();
       if !path.is_empty() {
-        if Path::new(&path).is_dir() {
+        if Path::new(root).join(&path).is_dir() {
           continue;
         }
         files.push(path);
@@ -252,13 +252,14 @@ fn get_untracked_files(path: &str) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
-  if !Path::new(&path).exists() {
-    return Err(format!("Path '{}' does not exist", path));
+  let root = resolve_repo_root(path.clone())?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
   }
 
   let diff = run_git_diff(&[
     "-C",
-    &path,
+    &root,
     "diff",
     "--no-color",
     "--no-ext-diff",
@@ -266,10 +267,10 @@ fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
   ])?;
 
   let mut untracked = Vec::new();
-  for file in get_untracked_files(&path)? {
+  for file in get_untracked_files(&root)? {
     let file_diff = run_git_diff(&[
       "-C",
-      &path,
+      &root,
       "diff",
       "--no-color",
       "--no-ext-diff",

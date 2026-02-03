@@ -91,7 +91,7 @@ export default function GitDiffPane({ session, isActive }: GitDiffPaneProps) {
   const [sectionOpen, setSectionOpen] = useState(true);
   const [fileOpenMap, setFileOpenMap] = useState<Record<string, boolean>>({});
 
-  const repoPath = session?.repo.repoPath ?? "";
+  const repoPath = session?.cwd ?? session?.repo.repoPath ?? "";
 
   const loadDiffs = useCallback(async () => {
     if (!repoPath) {

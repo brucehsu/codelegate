@@ -16,7 +16,7 @@ import RenameDialog from "./components/RenameDialog/RenameDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
-import type { AgentId, EnvVar, RepoConfig, TerminalKind } from "./types";
+import type { AgentId, EnvVar, RepoConfig, PaneKind } from "./types";
 import { getRepoName, validateEnvVars } from "./utils/session";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
@@ -48,7 +48,7 @@ export default function App() {
     updateBatterySaver,
     startSession,
     registerTerminal,
-    setActiveTerminalKind,
+    setActivePaneKind,
     renameBranch,
     focusActiveSession,
     unreadOutput,
@@ -69,7 +69,7 @@ export default function App() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [activeTerminalKind, setActiveTerminalKindState] = useState<TerminalKind>("agent");
+  const [activePaneKind, setActivePaneKindState] = useState<PaneKind>("agent");
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [showShortcutHints, setShowShortcutHints] = useState(false);
@@ -265,8 +265,8 @@ export default function App() {
       return;
     }
 
-    setActiveTerminalKindState("agent");
-    setActiveTerminalKind("agent");
+    setActivePaneKindState("agent");
+    setActivePaneKind("agent");
 
     const repoConfig: RepoConfig = {
       repoPath: trimmedPath,
@@ -285,10 +285,10 @@ export default function App() {
   };
 
   const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent);
-  const handleSelectTerminalKind = useCallback((kind: TerminalKind) => {
-    setActiveTerminalKindState(kind);
-    setActiveTerminalKind(kind);
-  }, [setActiveTerminalKind]);
+  const handleSelectPaneKind = useCallback((kind: PaneKind) => {
+    setActivePaneKindState(kind);
+    setActivePaneKind(kind);
+  }, [setActivePaneKind]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -300,13 +300,13 @@ export default function App() {
       }
       let handled = false;
       if (event.code === "KeyA") {
-        handleSelectTerminalKind("agent");
+        handleSelectPaneKind("agent");
         handled = true;
       } else if (event.code === "KeyG") {
-        handleSelectTerminalKind("git");
+        handleSelectPaneKind("git");
         handled = true;
       } else if (event.code === "KeyT") {
-        handleSelectTerminalKind("terminal");
+        handleSelectPaneKind("terminal");
         handled = true;
       } else {
         const match = /^(Digit|Numpad)([1-9])$/.exec(event.code);
@@ -343,7 +343,7 @@ export default function App() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [filteredSessions, handleSelectTerminalKind, setActiveSessionId]);
+  }, [filteredSessions, handleSelectPaneKind, setActiveSessionId]);
 
   const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -391,8 +391,8 @@ export default function App() {
       <MainPane
         sessions={visibleSessions}
         activeSessionId={activeSessionId}
-        activeTerminalKind={activeTerminalKind}
-        onSelectTerminalKind={handleSelectTerminalKind}
+        activePaneKind={activePaneKind}
+        onSelectPaneKind={handleSelectPaneKind}
         onRegisterTerminal={registerTerminal}
         unreadOutput={unreadOutput}
         onJumpToBottom={jumpToBottom}

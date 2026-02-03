@@ -1,24 +1,32 @@
-import type { Session, TerminalKind } from "../../types";
-import GitDiffPane from "../GitDiffPane/GitDiffPane";
+import type { Session, PaneKind } from "../../types";
+import AgentTab from "./tabs/AgentTab";
+import GitTab from "./tabs/GitTab";
+import TerminalTab from "./tabs/TerminalTab";
 import styles from "./MainPane.module.css";
-import { ChevronDown, Command, Copy } from "lucide-react";
+import { Command, Copy } from "lucide-react";
+
+interface TabDefinition {
+  kind: PaneKind;
+  name: string;
+  navigationHotKey: string;
+}
 
 interface MainPaneProps {
   sessions: Session[];
   activeSessionId: string | null;
-  activeTerminalKind: TerminalKind;
-  onSelectTerminalKind: (kind: TerminalKind) => void;
-  onRegisterTerminal: (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => void;
+  activePaneKind: PaneKind;
+  onSelectPaneKind: (kind: PaneKind) => void;
+  onRegisterTerminal: (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => void;
   unreadOutput: Record<string, boolean>;
-  onJumpToBottom: (sessionId: string, kind: TerminalKind) => void;
+  onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
   showShortcutHints?: boolean;
 }
 
 export default function MainPane({
   sessions,
   activeSessionId,
-  activeTerminalKind,
-  onSelectTerminalKind,
+  activePaneKind,
+  onSelectPaneKind,
   onRegisterTerminal,
   unreadOutput,
   onJumpToBottom,
@@ -29,97 +37,53 @@ export default function MainPane({
   const activeAgentKey = activeSessionId ? `${activeSessionId}:agent` : null;
   const activeTerminalKey = activeSessionId ? `${activeSessionId}:terminal` : null;
   const showAgentUpdates =
-    activeTerminalKind === "agent" && activeAgentKey ? Boolean(unreadOutput[activeAgentKey]) : false;
+    activePaneKind === "agent" && activeAgentKey ? Boolean(unreadOutput[activeAgentKey]) : false;
   const showTerminalUpdates =
-    activeTerminalKind === "terminal" && activeTerminalKey ? Boolean(unreadOutput[activeTerminalKey]) : false;
+    activePaneKind === "terminal" && activeTerminalKey ? Boolean(unreadOutput[activeTerminalKey]) : false;
+  const tabs: TabDefinition[] = [
+    { kind: "agent", name: "Agent", navigationHotKey: "A" },
+    { kind: "git", name: "Git", navigationHotKey: "G" },
+    { kind: "terminal", name: "Terminal", navigationHotKey: "T" },
+  ];
 
   return (
     <main className={styles.main}>
       <div className={`${styles.tabPane} ${showTabPane ? "" : styles.hidden}`}>
         <div className={styles.tabStrip}>
-          <button
-            className={`${styles.tab} ${activeTerminalKind === "agent" ? styles.tabActive : ""}`}
-            type="button"
-            onClick={() => onSelectTerminalKind("agent")}
-          >
-            Agent
-            {showShortcutHints ? (
-              <span className={styles.tabHint} aria-hidden="true">
-                A
-              </span>
-            ) : null}
-          </button>
-          <button
-            className={`${styles.tab} ${activeTerminalKind === "git" ? styles.tabActive : ""}`}
-            type="button"
-            onClick={() => onSelectTerminalKind("git")}
-          >
-            Git
-            {showShortcutHints ? (
-              <span className={styles.tabHint} aria-hidden="true">
-                G
-              </span>
-            ) : null}
-          </button>
-          <button
-            className={`${styles.tab} ${activeTerminalKind === "terminal" ? styles.tabActive : ""}`}
-            type="button"
-            onClick={() => onSelectTerminalKind("terminal")}
-          >
-            Terminal
-            {showShortcutHints ? (
-              <span className={styles.tabHint} aria-hidden="true">
-                T
-              </span>
-            ) : null}
-          </button>
+          {tabs.map((tab) => (
+            <button
+              key={tab.kind}
+              className={`${styles.tab} ${activePaneKind === tab.kind ? styles.tabActive : ""}`}
+              type="button"
+              onClick={() => onSelectPaneKind(tab.kind)}
+            >
+              {tab.name}
+              {showShortcutHints ? (
+                <span className={styles.tabHint} aria-hidden="true">
+                  {tab.navigationHotKey}
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
         <div className={styles.tabBody}>
-          <div className={`${styles.terminalStack} ${activeTerminalKind === "agent" ? "" : styles.terminalHidden}`}>
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                ref={(el) => onRegisterTerminal(session.id, "agent", el)}
-                className={`${
-                  styles.terminalSession
-                } ${activeSessionId === session.id ? "" : styles.terminalHidden}`}
-              />
-            ))}
-            {showAgentUpdates && activeSessionId ? (
-              <button
-                type="button"
-                className={styles.newUpdates}
-                onClick={() => onJumpToBottom(activeSessionId, "agent")}
-              >
-                <span>Jump to latest</span>
-                <ChevronDown aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-          <div className={`${styles.terminalStack} ${activeTerminalKind === "terminal" ? "" : styles.terminalHidden}`}>
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                ref={(el) => onRegisterTerminal(session.id, "terminal", el)}
-                className={`${
-                  styles.terminalSession
-                } ${activeSessionId === session.id ? "" : styles.terminalHidden}`}
-              />
-            ))}
-            {showTerminalUpdates && activeSessionId ? (
-              <button
-                type="button"
-                className={styles.newUpdates}
-                onClick={() => onJumpToBottom(activeSessionId, "terminal")}
-              >
-                <span>Jump to latest</span>
-                <ChevronDown aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-          <div className={`${styles.gitPane} ${activeTerminalKind === "git" ? "" : styles.terminalHidden}`}>
-            <GitDiffPane session={activeSession} isActive={activeTerminalKind === "git"} />
-          </div>
+          <AgentTab
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            isActive={activePaneKind === "agent"}
+            onRegisterTerminal={onRegisterTerminal}
+            showUpdates={showAgentUpdates}
+            onJumpToBottom={onJumpToBottom}
+          />
+          <TerminalTab
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            isActive={activePaneKind === "terminal"}
+            onRegisterTerminal={onRegisterTerminal}
+            showUpdates={showTerminalUpdates}
+            onJumpToBottom={onJumpToBottom}
+          />
+          <GitTab session={activeSession} isActive={activePaneKind === "git"} />
         </div>
         <div className={styles.sessionFooter}>
           <span className={styles.sessionPath}>{activeSession?.cwd ?? activeSession?.repo.repoPath ?? ""}</span>

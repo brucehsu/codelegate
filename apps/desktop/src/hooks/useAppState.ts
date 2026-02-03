@@ -13,7 +13,7 @@ import type {
   PtyOutput,
   RepoConfig,
   Session,
-  TerminalKind,
+  PaneKind,
   ToastInput,
 } from "../types";
 import { createSessionId, envListToMap, getRepoName } from "../utils/session";
@@ -194,12 +194,12 @@ export function useAppState(
   }, [unreadOutput]);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
-  const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: TerminalKind }>());
+  const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: PaneKind }>());
   const sessionsRef = useRef<Session[]>([]);
   const activeSessionRef = useRef<string | null>(null);
-  const activeTerminalKindRef = useRef<TerminalKind>("agent");
+  const activePaneKindRef = useRef<PaneKind>("agent");
   const closeInProgressRef = useRef(false);
-  const pendingFocusRef = useRef<{ sessionId: string; kind: TerminalKind } | null>(null);
+  const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
 
   const scheduleTerminalFit = useCallback((runtime: TerminalRuntime, force = false) => {
     if (!runtime.term || !runtime.fit || !runtime.container) {
@@ -254,7 +254,7 @@ export function useAppState(
   }, []);
 
   const registerPty = useCallback(
-    (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, ptyId: number) => {
+    (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, ptyId: number) => {
       runtime.ptyId = ptyId;
       ptyToSessionRef.current.set(ptyId, { sessionId, kind });
       scheduleTerminalFit(runtime);
@@ -262,10 +262,10 @@ export function useAppState(
     [scheduleTerminalFit]
   );
 
-  const getUnreadKey = useCallback((sessionId: string, kind: TerminalKind) => `${sessionId}:${kind}`, []);
+  const getUnreadKey = useCallback((sessionId: string, kind: PaneKind) => `${sessionId}:${kind}`, []);
 
   const setUnreadFor = useCallback(
-    (sessionId: string, kind: TerminalKind, value: boolean) => {
+    (sessionId: string, kind: PaneKind, value: boolean) => {
       const key = getUnreadKey(sessionId, kind);
       const current = Boolean(unreadOutputRef.current[key]);
       if (current === value) {
@@ -288,7 +288,7 @@ export function useAppState(
   );
 
   const setFollowingState = useCallback(
-    (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, isFollowing: boolean) => {
+    (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, isFollowing: boolean) => {
       runtime.isFollowing = isFollowing;
       setUnreadFor(sessionId, kind, !isFollowing);
     },
@@ -296,7 +296,7 @@ export function useAppState(
   );
 
   const updateFollowState = useCallback(
-    (runtime: TerminalRuntime, sessionId: string, kind: TerminalKind, viewport?: HTMLDivElement | null) => {
+    (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, viewport?: HTMLDivElement | null) => {
       const buffer = runtime.term?.buffer.active;
       if (!buffer) {
         return;
@@ -316,7 +316,7 @@ export function useAppState(
     [setFollowingState]
   );
 
-  const focusSession = useCallback((sessionId: string, kind: TerminalKind) => {
+  const focusSession = useCallback((sessionId: string, kind: PaneKind) => {
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (runtime?.term) {
       requestAnimationFrame(() => {
@@ -337,7 +337,7 @@ export function useAppState(
     if (!sessionId) {
       return;
     }
-    const kind = activeTerminalKindRef.current;
+    const kind = activePaneKindRef.current;
     if (!focusSession(sessionId, kind)) {
       pendingFocusRef.current = { sessionId, kind };
     }
@@ -549,7 +549,7 @@ export function useAppState(
   }, []);
 
   const attachTerminalHandlers = useCallback(
-    (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: TerminalKind) => {
+    (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
       term.onData((data) => {
         if (runtime.isFollowing === false) {
           setFollowingState(runtime, sessionId, kind, true);
@@ -606,7 +606,7 @@ export function useAppState(
   );
 
   const createTerminal = useCallback(
-    (element: HTMLDivElement, runtime: TerminalRuntime, sessionId: string, kind: TerminalKind) => {
+    (element: HTMLDivElement, runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
       const term = new Terminal({
         allowProposedApi: true,
         cursorBlink: true,
@@ -644,16 +644,16 @@ export function useAppState(
   }, []);
 
   const ensureTerminalRuntime = useCallback(
-    (sessionId: string, kind: TerminalKind) => {
+    (sessionId: string, kind: PaneKind) => {
       const runtime = ensureSessionRuntime(sessionId);
       return runtime[kind];
     },
     [ensureSessionRuntime]
   );
 
-  const setActiveTerminalKind = useCallback(
-    (kind: TerminalKind) => {
-      activeTerminalKindRef.current = kind;
+  const setActivePaneKind = useCallback(
+    (kind: PaneKind) => {
+      activePaneKindRef.current = kind;
       const sessionId = activeSessionRef.current;
       if (!sessionId) {
         return;
@@ -670,7 +670,7 @@ export function useAppState(
   );
 
   const jumpToBottom = useCallback(
-    (sessionId: string, kind: TerminalKind) => {
+    (sessionId: string, kind: PaneKind) => {
       const runtime = runtimeRef.current.get(sessionId)?.[kind];
       if (!runtime?.term) {
         return;
@@ -683,7 +683,7 @@ export function useAppState(
   );
 
   const registerTerminal = useCallback(
-    (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => {
+    (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => {
       if (!element) {
         const runtime = runtimeRef.current.get(sessionId)?.[kind];
         if (!runtime) {
@@ -718,7 +718,7 @@ export function useAppState(
         runtime.resizeObserver.disconnect();
       }
       runtime.resizeObserver.observe(element);
-      const allowTerminalStart = kind !== "terminal" || activeTerminalKindRef.current === "terminal";
+      const allowTerminalStart = kind !== "terminal" || activePaneKindRef.current === "terminal";
 
       if (!runtime.term) {
         if (!allowTerminalStart) {
@@ -751,7 +751,7 @@ export function useAppState(
         const pending = pendingFocusRef.current;
         if (
           (pending && pending.sessionId === sessionId && pending.kind === kind) ||
-          (activeSessionRef.current === sessionId && activeTerminalKindRef.current === kind)
+          (activeSessionRef.current === sessionId && activePaneKindRef.current === kind)
         ) {
           focusSession(sessionId, kind);
           pendingFocusRef.current = null;
@@ -906,7 +906,7 @@ export function useAppState(
 
       setSessions((prev) => [...prev, session]);
       setActiveSessionId(sessionId);
-      pendingFocusRef.current = { sessionId, kind: activeTerminalKindRef.current };
+      pendingFocusRef.current = { sessionId, kind: activePaneKindRef.current };
 
       let shell = "";
       try {
@@ -1070,7 +1070,7 @@ export function useAppState(
       if (!sessionId) {
         return;
       }
-      const runtime = runtimeRef.current.get(sessionId)?.[activeTerminalKindRef.current];
+      const runtime = runtimeRef.current.get(sessionId)?.[activePaneKindRef.current];
       if (!runtime) {
         return;
       }
@@ -1088,7 +1088,7 @@ export function useAppState(
     if (!sessionId) {
       return;
     }
-    const kind = activeTerminalKindRef.current;
+    const kind = activePaneKindRef.current;
     if (!focusSession(sessionId, kind)) {
       pendingFocusRef.current = { sessionId, kind };
     }
@@ -1166,7 +1166,7 @@ export function useAppState(
     updateBatterySaver,
     startSession,
     registerTerminal,
-    setActiveTerminalKind,
+    setActivePaneKind,
     renameBranch,
     closeSessionTab,
     terminateSession,
