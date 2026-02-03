@@ -14,12 +14,15 @@ export interface DiffRow {
 
 export interface FileDiff {
   path: string;
+  oldPath?: string;
+  newPath?: string;
   rows: DiffRow[];
   additions: number;
   deletions: number;
   language: string;
   isBinary: boolean;
   isUntracked: boolean;
+  status: "modified" | "added" | "deleted" | "renamed" | "untracked";
 }
 
 const extensionToLanguage: Record<string, string> = {
@@ -58,18 +61,24 @@ export function parseGitDiff(diffText: string, options?: { isUntracked?: boolean
   for (const line of lines) {
     if (line.startsWith("diff --git ")) {
       if (current) {
+        if (current.isUntracked) {
+          current.status = "untracked";
+        }
         files.push(current);
       }
       const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
       const path = match?.[2] ?? line.split(" ").slice(-1)[0]?.replace(/^b\//, "") ?? "unknown";
       current = {
         path,
+        oldPath: undefined,
+        newPath: undefined,
         rows: [],
         additions: 0,
         deletions: 0,
         language: getLanguageFromPath(path),
         isBinary: false,
         isUntracked: options?.isUntracked ?? false,
+        status: options?.isUntracked ? "untracked" : "modified",
       };
       leftCursor = null;
       rightCursor = null;
@@ -85,18 +94,47 @@ export function parseGitDiff(diffText: string, options?: { isUntracked?: boolean
       continue;
     }
 
-    if (
-      line.startsWith("index ") ||
-      line.startsWith("new file mode") ||
-      line.startsWith("deleted file mode") ||
-      line.startsWith("similarity index") ||
-      line.startsWith("rename from") ||
-      line.startsWith("rename to")
-    ) {
+    if (line.startsWith("index ") || line.startsWith("similarity index")) {
+      continue;
+    }
+
+    if (line.startsWith("new file mode")) {
+      if (!current.isUntracked) {
+        current.status = "added";
+      }
+      continue;
+    }
+
+    if (line.startsWith("deleted file mode")) {
+      if (!current.isUntracked) {
+        current.status = "deleted";
+      }
+      continue;
+    }
+
+    if (line.startsWith("rename from ")) {
+      const oldPath = line.replace("rename from ", "").trim();
+      current.oldPath = oldPath;
+      continue;
+    }
+
+    if (line.startsWith("rename to ")) {
+      const newPath = line.replace("rename to ", "").trim();
+      current.newPath = newPath;
+      current.path = newPath || current.path;
+      if (!current.isUntracked) {
+        current.status = "renamed";
+      }
       continue;
     }
 
     if (line.startsWith("---") || line.startsWith("+++")) {
+      if (line.startsWith("--- /dev/null") && !current.isUntracked) {
+        current.status = "added";
+      }
+      if (line.startsWith("+++ /dev/null") && !current.isUntracked) {
+        current.status = "deleted";
+      }
       continue;
     }
 
@@ -169,6 +207,9 @@ export function parseGitDiff(diffText: string, options?: { isUntracked?: boolean
   }
 
   if (current) {
+    if (current.isUntracked) {
+      current.status = "untracked";
+    }
     files.push(current);
   }
 

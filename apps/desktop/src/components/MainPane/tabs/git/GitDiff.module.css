@@ -225,6 +225,16 @@
   letter-spacing: 0.06em;
 }
 
+.diffBadgeDeleted {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+.diffBadgeRenamed {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+}
+
 .diffStatAdd {
   color: #22c55e;
 }

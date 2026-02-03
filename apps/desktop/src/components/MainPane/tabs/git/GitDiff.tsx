@@ -168,7 +168,7 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     for (const section of sections) {
       for (const file of section.files) {
         const key = `${section.key}:${file.path}`;
-        next[key] = file.isUntracked ? false : true;
+        next[key] = file.isUntracked || file.status === "deleted" ? false : true;
       }
     }
     setFileOpenMap(next);
@@ -178,6 +178,18 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     event.preventDefault();
     event.stopPropagation();
     void loadDiffs();
+  };
+
+  const getFileLabel = (
+    path: string,
+    oldPath?: string,
+    newPath?: string,
+    status?: "modified" | "added" | "deleted" | "renamed" | "untracked"
+  ) => {
+    if (status === "renamed" && oldPath && newPath) {
+      return `${oldPath} → ${newPath}`;
+    }
+    return path;
   };
 
   return (
@@ -249,8 +261,16 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
                               }
                               aria-expanded={isFileOpen}
                             >
-                              <span className={styles.diffFileName}>{file.path}</span>
+                              <span className={styles.diffFileName}>
+                                {getFileLabel(file.path, file.oldPath, file.newPath, file.status)}
+                              </span>
                               {file.isUntracked ? <span className={styles.diffBadge}>untracked</span> : null}
+                              {!file.isUntracked && file.status === "deleted" ? (
+                                <span className={`${styles.diffBadge} ${styles.diffBadgeDeleted}`}>deleted</span>
+                              ) : null}
+                              {!file.isUntracked && file.status === "renamed" ? (
+                                <span className={`${styles.diffBadge} ${styles.diffBadgeRenamed}`}>renamed</span>
+                              ) : null}
                               <span className={styles.diffFileStats}>
                                 <span className={styles.diffStatAdd}>+{file.additions}</span>
                                 <span className={styles.diffStatDel}>-{file.deletions}</span>
