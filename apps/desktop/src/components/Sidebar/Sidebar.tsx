@@ -17,6 +17,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onRenameSession: (sessionId: string) => void;
   onTerminateSession: (sessionId: string) => void;
+  agentOutputting: Record<string, boolean>;
   searchRef?: React.RefObject<HTMLInputElement>;
   showShortcutHints?: boolean;
 }
@@ -31,6 +32,7 @@ export default function Sidebar({
   onOpenSettings,
   onRenameSession,
   onTerminateSession,
+  agentOutputting,
   searchRef,
   showShortcutHints = false,
 }: SidebarProps) {
@@ -81,6 +83,8 @@ export default function Sidebar({
         {sessions.map((session, index) => {
           const agentId = session.repo.agent;
           const shortcut = index < 9 ? String(index + 1) : null;
+          const isOutputting = Boolean(agentOutputting[session.id]);
+          const isRunning = session.status === "running";
           return (
             <div
               key={session.id}
@@ -101,13 +105,14 @@ export default function Sidebar({
                   {session.branch ? <div className={styles.sessionBranch}>{session.branch}</div> : null}
                 </div>
                 <span
-                  className={`${styles.status} ${
-                    session.status === "running"
-                      ? styles.statusRunning
-                      : session.status === "error"
-                        ? styles.statusError
-                        : ""
-                  }`}
+                  className={[
+                    styles.status,
+                    isRunning ? styles.statusRunning : "",
+                    isRunning && isOutputting ? styles.statusOutputting : "",
+                    session.status === "error" ? styles.statusError : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 />
               </button>
               <div className={styles.sessionMenu} data-session-menu>

@@ -51,6 +51,7 @@ export default function App() {
     setActivePaneKind,
     renameBranch,
     terminateSession,
+    agentOutputting,
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
@@ -379,6 +380,7 @@ export default function App() {
           onOpenSettings={openSettings}
           onRenameSession={openRename}
           onTerminateSession={terminateSession}
+          agentOutputting={agentOutputting}
           searchRef={searchInputRef}
           showShortcutHints={showShortcutHints}
         />

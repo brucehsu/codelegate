@@ -187,11 +187,18 @@ export function useAppState(
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [unreadOutput, setUnreadOutput] = useState<Record<string, boolean>>({});
+  const [agentOutputting, setAgentOutputting] = useState<Record<string, boolean>>({});
 
   const unreadOutputRef = useRef(unreadOutput);
+  const agentOutputtingRef = useRef(agentOutputting);
+  const agentOutputtingTimersRef = useRef<Map<string, number>>(new Map());
+  const agentOutputtingSuppressUntilRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     unreadOutputRef.current = unreadOutput;
   }, [unreadOutput]);
+  useEffect(() => {
+    agentOutputtingRef.current = agentOutputting;
+  }, [agentOutputting]);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
   const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: PaneKind }>());
@@ -285,6 +292,63 @@ export function useAppState(
       });
     },
     [getUnreadKey]
+  );
+
+  const setAgentOutputtingFor = useCallback((sessionId: string, value: boolean) => {
+    const current = Boolean(agentOutputtingRef.current[sessionId]);
+    if (current === value) {
+      return;
+    }
+    setAgentOutputting((prev) => {
+      const exists = Boolean(prev[sessionId]);
+      if (exists === value) {
+        return prev;
+      }
+      if (!value) {
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      }
+      return { ...prev, [sessionId]: true };
+    });
+  }, []);
+
+  const suppressAgentOutputting = useCallback((sessionId: string, durationMs: number) => {
+    const now = performance.now();
+    const nextUntil = now + durationMs;
+    const currentUntil = agentOutputtingSuppressUntilRef.current.get(sessionId) ?? 0;
+    if (nextUntil > currentUntil) {
+      agentOutputtingSuppressUntilRef.current.set(sessionId, nextUntil);
+    }
+  }, []);
+
+  const markAgentOutputting = useCallback(
+    (sessionId: string) => {
+      setAgentOutputtingFor(sessionId, true);
+      const existing = agentOutputtingTimersRef.current.get(sessionId);
+      if (existing) {
+        window.clearTimeout(existing);
+      }
+      const timeout = window.setTimeout(() => {
+        agentOutputtingTimersRef.current.delete(sessionId);
+        setAgentOutputtingFor(sessionId, false);
+      }, 700);
+      agentOutputtingTimersRef.current.set(sessionId, timeout);
+    },
+    [setAgentOutputtingFor]
+  );
+
+  const clearAgentOutputting = useCallback(
+    (sessionId: string) => {
+      const existing = agentOutputtingTimersRef.current.get(sessionId);
+      if (existing) {
+        window.clearTimeout(existing);
+        agentOutputtingTimersRef.current.delete(sessionId);
+      }
+      agentOutputtingSuppressUntilRef.current.delete(sessionId);
+      setAgentOutputtingFor(sessionId, false);
+    },
+    [setAgentOutputtingFor]
   );
 
   const setFollowingState = useCallback(
@@ -555,6 +619,9 @@ export function useAppState(
           setFollowingState(runtime, sessionId, kind, true);
           term.scrollToBottom();
         }
+        if (kind === "agent") {
+          suppressAgentOutputting(sessionId, 180);
+        }
         if (runtime.ptyId) {
           invoke("write_pty", { sessionId: runtime.ptyId, data });
         }
@@ -602,7 +669,7 @@ export function useAppState(
         return !handled;
       });
     },
-    [copySelection, globalHotkeys, isMac, setFollowingState]
+    [copySelection, globalHotkeys, isMac, setFollowingState, suppressAgentOutputting]
   );
 
   const createTerminal = useCallback(
@@ -876,10 +943,12 @@ export function useAppState(
         ptyToSessionRef.current.delete(ptyId);
       });
 
+      agentOutputtingSuppressUntilRef.current.delete(sessionId);
       if (pendingFocusRef.current?.sessionId === sessionId) {
         pendingFocusRef.current = null;
       }
 
+      clearAgentOutputting(sessionId);
       runtimeRef.current.delete(sessionId);
       setSessions((prev) => prev.filter((session) => session.id !== sessionId));
 
@@ -887,7 +956,7 @@ export function useAppState(
         setActiveSessionId(nextActiveId);
       }
     },
-    [notify, setActiveSessionId]
+    [clearAgentOutputting, notify, setActiveSessionId]
   );
 
   const startSession = useCallback(
@@ -1012,6 +1081,12 @@ export function useAppState(
       if (!runtime?.term) {
         return;
       }
+      if (info.kind === "agent") {
+        const suppressUntil = agentOutputtingSuppressUntilRef.current.get(info.sessionId);
+        if (!suppressUntil || performance.now() >= suppressUntil) {
+          markAgentOutputting(info.sessionId);
+        }
+      }
       const buffer = runtime.term.buffer.active;
       const distanceFromBottom = buffer.baseY - buffer.viewportY;
       const shouldFollow = distanceFromBottom <= 1;
@@ -1040,6 +1115,7 @@ export function useAppState(
       if (info.kind !== "agent") {
         return;
       }
+      clearAgentOutputting(info.sessionId);
 
       setSessions((prev) =>
         prev.map((session) => {
@@ -1070,6 +1146,7 @@ export function useAppState(
       if (!sessionId) {
         return;
       }
+      suppressAgentOutputting(sessionId, 250);
       const runtime = runtimeRef.current.get(sessionId)?.[activePaneKindRef.current];
       if (!runtime) {
         return;
@@ -1081,7 +1158,7 @@ export function useAppState(
     return () => {
       window.removeEventListener("resize", handler);
     };
-  }, [scheduleTerminalFit]);
+  }, [scheduleTerminalFit, suppressAgentOutputting]);
 
   useEffect(() => {
     const sessionId = activeSessionId;
@@ -1170,6 +1247,7 @@ export function useAppState(
     renameBranch,
     closeSessionTab,
     terminateSession,
+    agentOutputting,
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
