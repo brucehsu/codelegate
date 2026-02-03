@@ -72,6 +72,7 @@ export default function App() {
   const [activeTerminalKind, setActiveTerminalKindState] = useState<TerminalKind>("agent");
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [showShortcutHints, setShowShortcutHints] = useState(false);
 
   const requestTerminalResize = useCallback(() => {
     if (terminalResizeRafRef.current !== null) {
@@ -284,10 +285,62 @@ export default function App() {
   };
 
   const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent);
-  const handleSelectTerminalKind = (kind: TerminalKind) => {
+  const handleSelectTerminalKind = useCallback((kind: TerminalKind) => {
     setActiveTerminalKindState(kind);
     setActiveTerminalKind(kind);
-  };
+  }, [setActiveTerminalKind]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Alt" || event.altKey) {
+        setShowShortcutHints(true);
+      }
+      if (!event.altKey || event.repeat) {
+        return;
+      }
+      let handled = false;
+      if (event.code === "KeyA") {
+        handleSelectTerminalKind("agent");
+        handled = true;
+      } else if (event.code === "KeyT") {
+        handleSelectTerminalKind("terminal");
+        handled = true;
+      } else {
+        const match = /^(Digit|Numpad)([1-9])$/.exec(event.code);
+        if (match) {
+          const index = Number(match[2]) - 1;
+          const target = filteredSessions[index];
+          if (target) {
+            setActiveSessionId(target.id);
+            handled = true;
+          }
+        }
+      }
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Alt") {
+        setShowShortcutHints(false);
+      }
+    };
+
+    const handleBlur = () => {
+      setShowShortcutHints(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [filteredSessions, handleSelectTerminalKind, setActiveSessionId]);
 
   const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -317,12 +370,13 @@ export default function App() {
           sessions={filteredSessions}
           activeSessionId={activeSessionId}
           onFilterChange={setFilter}
-        onSelectSession={setActiveSessionId}
-        onNewSession={handleOpenDialog}
-        onOpenSettings={openSettings}
-        onRenameSession={openRename}
-        searchRef={searchInputRef}
-      />
+          onSelectSession={setActiveSessionId}
+          onNewSession={handleOpenDialog}
+          onOpenSettings={openSettings}
+          onRenameSession={openRename}
+          searchRef={searchInputRef}
+          showShortcutHints={showShortcutHints}
+        />
         <div
           className={styles.sidebarResizeHandle}
           role="separator"
@@ -339,6 +393,7 @@ export default function App() {
         onRegisterTerminal={registerTerminal}
         unreadOutput={unreadOutput}
         onJumpToBottom={jumpToBottom}
+        showShortcutHints={showShortcutHints}
       />
       <NewSessionDialog
         open={dialogOpen}

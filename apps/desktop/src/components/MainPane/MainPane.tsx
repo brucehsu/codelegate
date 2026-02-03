@@ -10,6 +10,7 @@ interface MainPaneProps {
   onRegisterTerminal: (sessionId: string, kind: TerminalKind, element: HTMLDivElement | null) => void;
   unreadOutput: Record<string, boolean>;
   onJumpToBottom: (sessionId: string, kind: TerminalKind) => void;
+  showShortcutHints?: boolean;
 }
 
 export default function MainPane({
@@ -20,6 +21,7 @@ export default function MainPane({
   onRegisterTerminal,
   unreadOutput,
   onJumpToBottom,
+  showShortcutHints = false,
 }: MainPaneProps) {
   const showTabPane = Boolean(activeSessionId);
   const activeSession = sessions.find((session) => session.id === activeSessionId);
@@ -40,6 +42,11 @@ export default function MainPane({
             onClick={() => onSelectTerminalKind("agent")}
           >
             Agent
+            {showShortcutHints ? (
+              <span className={styles.tabHint} aria-hidden="true">
+                A
+              </span>
+            ) : null}
           </button>
           <button
             className={`${styles.tab} ${activeTerminalKind === "terminal" ? styles.tabActive : ""}`}
@@ -47,6 +54,11 @@ export default function MainPane({
             onClick={() => onSelectTerminalKind("terminal")}
           >
             Terminal
+            {showShortcutHints ? (
+              <span className={styles.tabHint} aria-hidden="true">
+                T
+              </span>
+            ) : null}
           </button>
         </div>
         <div className={styles.tabBody}>

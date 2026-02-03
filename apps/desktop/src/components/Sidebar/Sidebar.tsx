@@ -16,6 +16,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onRenameSession: (sessionId: string) => void;
   searchRef?: React.RefObject<HTMLInputElement>;
+  showShortcutHints?: boolean;
 }
 
 export default function Sidebar({
@@ -28,6 +29,7 @@ export default function Sidebar({
   onOpenSettings,
   onRenameSession,
   searchRef,
+  showShortcutHints = false,
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -73,8 +75,9 @@ export default function Sidebar({
         />
       </div>
       <div className={styles.sessionList}>
-        {sessions.map((session) => {
+        {sessions.map((session, index) => {
           const agentId = session.repo.agent;
+          const shortcut = index < 9 ? String(index + 1) : null;
           return (
             <div
               key={session.id}
@@ -130,7 +133,12 @@ export default function Sidebar({
                     </button>
                   </div>
                 ) : null}
-            </div>
+              </div>
+              {showShortcutHints && shortcut ? (
+                <span className={styles.sessionShortcut} aria-hidden="true">
+                  {shortcut}
+                </span>
+              ) : null}
             </div>
           );
         })}

@@ -51,6 +51,7 @@
   align-items: center;
   color: inherit;
   transition: border 0.2s ease, background 0.2s ease;
+  position: relative;
 }
 
 .sessionItemActive {
@@ -126,6 +127,22 @@
 
 .statusError {
   background: var(--danger);
+}
+
+.sessionShortcut {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .agentIcon {

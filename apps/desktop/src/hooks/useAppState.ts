@@ -218,9 +218,13 @@ export function useAppState(
       if (width < 8 || height < 8) {
         return;
       }
+      const term = runtime.term;
+      if (!term) {
+        return;
+      }
       const previous = runtime.lastFit;
-      const currentCols = runtime.term?.cols ?? 0;
-      const currentRows = runtime.term?.rows ?? 0;
+      const currentCols = term.cols ?? 0;
+      const currentRows = term.rows ?? 0;
       if (
         !force &&
         previous &&
@@ -231,10 +235,10 @@ export function useAppState(
       ) {
         return;
       }
-      runtime.term.write("", () => {
+      term.write("", () => {
         runtime.fit?.fit();
-        const cols = runtime.term?.cols ?? 0;
-        const rows = runtime.term?.rows ?? 0;
+        const cols = runtime.term?.cols ?? term.cols ?? 0;
+        const rows = runtime.term?.rows ?? term.rows ?? 0;
         runtime.lastFit = { width, height, cols, rows };
         if (runtime.ptyId && runtime.term && (!previous || cols !== previous.cols || rows !== previous.rows)) {
           invoke("resize_pty", {
