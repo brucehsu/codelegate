@@ -47,7 +47,7 @@
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--surface);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .repoHeader {
@@ -55,6 +55,8 @@
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
 }
 
 .repoToggle {
@@ -79,6 +81,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
 }
 
 .sessionItem {
