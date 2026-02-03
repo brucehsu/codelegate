@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes } from "react";
+import BaseButton from "../BaseButton";
 import styles from "./Button.module.css";
 
 type Variant = "primary" | "ghost";
@@ -21,5 +22,5 @@ export default function Button({
     .filter(Boolean)
     .join(" ");
 
-  return <button type={type} className={classes} {...props} />;
+  return <BaseButton type={type} className={classes} {...props} />;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, GitBranch } from "lucide-react";
 import styles from "./RepoPicker.module.css";
-import Button from "../Button/Button";
+import Button from "../ui/Button/Button";
 
 interface RepoPickerProps {
   value: string;

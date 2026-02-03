@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import BaseButton from "../BaseButton";
 import styles from "./IconButton.module.css";
 
 type Size = "sm" | "lg";
@@ -48,10 +49,10 @@ export default function IconButton({
   const iconPx = iconSize ?? Math.floor(sizeMap[size] / 2);
 
   return (
-    <button type={type} className={classes} {...props}>
+    <BaseButton type={type} className={classes} {...props}>
       <span className={styles.icon} style={{ width: iconPx, height: iconPx }}>
         {children}
       </span>
-    </button>
+    </BaseButton>
   );
 }

@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { EnvVar } from "../../types";
-import IconButton from "../IconButton/IconButton";
+import IconButton from "../ui/IconButton/IconButton";
 import styles from "./EnvList.module.css";
 
 interface EnvListProps {

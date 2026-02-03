@@ -1,24 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
-import Prism from "prismjs";
-import "prismjs/components/prism-bash";
-import "prismjs/components/prism-clike";
-import "prismjs/components/prism-css";
-import "prismjs/components/prism-go";
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-json";
-import "prismjs/components/prism-jsx";
-import "prismjs/components/prism-markdown";
-import "prismjs/components/prism-markup";
-import "prismjs/components/prism-python";
-import "prismjs/components/prism-rust";
-import "prismjs/components/prism-toml";
-import "prismjs/components/prism-tsx";
-import "prismjs/components/prism-typescript";
-import "prismjs/components/prism-yaml";
 import type { Session } from "../../../../types";
-import { getLanguageFromPath, parseGitDiff, type DiffLineType, type FileDiff } from "../../../../utils/gitDiff";
+import { getLanguageFromPath, parseGitDiff, type FileDiff } from "../../../../utils/gitDiff";
+import GitDiffsHeader from "./GitDiffsHeader";
+import GitFileCard from "./GitFileCard";
 import styles from "./GitDiff.module.css";
 
 interface GitDiffProps {
@@ -30,59 +15,6 @@ interface GitDiffPayload {
   staged: string;
   unstaged: string;
   untracked: Array<{ path: string; diff: string }>;
-}
-
-const emptyCell = { __html: "&nbsp;" };
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function getLineHtml(text: string, language: string, plain = false) {
-  if (!text) {
-    return emptyCell;
-  }
-  if (plain) {
-    return { __html: escapeHtml(text) };
-  }
-  const grammar = Prism.languages[language];
-  if (grammar) {
-    return { __html: Prism.highlight(text, grammar, language) };
-  }
-  return { __html: escapeHtml(text) };
-}
-
-function getCellClass(type: DiffLineType) {
-  switch (type) {
-    case "add":
-      return styles.diffCellAdd;
-    case "del":
-      return styles.diffCellDel;
-    case "meta":
-      return styles.diffCellMeta;
-    case "empty":
-      return styles.diffCellEmpty;
-    default:
-      return "";
-  }
-}
-
-function getGutterClass(type: DiffLineType) {
-  switch (type) {
-    case "add":
-      return styles.diffGutterAdd;
-    case "del":
-      return styles.diffGutterDel;
-    case "meta":
-      return styles.diffGutterMeta;
-    default:
-      return "";
-  }
 }
 
 export default function GitDiff({ session, isActive }: GitDiffProps) {
@@ -105,7 +37,7 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     setError(null);
     try {
       const output = await invoke<GitDiffPayload>("get_git_diff", { path: repoPath });
-      setPayload(output ?? { diff: "", untracked: [] });
+      setPayload(output ?? { staged: "", unstaged: "", untracked: [] });
     } catch (err) {
       setPayload(null);
       setError(err instanceof Error ? err.message : String(err));
@@ -176,23 +108,9 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     setFileOpenMap(next);
   }, [sections]);
 
-  const handleRefreshClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const handleRefresh = useCallback(() => {
     void loadDiffs();
-  };
-
-  const getFileLabel = (
-    path: string,
-    oldPath?: string,
-    newPath?: string,
-    status?: "modified" | "added" | "deleted" | "renamed" | "untracked"
-  ) => {
-    if (status === "renamed" && oldPath && newPath) {
-      return `${oldPath} → ${newPath}`;
-    }
-    return path;
-  };
+  }, [loadDiffs]);
 
   return (
     <div className={styles.container}>
@@ -203,40 +121,16 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
         const setOpen = section.key === "staged" ? setStagedOpen : setUnstagedOpen;
         return (
           <div key={section.key} className={styles.diffSection}>
-            <div className={styles.diffSummary}>
-              <button
-                type="button"
-                className={styles.diffSummaryToggle}
-                onClick={() => setOpen((prev) => !prev)}
-                aria-expanded={isOpen}
-              >
-                <span className={styles.diffSummaryTitle}>{section.title}</span>
-                <span className={styles.diffSummaryStats}>
-                  <span className={styles.diffSummaryFiles}>{section.files.length} files</span>
-                  <span className={styles.diffSummaryDot}>•</span>
-                  <span className={styles.diffSummaryAdd}>+{additions}</span>
-                  <span className={styles.diffSummarySlash}>/</span>
-                  <span className={styles.diffSummaryDel}>-{deletions}</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className={styles.refreshButton}
-                onClick={handleRefreshClick}
-                disabled={!repoPath || isLoading}
-              >
-                <RefreshCw aria-hidden="true" />
-                Refresh
-              </button>
-              <button
-                type="button"
-                className={styles.diffSummaryChevron}
-                onClick={() => setOpen((prev) => !prev)}
-                aria-expanded={isOpen}
-              >
-                {isOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-              </button>
-            </div>
+            <GitDiffsHeader
+              title={section.title}
+              fileCount={section.files.length}
+              additions={additions}
+              deletions={deletions}
+              isOpen={isOpen}
+              onToggle={() => setOpen((prev) => !prev)}
+              onRefresh={handleRefresh}
+              refreshDisabled={!repoPath || isLoading}
+            />
 
             {isOpen ? (
               <>
@@ -252,101 +146,15 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
                         const fileKey = `${section.key}:${file.path}`;
                         const isFileOpen = fileOpenMap[fileKey] ?? true;
                         return (
-                          <div key={fileKey} className={styles.diffFile}>
-                            <button
-                              type="button"
-                              className={`${styles.diffFileHeader} ${
-                                file.isUntracked ? styles.diffFileHeaderUntracked : ""
-                              }`}
-                              onClick={() =>
-                                setFileOpenMap((prev) => ({ ...prev, [fileKey]: !(prev[fileKey] ?? true) }))
-                              }
-                              aria-expanded={isFileOpen}
-                            >
-                              <span className={styles.diffFileName}>
-                                {getFileLabel(file.path, file.oldPath, file.newPath, file.status)}
-                              </span>
-                              {file.isUntracked ? <span className={styles.diffBadge}>untracked</span> : null}
-                              {!file.isUntracked && file.status === "deleted" ? (
-                                <span className={`${styles.diffBadge} ${styles.diffBadgeDeleted}`}>deleted</span>
-                              ) : null}
-                              {!file.isUntracked && file.status === "renamed" ? (
-                                <span className={`${styles.diffBadge} ${styles.diffBadgeRenamed}`}>renamed</span>
-                              ) : null}
-                              <span className={styles.diffFileStats}>
-                                <span className={styles.diffStatAdd}>+{file.additions}</span>
-                                <span className={styles.diffStatDel}>-{file.deletions}</span>
-                              </span>
-                              <span className={styles.diffFileIcon}>
-                                {isFileOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-                              </span>
-                            </button>
-                            {isFileOpen ? (
-                              <div className={styles.diffGrid}>
-                                {file.isBinary ? (
-                                  <div className={styles.diffRow}>
-                                    <div className={styles.diffGutter} />
-                                    <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                                      <code className={styles.diffCode}>Binary file changed</code>
-                                    </div>
-                                    <div className={styles.diffGutter} />
-                                    <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                                      <code className={styles.diffCode}>Binary file changed</code>
-                                    </div>
-                                  </div>
-                                ) : file.rows.length === 0 ? (
-                                  <div className={styles.diffRow}>
-                                    <div className={styles.diffGutter} />
-                                    <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                                      <code className={styles.diffCode}>No textual diff available</code>
-                                    </div>
-                                    <div className={styles.diffGutter} />
-                                    <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                                      <code className={styles.diffCode}>No textual diff available</code>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  file.rows.map((row, index) => {
-                                    const leftClass = `${styles.diffCell} ${getCellClass(row.left.type)}`;
-                                    const rightClass = `${styles.diffCell} ${getCellClass(row.right.type)}`;
-                                    const leftGutterClass = `${styles.diffGutter} ${getGutterClass(row.left.type)}`;
-                                    const rightGutterClass = `${styles.diffGutter} ${getGutterClass(row.right.type)}`;
-                                    const isMeta = row.left.type === "meta" || row.right.type === "meta";
-                                    return (
-                                      <div key={`${fileKey}-${index}`} className={styles.diffRow}>
-                                        <div className={leftGutterClass}>
-                                          {row.leftLine !== null ? row.leftLine : ""}
-                                        </div>
-                                        <div className={leftClass}>
-                                          <code
-                                            className={styles.diffCode}
-                                            dangerouslySetInnerHTML={getLineHtml(
-                                              row.left.text,
-                                              file.language,
-                                              isMeta
-                                            )}
-                                          />
-                                        </div>
-                                        <div className={rightGutterClass}>
-                                          {row.rightLine !== null ? row.rightLine : ""}
-                                        </div>
-                                        <div className={rightClass}>
-                                          <code
-                                            className={styles.diffCode}
-                                            dangerouslySetInnerHTML={getLineHtml(
-                                              row.right.text,
-                                              file.language,
-                                              isMeta
-                                            )}
-                                          />
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            ) : null}
-                          </div>
+                          <GitFileCard
+                            key={fileKey}
+                            fileKey={fileKey}
+                            file={file}
+                            isOpen={isFileOpen}
+                            onToggle={() =>
+                              setFileOpenMap((prev) => ({ ...prev, [fileKey]: !(prev[fileKey] ?? true) }))
+                            }
+                          />
                         );
                       })
                     )}

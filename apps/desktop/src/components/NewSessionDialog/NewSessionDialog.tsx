@@ -4,8 +4,8 @@ import type { AgentId, EnvVar } from "../../types";
 import AgentPicker from "../AgentPicker/AgentPicker";
 import RepoPicker from "../RepoPicker/RepoPicker";
 import EnvList from "../EnvList/EnvList";
-import Button from "../Button/Button";
-import IconButton from "../IconButton/IconButton";
+import Button from "../ui/Button/Button";
+import IconButton from "../ui/IconButton/IconButton";
 import styles from "./NewSessionDialog.module.css";
 
 interface NewSessionDialogProps {

@@ -65,46 +65,6 @@
   border-bottom: 1px solid var(--border);
 }
 
-.tab {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  font-weight: 600;
-  transition: border 0.2s ease, color 0.2s ease, background 0.2s ease;
-  position: relative;
-}
-
-.tab:hover {
-  border-color: var(--accent);
-  color: var(--text);
-  background: var(--surface);
-}
-
-.tabActive {
-  background: var(--surface);
-  border-color: var(--accent);
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-.tabHint {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  pointer-events: none;
-  box-shadow: var(--shadow);
-}
-
 .tabBody {
   flex: 1;
   position: relative;

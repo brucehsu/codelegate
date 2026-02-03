@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "../../types";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import { getRepoName } from "../../utils/session";
-import IconButton from "../IconButton/IconButton";
+import IconButton from "../ui/IconButton/IconButton";
 import styles from "./Sidebar.module.css";
 
 interface SidebarProps {

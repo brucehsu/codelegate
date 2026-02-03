@@ -65,51 +65,6 @@
   color: var(--muted);
 }
 
-.diffSummaryChevron {
-  border: none;
-  background: none;
-  color: inherit;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  cursor: pointer;
-}
-
-.diffSummaryChevron svg {
-  width: 18px;
-  height: 18px;
-}
-
-.refreshButton {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 8px 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: border 0.2s ease, background 0.2s ease, color 0.2s ease;
-}
-
-.refreshButton svg {
-  width: 16px;
-  height: 16px;
-}
-
-.refreshButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.refreshButton:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
 .state {
   padding: 16px;
   border-radius: 12px;
@@ -129,36 +84,6 @@
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-}
-
-.diffGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.diffGroupHeader {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  font-weight: 600;
-}
-
-.diffGroupTitle {
-  color: var(--text);
-  font-size: 0.9rem;
-}
-
-.diffGroupStats {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  font-size: 0.82rem;
 }
 
 .diffFile {

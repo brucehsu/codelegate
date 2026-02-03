@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import IconButton from "../IconButton/IconButton";
-import Button from "../Button/Button";
+import IconButton from "../ui/IconButton/IconButton";
+import Button from "../ui/Button/Button";
 import styles from "./RenameDialog.module.css";
 
 interface RenameDialogProps {

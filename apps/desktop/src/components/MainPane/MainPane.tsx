@@ -3,6 +3,7 @@ import AgentTab from "./tabs/AgentTab";
 import GitTab from "./tabs/GitTab";
 import TerminalTab from "./tabs/TerminalTab";
 import styles from "./MainPane.module.css";
+import TabButton from "../ui/TabButton/TabButton";
 import { Command, Copy } from "lucide-react";
 
 interface TabDefinition {
@@ -51,19 +52,15 @@ export default function MainPane({
       <div className={`${styles.tabPane} ${showTabPane ? "" : styles.hidden}`}>
         <div className={styles.tabStrip}>
           {tabs.map((tab) => (
-            <button
+            <TabButton
               key={tab.kind}
-              className={`${styles.tab} ${activePaneKind === tab.kind ? styles.tabActive : ""}`}
-              type="button"
+              active={activePaneKind === tab.kind}
+              hotkey={tab.navigationHotKey}
+              showHotkey={showShortcutHints}
               onClick={() => onSelectPaneKind(tab.kind)}
             >
               {tab.name}
-              {showShortcutHints ? (
-                <span className={styles.tabHint} aria-hidden="true">
-                  {tab.navigationHotKey}
-                </span>
-              ) : null}
-            </button>
+            </TabButton>
           ))}
         </div>
         <div className={styles.tabBody}>
