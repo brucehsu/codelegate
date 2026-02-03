@@ -17,8 +17,8 @@ import "prismjs/components/prism-toml";
 import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
-import type { Session } from "../../types";
-import { getLanguageFromPath, parseGitDiff, type DiffLineType } from "../../../../utils/gitDiff";
+import type { Session } from "../../../../types";
+import { getLanguageFromPath, parseGitDiff, type DiffLineType, type FileDiff } from "../../../../utils/gitDiff";
 import styles from "./GitDiff.module.css";
 
 interface GitDiffProps {
@@ -123,9 +123,9 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
 
   const stagedFiles = useMemo(() => parseGitDiff(payload?.staged ?? ""), [payload]);
   const unstagedTrackedFiles = useMemo(() => parseGitDiff(payload?.unstaged ?? ""), [payload]);
-  const untrackedFiles = useMemo(
+  const untrackedFiles = useMemo<FileDiff[]>(
     () =>
-      (payload?.untracked ?? []).flatMap((entry) => {
+      (payload?.untracked ?? []).flatMap<FileDiff>((entry) => {
         const parsed = parseGitDiff(entry.diff, { isUntracked: true });
         if (parsed.length === 0) {
           return [
@@ -137,6 +137,7 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
               language: getLanguageFromPath(entry.path),
               isBinary: false,
               isUntracked: true,
+              status: "untracked",
             },
           ];
         }
@@ -145,6 +146,7 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
           path: entry.path,
           language: getLanguageFromPath(entry.path),
           isUntracked: true,
+          status: "untracked",
         }));
       }),
     [payload]
@@ -155,7 +157,7 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     [unstagedTrackedFiles, untrackedFiles]
   );
 
-  const sections = useMemo(
+  const sections = useMemo<{ key: "staged" | "unstaged"; title: string; files: FileDiff[] }[]>(
     () => [
       { key: "staged", title: "Staged Diff", files: stagedFiles },
       { key: "unstaged", title: "Unstaged Diff", files: unstagedFiles },
