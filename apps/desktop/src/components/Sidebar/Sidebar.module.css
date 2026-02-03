@@ -214,3 +214,12 @@
 .menuItem:hover {
   background: var(--surface-2);
 }
+
+.menuItemDanger {
+  color: var(--danger);
+}
+
+.menuItemDanger:hover {
+  color: #ffffff;
+  background: var(--danger);
+}

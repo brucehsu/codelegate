@@ -50,6 +50,7 @@ export default function App() {
     registerTerminal,
     setActivePaneKind,
     renameBranch,
+    terminateSession,
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
@@ -377,6 +378,7 @@ export default function App() {
           onNewSession={handleOpenDialog}
           onOpenSettings={openSettings}
           onRenameSession={openRename}
+          onTerminateSession={terminateSession}
           searchRef={searchInputRef}
           showShortcutHints={showShortcutHints}
         />

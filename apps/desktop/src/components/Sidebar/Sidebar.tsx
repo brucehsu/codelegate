@@ -1,4 +1,5 @@
 import { MoreHorizontal, Plus, Settings } from "lucide-react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import type { Session } from "../../types";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
@@ -15,6 +16,7 @@ interface SidebarProps {
   onNewSession: () => void;
   onOpenSettings: () => void;
   onRenameSession: (sessionId: string) => void;
+  onTerminateSession: (sessionId: string) => void;
   searchRef?: React.RefObject<HTMLInputElement>;
   showShortcutHints?: boolean;
 }
@@ -28,6 +30,7 @@ export default function Sidebar({
   onNewSession,
   onOpenSettings,
   onRenameSession,
+  onTerminateSession,
   searchRef,
   showShortcutHints = false,
 }: SidebarProps) {
@@ -130,6 +133,23 @@ export default function Sidebar({
                       }}
                     >
                       Rename Branch
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                      onClick={async () => {
+                        const confirmed = await confirm(
+                          "Terminate this session? This will close the tab and stop ongoing shell sessions.",
+                          { title: "Codelegate", kind: "warning" }
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+                        setOpenMenuId(null);
+                        onTerminateSession(session.id);
+                      }}
+                    >
+                      Terminate Session
                     </button>
                   </div>
                 ) : null}
