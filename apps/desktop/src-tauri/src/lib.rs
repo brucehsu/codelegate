@@ -60,6 +60,22 @@ struct AppConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct EnvVar {
+  key: String,
+  value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepoDefaults {
+  #[serde(default)]
+  env: Vec<EnvVar>,
+  #[serde(default)]
+  pre_commands: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AppSettings {
   theme: String,
   #[serde(default)]
@@ -70,6 +86,8 @@ struct AppSettings {
   terminal_font_size: u16,
   #[serde(default = "default_battery_saver", alias = "backgroundAnimation")]
   battery_saver: bool,
+  #[serde(default)]
+  repo_defaults: HashMap<String, RepoDefaults>,
 }
 
 #[tauri::command]
@@ -471,6 +489,7 @@ fn default_config() -> AppConfig {
       terminal_font_family: default_terminal_font_family(),
       terminal_font_size: default_terminal_font_size(),
       battery_saver: default_battery_saver(),
+      repo_defaults: HashMap::new(),
     },
   }
 }

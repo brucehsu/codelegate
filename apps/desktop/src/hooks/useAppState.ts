@@ -9,6 +9,7 @@ import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../cons
 import type {
   AppConfig,
   AppSettings,
+  EnvVar,
   PtyExit,
   PtyOutput,
   RepoConfig,
@@ -119,6 +120,7 @@ const defaultSettings = {
   terminalFontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
   terminalFontSize: 13,
   batterySaver: false,
+  repoDefaults: {},
 };
 
 const defaultConfig: AppConfig = {
@@ -143,6 +145,15 @@ function ensureTermEnv(env: Record<string, string>) {
     env.TERM = "xterm-256color";
   }
   return env;
+}
+
+function normalizeEnvVars(env: EnvVar[]) {
+  return env
+    .map((entry) => ({
+      key: entry.key.trim(),
+      value: (entry.value ?? "").trim(),
+    }))
+    .filter((entry) => entry.key.length > 0 && entry.value.length > 0);
 }
 
 function resolveSessionCwd(session?: Session | null) {
@@ -460,6 +471,7 @@ export function useAppState(
             ...loaded.settings,
             theme: "dark",
             recentDirs: loaded.settings?.recentDirs ?? defaultSettings.recentDirs,
+            repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
           },
         } as AppConfig;
         setConfig(nextConfig);
@@ -516,6 +528,33 @@ export function useAppState(
     }));
     setBatterySaverDataset(enabled);
   }, [setBatterySaverDataset, updateSettings]);
+
+  const updateRepoDefaults = useCallback(
+    (repoPath: string, envVars: EnvVar[], preCommands: string) => {
+      const trimmedPath = repoPath.trim();
+      if (!trimmedPath) {
+        return;
+      }
+      const normalizedEnv = normalizeEnvVars(envVars);
+      const hasPreCommands = preCommands.trim().length > 0;
+      updateSettings((settings) => {
+        const nextDefaults = { ...(settings.repoDefaults ?? {}) };
+        if (normalizedEnv.length === 0 && !hasPreCommands) {
+          delete nextDefaults[trimmedPath];
+        } else {
+          nextDefaults[trimmedPath] = {
+            env: normalizedEnv,
+            preCommands,
+          };
+        }
+        return {
+          ...settings,
+          repoDefaults: nextDefaults,
+        };
+      });
+    },
+    [updateSettings]
+  );
 
   useEffect(() => {
     applyTerminalFontSettings(config.settings.terminalFontFamily, config.settings.terminalFontSize);
@@ -1241,6 +1280,7 @@ export function useAppState(
     updateRecentDirs,
     updateTerminalSettings,
     updateBatterySaver,
+    updateRepoDefaults,
     startSession,
     registerTerminal,
     setActivePaneKind,

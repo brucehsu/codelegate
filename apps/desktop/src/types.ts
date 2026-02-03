@@ -6,6 +6,11 @@ export interface EnvVar {
   value: string;
 }
 
+export interface RepoSessionDefaults {
+  env: EnvVar[];
+  preCommands: string;
+}
+
 export interface WorktreeConfig {
   enabled: boolean;
 }
@@ -24,6 +29,7 @@ export interface AppSettings {
   terminalFontFamily: string;
   terminalFontSize: number;
   batterySaver: boolean;
+  repoDefaults?: Record<string, RepoSessionDefaults>;
 }
 
 export interface AppConfig {

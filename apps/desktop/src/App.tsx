@@ -46,6 +46,7 @@ export default function App() {
     updateRecentDirs,
     updateTerminalSettings,
     updateBatterySaver,
+    updateRepoDefaults,
     startSession,
     registerTerminal,
     setActivePaneKind,
@@ -260,6 +261,26 @@ export default function App() {
     setRenameOpen(true);
   };
 
+  const applyRepoDefaults = useCallback(
+    (path: string) => {
+      const trimmed = path.trim();
+      if (!trimmed) {
+        setEnvVars(emptyEnv);
+        setPreCommands("");
+        return;
+      }
+      const defaults = config.settings.repoDefaults?.[trimmed];
+      if (!defaults) {
+        setEnvVars(emptyEnv);
+        setPreCommands("");
+        return;
+      }
+      setEnvVars(defaults.env.length > 0 ? defaults.env : emptyEnv);
+      setPreCommands(defaults.preCommands ?? "");
+    },
+    [config.settings.repoDefaults]
+  );
+
   const closeRename = () => {
     setRenameOpen(false);
     setRenameSessionId(null);
@@ -279,9 +300,11 @@ export default function App() {
   };
 
   const handleSelectRepo = (path: string) => {
-    setRepoPath(path);
+    const trimmedPath = path.trim();
+    setRepoPath(trimmedPath);
     setRepoHint("");
-    updateRecentDirs(path);
+    updateRecentDirs(trimmedPath);
+    applyRepoDefaults(trimmedPath);
   };
 
   const handleBrowseRepo = async () => {
@@ -320,6 +343,7 @@ export default function App() {
         : undefined,
     };
 
+    updateRepoDefaults(trimmedPath, envVars, preCommands);
     setDialogOpen(false);
     await startSession(repoConfig);
   };
