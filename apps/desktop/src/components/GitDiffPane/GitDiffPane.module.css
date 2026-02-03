@@ -131,6 +131,36 @@
   padding: 12px;
 }
 
+.diffGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diffGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.diffGroupTitle {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.diffGroupStats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.82rem;
+}
+
 .diffFile {
   border-radius: 14px;
   background: var(--surface);

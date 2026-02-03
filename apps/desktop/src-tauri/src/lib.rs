@@ -46,7 +46,8 @@ struct GitDiffFile {
 
 #[derive(Debug, Serialize)]
 struct GitDiffPayload {
-  diff: String,
+  staged: String,
+  unstaged: String,
   untracked: Vec<GitDiffFile>,
 }
 
@@ -257,10 +258,20 @@ fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
     return Err(format!("Path '{}' does not exist", root));
   }
 
-  let diff = run_git_diff(&[
+  let unstaged = run_git_diff(&[
     "-C",
     &root,
     "diff",
+    "--no-color",
+    "--no-ext-diff",
+    "--unified=3",
+  ])?;
+
+  let staged = run_git_diff(&[
+    "-C",
+    &root,
+    "diff",
+    "--staged",
     "--no-color",
     "--no-ext-diff",
     "--unified=3",
@@ -283,7 +294,11 @@ fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
     untracked.push(GitDiffFile { path: file, diff: file_diff });
   }
 
-  Ok(GitDiffPayload { diff, untracked })
+  Ok(GitDiffPayload {
+    staged,
+    unstaged,
+    untracked,
+  })
 }
 
 #[tauri::command]
