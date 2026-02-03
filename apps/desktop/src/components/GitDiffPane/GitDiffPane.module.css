@@ -1,0 +1,351 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.diffSection {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.diffSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.diffSummaryToggle {
+  border: none;
+  background: none;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  flex: 1;
+  text-align: left;
+}
+
+.diffSummaryTitle {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.diffSummaryStats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.diffSummaryAdd {
+  color: #22c55e;
+}
+
+.diffSummaryDel {
+  color: #ef4444;
+}
+
+.diffSummaryDot,
+.diffSummarySlash,
+.diffSummaryFiles {
+  color: var(--muted);
+}
+
+.diffSummaryChevron {
+  border: none;
+  background: none;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.diffSummaryChevron svg {
+  width: 18px;
+  height: 18px;
+}
+
+.refreshButton {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.refreshButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.refreshButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refreshButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.state {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.stateError {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.diffList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.diffFile {
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.diffFileHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  border: none;
+  color: inherit;
+  font: inherit;
+}
+
+.diffFileHeaderUntracked {
+  background: color-mix(in srgb, var(--surface-2) 82%, rgba(14, 165, 233, 0.2));
+}
+
+.diffFileName {
+  font-size: 0.9rem;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffFileStats {
+  display: inline-flex;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.diffFileIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.diffBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(14, 165, 233, 0.2);
+  color: #7dd3fc;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.diffStatAdd {
+  color: #22c55e;
+}
+
+.diffStatDel {
+  color: #ef4444;
+}
+
+.diffGrid {
+  display: flex;
+  flex-direction: column;
+  font-family: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  font-size: 0.82rem;
+}
+
+.diffRow {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px minmax(0, 1fr);
+}
+
+.diffCell {
+  padding: 4px 8px;
+  background: var(--surface);
+}
+
+.diffGutter,
+.diffCell {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.diffGutter {
+  padding: 4px 8px;
+  text-align: right;
+  color: var(--muted);
+  background: var(--surface-2);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.diffGutterAdd {
+  color: #22c55e;
+}
+
+.diffGutterDel {
+  color: #ef4444;
+}
+
+.diffGutterMeta {
+  color: #60a5fa;
+}
+
+.diffRow > :nth-child(4) {
+  border-right: none;
+}
+
+.diffRow:last-child > * {
+  border-bottom: none;
+}
+
+.diffCellAdd {
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.diffCellDel {
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.diffCellMeta {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.diffCellEmpty {
+  background: transparent;
+}
+
+.diffCode {
+  display: block;
+  white-space: pre;
+}
+
+.diffCode :global(.token.comment),
+.diffCode :global(.token.prolog),
+.diffCode :global(.token.doctype),
+.diffCode :global(.token.cdata) {
+  color: #94a3b8;
+}
+
+.diffCode :global(.token.punctuation) {
+  color: #cbd5f5;
+}
+
+.diffCode :global(.token.property),
+.diffCode :global(.token.tag),
+.diffCode :global(.token.boolean),
+.diffCode :global(.token.number),
+.diffCode :global(.token.constant),
+.diffCode :global(.token.symbol),
+.diffCode :global(.token.deleted) {
+  color: #fca5a5;
+}
+
+.diffCode :global(.token.selector),
+.diffCode :global(.token.attr-name),
+.diffCode :global(.token.string),
+.diffCode :global(.token.char),
+.diffCode :global(.token.builtin),
+.diffCode :global(.token.inserted) {
+  color: #a7f3d0;
+}
+
+.diffCode :global(.token.operator),
+.diffCode :global(.token.entity),
+.diffCode :global(.token.url),
+.diffCode :global(.token.variable) {
+  color: #fcd34d;
+}
+
+.diffCode :global(.token.atrule),
+.diffCode :global(.token.attr-value),
+.diffCode :global(.token.function),
+.diffCode :global(.token.class-name) {
+  color: #7dd3fc;
+}
+
+.diffCode :global(.token.keyword) {
+  color: #c4b5fd;
+}
+
+.diffCode :global(.token.regex),
+.diffCode :global(.token.important) {
+  color: #f9a8d4;
+}
+
+:global(body[data-theme="light"]) .diffCellAdd {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+:global(body[data-theme="light"]) .diffCellDel {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+:global(body[data-theme="light"]) .diffFileHeaderUntracked {
+  background: color-mix(in srgb, var(--surface-2) 84%, rgba(14, 165, 233, 0.16));
+}
+
+:global(body[data-theme="light"]) .diffCode :global(.token.comment),
+:global(body[data-theme="light"]) .diffCode :global(.token.prolog),
+:global(body[data-theme="light"]) .diffCode :global(.token.doctype),
+:global(body[data-theme="light"]) .diffCode :global(.token.cdata) {
+  color: #64748b;
+}

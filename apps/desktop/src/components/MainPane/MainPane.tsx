@@ -1,4 +1,5 @@
 import type { Session, TerminalKind } from "../../types";
+import GitDiffPane from "../GitDiffPane/GitDiffPane";
 import styles from "./MainPane.module.css";
 import { ChevronDown, Command, Copy } from "lucide-react";
 
@@ -45,6 +46,18 @@ export default function MainPane({
             {showShortcutHints ? (
               <span className={styles.tabHint} aria-hidden="true">
                 A
+              </span>
+            ) : null}
+          </button>
+          <button
+            className={`${styles.tab} ${activeTerminalKind === "git" ? styles.tabActive : ""}`}
+            type="button"
+            onClick={() => onSelectTerminalKind("git")}
+          >
+            Git
+            {showShortcutHints ? (
+              <span className={styles.tabHint} aria-hidden="true">
+                G
               </span>
             ) : null}
           </button>
@@ -103,6 +116,9 @@ export default function MainPane({
                 <ChevronDown aria-hidden="true" />
               </button>
             ) : null}
+          </div>
+          <div className={`${styles.gitPane} ${activeTerminalKind === "git" ? "" : styles.terminalHidden}`}>
+            <GitDiffPane session={activeSession} isActive={activeTerminalKind === "git"} />
           </div>
         </div>
         <div className={styles.sessionFooter}>

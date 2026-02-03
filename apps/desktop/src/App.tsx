@@ -302,6 +302,9 @@ export default function App() {
       if (event.code === "KeyA") {
         handleSelectTerminalKind("agent");
         handled = true;
+      } else if (event.code === "KeyG") {
+        handleSelectTerminalKind("git");
+        handled = true;
       } else if (event.code === "KeyT") {
         handleSelectTerminalKind("terminal");
         handled = true;

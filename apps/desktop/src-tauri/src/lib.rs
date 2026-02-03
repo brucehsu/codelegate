@@ -38,6 +38,18 @@ struct PtyExit {
   session_id: u32,
 }
 
+#[derive(Debug, Serialize)]
+struct GitDiffFile {
+  path: String,
+  diff: String,
+}
+
+#[derive(Debug, Serialize)]
+struct GitDiffPayload {
+  diff: String,
+  untracked: Vec<GitDiffFile>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppConfig {
@@ -187,6 +199,90 @@ fn rename_git_branch(path: String, name: String) -> Result<String, String> {
     let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
     Err(if err.is_empty() { "Failed to rename branch".to_string() } else { err })
   }
+}
+
+fn run_git_diff(args: &[&str]) -> Result<String, String> {
+  let output = std::process::Command::new("git")
+    .args(args)
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+  let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+  if !output.status.success() && stdout.is_empty() && !stderr.is_empty() {
+    return Err(stderr);
+  }
+  Ok(stdout)
+}
+
+fn get_untracked_files(path: &str) -> Result<Vec<String>, String> {
+  let output = std::process::Command::new("git")
+    .arg("-C")
+    .arg(path)
+    .arg("status")
+    .arg("--porcelain=v1")
+    .arg("--untracked-files=all")
+    .arg("-z")
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  if !output.status.success() {
+    let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    return Err(if err.is_empty() { "Failed to get git status".to_string() } else { err });
+  }
+
+  let mut files = Vec::new();
+  for entry in output.stdout.split(|b| *b == 0) {
+    if entry.is_empty() {
+      continue;
+    }
+    if entry.starts_with(b"?? ") {
+      let path_bytes = &entry[3..];
+      let path = String::from_utf8_lossy(path_bytes).to_string();
+      if !path.is_empty() {
+        if Path::new(&path).is_dir() {
+          continue;
+        }
+        files.push(path);
+      }
+    }
+  }
+  Ok(files)
+}
+
+#[tauri::command]
+fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
+  if !Path::new(&path).exists() {
+    return Err(format!("Path '{}' does not exist", path));
+  }
+
+  let diff = run_git_diff(&[
+    "-C",
+    &path,
+    "diff",
+    "--no-color",
+    "--no-ext-diff",
+    "--unified=3",
+  ])?;
+
+  let mut untracked = Vec::new();
+  for file in get_untracked_files(&path)? {
+    let file_diff = run_git_diff(&[
+      "-C",
+      &path,
+      "diff",
+      "--no-color",
+      "--no-ext-diff",
+      "--unified=3",
+      "--no-index",
+      "--",
+      "/dev/null",
+      &file,
+    ])?;
+    untracked.push(GitDiffFile { path: file, diff: file_diff });
+  }
+
+  Ok(GitDiffPayload { diff, untracked })
 }
 
 #[tauri::command]
@@ -394,6 +490,7 @@ pub fn run() {
       resolve_repo_root,
       get_git_branch,
       rename_git_branch,
+      get_git_diff,
       load_config,
       save_config,
       spawn_pty,

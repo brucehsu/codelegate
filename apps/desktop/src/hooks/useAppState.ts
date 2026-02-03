@@ -41,6 +41,7 @@ interface TerminalRuntime {
 
 interface SessionRuntime {
   agent: TerminalRuntime;
+  git: TerminalRuntime;
   terminal: TerminalRuntime;
 }
 
@@ -61,6 +62,7 @@ function forEachTerminalRuntime(
 ) {
   runtimeMap.forEach((runtime) => {
     apply(runtime.agent);
+    apply(runtime.git);
     apply(runtime.terminal);
   });
 }
@@ -635,7 +637,7 @@ export function useAppState(
     const map = runtimeRef.current;
     let runtime = map.get(sessionId);
     if (!runtime) {
-      runtime = { agent: {}, terminal: {} };
+      runtime = { agent: {}, git: {}, terminal: {} };
       map.set(sessionId, runtime);
     }
     return runtime;

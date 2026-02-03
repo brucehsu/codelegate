@@ -159,6 +159,15 @@
   padding: 12px;
 }
 
+.gitPane {
+  position: absolute;
+  inset: 0;
+  overflow-y: scroll;
+  overflow-x: auto;
+  padding: 16px;
+  background: var(--bg-soft);
+}
+
 .terminalSession {
   position: absolute;
   inset: 12px;
