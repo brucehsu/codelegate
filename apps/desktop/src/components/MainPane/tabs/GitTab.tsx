@@ -1,5 +1,5 @@
 import type { Session } from "../../../types";
-import GitDiffPane from "../../GitDiffPane/GitDiffPane";
+import GitDiff from "./git/GitDiff";
 import styles from "../MainPane.module.css";
 
 interface GitTabProps {
@@ -10,7 +10,7 @@ interface GitTabProps {
 export default function GitTab({ session, isActive }: GitTabProps) {
   return (
     <div className={`${styles.gitPane} ${isActive ? "" : styles.terminalHidden}`}>
-      <GitDiffPane session={session} isActive={isActive} />
+      <GitDiff session={session} isActive={isActive} />
     </div>
   );
 }

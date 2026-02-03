@@ -18,10 +18,10 @@ import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
 import type { Session } from "../../types";
-import { getLanguageFromPath, parseGitDiff, type DiffLineType } from "../../utils/gitDiff";
-import styles from "./GitDiffPane.module.css";
+import { getLanguageFromPath, parseGitDiff, type DiffLineType } from "../../../../utils/gitDiff";
+import styles from "./GitDiff.module.css";
 
-interface GitDiffPaneProps {
+interface GitDiffProps {
   session?: Session | null;
   isActive: boolean;
 }
@@ -85,7 +85,7 @@ function getGutterClass(type: DiffLineType) {
   }
 }
 
-export default function GitDiffPane({ session, isActive }: GitDiffPaneProps) {
+export default function GitDiff({ session, isActive }: GitDiffProps) {
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
