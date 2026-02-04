@@ -24,6 +24,13 @@ textarea {
   font: inherit;
 }
 
+.xterm .xterm-accessibility-tree,
+.xterm .xterm-accessibility-tree > div {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .hidden {
   display: none;
 }

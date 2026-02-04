@@ -16,6 +16,7 @@ export const darkTerminalTheme = {
   background: "#0b0e14",
   foreground: "#e7ecf3",
   cursor: "#4fd1c5",
+  selectionForeground: "#e7ecf3",
   selectionBackground: "#2a3550",
 };
 
@@ -23,5 +24,6 @@ export const lightTerminalTheme = {
   background: "#f8f9fb",
   foreground: "#10131a",
   cursor: "#0a7c6f",
+  selectionForeground: "#10131a",
   selectionBackground: "#c8d2ea",
 };

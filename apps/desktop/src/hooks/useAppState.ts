@@ -45,6 +45,8 @@ interface TerminalRuntime {
   scrollDisposable?: { dispose: () => void };
   viewportEl?: HTMLDivElement | null;
   viewportHandler?: (() => void) | null;
+  rendererAttachRaf?: number;
+  webglPostInitTimer?: number;
 }
 
 interface SessionRuntime {
@@ -163,6 +165,27 @@ function normalizeEnvVars(env: EnvVar[]) {
     .filter((entry) => entry.key.length > 0 && entry.value.length > 0);
 }
 
+function normalizeFontFamily(value: string): string {
+  const entries = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  if (entries.length === 0) {
+    return defaultSettings.terminalFontFamily;
+  }
+  return entries
+    .map((entry) => {
+      const alreadyQuoted =
+        (entry.startsWith('"') && entry.endsWith('"')) ||
+        (entry.startsWith("'") && entry.endsWith("'"));
+      if (alreadyQuoted || !/\s/.test(entry)) {
+        return entry;
+      }
+      return `"${entry.replace(/"/g, '\\"')}"`;
+    })
+    .join(", ");
+}
+
 function resolveSessionCwd(session?: Session | null) {
   return session?.cwd ?? session?.repo.repoPath ?? null;
 }
@@ -225,6 +248,7 @@ export function useAppState(
   const activePaneKindRef = useRef<PaneKind>("agent");
   const closeInProgressRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
+  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   const scheduleTerminalFit = useCallback((runtime: TerminalRuntime, force = false) => {
     if (!runtime.term || !runtime.fit || !runtime.container) {
@@ -469,6 +493,9 @@ export function useAppState(
             ...loaded.settings,
             theme: "dark",
             recentDirs: loaded.settings?.recentDirs ?? defaultSettings.recentDirs,
+            terminalFontFamily: normalizeFontFamily(
+              loaded.settings?.terminalFontFamily ?? defaultSettings.terminalFontFamily
+            ),
             repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
           },
         } as AppConfig;
@@ -496,14 +523,117 @@ export function useAppState(
     }));
   }, [updateSettings]);
 
+  const loadTerminalFonts = useCallback((fontFamily: string, fontSize: number) => {
+    if (!document.fonts?.load) {
+      return Promise.resolve();
+    }
+    const sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const specs = [
+      `${fontSize}px ${fontFamily}`,
+      `italic ${fontSize}px ${fontFamily}`,
+      `700 ${fontSize}px ${fontFamily}`,
+      `italic 700 ${fontSize}px ${fontFamily}`,
+    ];
+    return Promise.allSettled(specs.map((spec) => document.fonts.load(spec, sample))).then(() => undefined);
+  }, []);
+
+  const applyTerminalTypography = useCallback((runtime: TerminalRuntime, fontFamily: string, fontSize: number) => {
+    const term = runtime.term;
+    if (!term) {
+      return;
+    }
+    term.options.fontFamily = fontFamily;
+    term.options.fontSize = fontSize;
+    const root = term.element;
+    if (!root) {
+      return;
+    }
+    const fontSizePx = `${fontSize}px`;
+    root.style.fontFamily = fontFamily;
+    root.style.fontSize = fontSizePx;
+    root.style.lineHeight = "1.25";
+    const accessibilityTree = root.querySelector(".xterm-accessibility-tree") as HTMLElement | null;
+    if (accessibilityTree) {
+      accessibilityTree.style.fontFamily = fontFamily;
+      accessibilityTree.style.fontSize = fontSizePx;
+      accessibilityTree.style.lineHeight = "1.25";
+    }
+  }, []);
+
+  const clearPendingRendererAttach = useCallback((runtime: TerminalRuntime) => {
+    if (runtime.rendererAttachRaf !== undefined) {
+      window.cancelAnimationFrame(runtime.rendererAttachRaf);
+      runtime.rendererAttachRaf = undefined;
+    }
+    if (runtime.webglPostInitTimer !== undefined) {
+      window.clearTimeout(runtime.webglPostInitTimer);
+      runtime.webglPostInitTimer = undefined;
+    }
+  }, []);
+
+  const applyWebglRenderer = useCallback(
+    (runtime: TerminalRuntime, fontFamily: string, fontSize: number) => {
+      const term = runtime.term;
+      if (!term) {
+        return;
+      }
+      if (runtime.webgl) {
+        runtime.webgl.clearTextureAtlas();
+        if (term.rows > 0) {
+          term.refresh(0, term.rows - 1);
+        }
+        return;
+      }
+      clearPendingRendererAttach(runtime);
+      loadTerminalFonts(fontFamily, fontSize).then(() => {
+        if (runtime.term !== term || runtime.webgl) {
+          return;
+        }
+        runtime.rendererAttachRaf = window.requestAnimationFrame(() => {
+          runtime.rendererAttachRaf = window.requestAnimationFrame(() => {
+            runtime.rendererAttachRaf = undefined;
+            if (runtime.term !== term || runtime.webgl) {
+              return;
+            }
+            try {
+              const webgl = new WebglAddon();
+              term.loadAddon(webgl);
+              runtime.webgl = webgl;
+              webgl.onContextLoss(() => {
+                runtime.webgl = undefined;
+                webgl.dispose();
+              });
+              webgl.clearTextureAtlas();
+              if (term.rows > 0) {
+                term.refresh(0, term.rows - 1);
+              }
+              runtime.webglPostInitTimer = window.setTimeout(() => {
+                runtime.webglPostInitTimer = undefined;
+                if (runtime.webgl !== webgl) {
+                  return;
+                }
+                webgl.clearTextureAtlas();
+                if (term.rows > 0) {
+                  term.refresh(0, term.rows - 1);
+                }
+              }, 100);
+            } catch {
+              // Fallback to canvas renderer when WebGL is unavailable.
+            }
+          });
+        });
+      });
+    },
+    [clearPendingRendererAttach, loadTerminalFonts]
+  );
+
   const applyTerminalFontSettings = useCallback(
     (fontFamily: string, fontSize: number) => {
       forEachTerminalRuntime(runtimeRef.current, (terminal) => {
         if (!terminal.term) {
           return;
         }
-        terminal.term.options.fontFamily = fontFamily;
-        terminal.term.options.fontSize = fontSize;
+        applyTerminalTypography(terminal, fontFamily, fontSize);
         if (terminal.webgl) {
           terminal.webgl.clearTextureAtlas();
           if (terminal.term.rows > 0) {
@@ -513,17 +643,24 @@ export function useAppState(
         scheduleTerminalFit(terminal, true);
       });
     },
-    [scheduleTerminalFit]
+    [applyTerminalTypography, scheduleTerminalFit]
   );
 
-  const updateTerminalSettings = useCallback((updates: { terminalFontFamily: string; terminalFontSize: number }) => {
-    updateSettings((settings) => ({
-      ...settings,
-      terminalFontFamily: updates.terminalFontFamily,
-      terminalFontSize: updates.terminalFontSize,
-    }));
-    applyTerminalFontSettings(updates.terminalFontFamily, updates.terminalFontSize);
-  }, [applyTerminalFontSettings, updateSettings]);
+  const updateTerminalSettings = useCallback(
+    (updates: { terminalFontFamily: string; terminalFontSize: number }) => {
+      const nextFontFamily = normalizeFontFamily(updates.terminalFontFamily);
+      updateSettings((settings) => ({
+        ...settings,
+        terminalFontFamily: nextFontFamily,
+        terminalFontSize: updates.terminalFontSize,
+      }));
+      applyTerminalFontSettings(nextFontFamily, updates.terminalFontSize);
+      forEachTerminalRuntime(runtimeRef.current, (terminal) => {
+        applyWebglRenderer(terminal, nextFontFamily, updates.terminalFontSize);
+      });
+    },
+    [applyTerminalFontSettings, applyWebglRenderer, updateSettings]
+  );
 
   const updateBatterySaver = useCallback((enabled: boolean) => {
     updateSettings((settings) => ({
@@ -570,24 +707,39 @@ export function useAppState(
   }, [config.settings.terminalFontFamily, config.settings.terminalFontSize, applyTerminalFontSettings]);
 
   useEffect(() => {
-    if (!document.fonts?.ready) {
-      return;
-    }
     let cancelled = false;
-    document.fonts.ready.then(() => {
+    loadTerminalFonts(config.settings.terminalFontFamily, config.settings.terminalFontSize).then(() => {
       if (cancelled) {
         return;
       }
       forEachTerminalRuntime(runtimeRef.current, (terminal) => {
-        if (terminal.term) {
-          scheduleTerminalFit(terminal, true);
+        if (!terminal.term) {
+          return;
         }
+        applyTerminalTypography(
+          terminal,
+          config.settings.terminalFontFamily,
+          config.settings.terminalFontSize
+        );
+        applyWebglRenderer(
+          terminal,
+          config.settings.terminalFontFamily,
+          config.settings.terminalFontSize
+        );
+        scheduleTerminalFit(terminal, true);
       });
     });
     return () => {
       cancelled = true;
     };
-  }, [scheduleTerminalFit]);
+  }, [
+    config.settings.terminalFontFamily,
+    config.settings.terminalFontSize,
+    applyTerminalTypography,
+    applyWebglRenderer,
+    loadTerminalFonts,
+    scheduleTerminalFit,
+  ]);
 
   const cycleSession = useCallback(() => {
     const list = sessionsRef.current;
@@ -638,8 +790,6 @@ export function useAppState(
     [cycleSession, onOpenNewSession, onFocusSearch]
   );
 
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
-
   const copySelection = useCallback((term: Terminal) => {
     if (!term.hasSelection()) {
       return;
@@ -653,11 +803,21 @@ export function useAppState(
 
   const configureTerminalOptions = useCallback((term: Terminal) => {
     const termOptions = (term as Terminal & {
-      options: { modifyOtherKeys?: number; scrollOnOutput?: boolean; scrollOnUserInput?: boolean };
+      options: {
+        modifyOtherKeys?: number;
+        scrollOnOutput?: boolean;
+        scrollOnUserInput?: boolean;
+        minimumContrastRatio?: number;
+        fontWeight?: string | number;
+        fontWeightBold?: string | number;
+      };
     }).options;
     termOptions.modifyOtherKeys = 2;
     termOptions.scrollOnOutput = false;
     termOptions.scrollOnUserInput = false;
+    termOptions.minimumContrastRatio = 1;
+    termOptions.fontWeight = "normal";
+    termOptions.fontWeightBold = "bold";
   }, []);
 
   const attachTerminalHandlers = useCallback(
@@ -770,22 +930,19 @@ export function useAppState(
       term.unicode.activeVersion = "11";
       term.loadAddon(new WebLinksAddon());
       term.open(element);
-      try {
-        const webgl = new WebglAddon();
-        term.loadAddon(webgl);
-        runtime.webgl = webgl;
-        webgl.onContextLoss(() => {
-          runtime.webgl = undefined;
-          webgl.dispose();
-        });
-      } catch {
-        // Fallback to canvas renderer when WebGL is unavailable.
-      }
       attachTerminalHandlers(term, runtime, sessionId, kind);
       runtime.term = term;
       runtime.fit = fit;
+      applyTerminalTypography(runtime, config.settings.terminalFontFamily, config.settings.terminalFontSize);
+      applyWebglRenderer(
+        runtime,
+        config.settings.terminalFontFamily,
+        config.settings.terminalFontSize
+      );
     },
     [
+      applyTerminalTypography,
+      applyWebglRenderer,
       attachTerminalHandlers,
       config.settings.terminalFontFamily,
       config.settings.terminalFontSize,
@@ -850,6 +1007,7 @@ export function useAppState(
         if (!runtime) {
           return;
         }
+        clearPendingRendererAttach(runtime);
         if (runtime.term) {
           runtime.savedViewportY = runtime.term.buffer.active.viewportY;
         }
@@ -959,6 +1117,7 @@ export function useAppState(
       }
     },
     [
+      clearPendingRendererAttach,
       createTerminal,
       ensureTerminalRuntime,
       focusSession,
@@ -1049,6 +1208,11 @@ export function useAppState(
       }
 
       clearAgentOutputting(sessionId);
+      if (runtime) {
+        clearPendingRendererAttach(runtime.agent);
+        clearPendingRendererAttach(runtime.git);
+        clearPendingRendererAttach(runtime.terminal);
+      }
       runtimeRef.current.delete(sessionId);
       setSessions((prev) => prev.filter((session) => session.id !== sessionId));
 
@@ -1056,7 +1220,7 @@ export function useAppState(
         setActiveSessionId(nextActiveId);
       }
     },
-    [clearAgentOutputting, notify, setActiveSessionId]
+    [clearAgentOutputting, clearPendingRendererAttach, notify, setActiveSessionId]
   );
 
   const startSession = useCallback(
