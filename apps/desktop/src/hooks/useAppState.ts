@@ -5,6 +5,11 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
+import { SearchAddon } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
 import type {
   AppConfig,
@@ -24,6 +29,7 @@ interface TerminalRuntime {
   container?: HTMLDivElement | null;
   term?: Terminal;
   fit?: FitAddon;
+  webgl?: WebglAddon;
   ptyId?: number;
   starting?: boolean;
   resizeObserver?: ResizeObserver;
@@ -497,6 +503,12 @@ export function useAppState(
         }
         terminal.term.options.fontFamily = fontFamily;
         terminal.term.options.fontSize = fontSize;
+        if (terminal.webgl) {
+          terminal.webgl.clearTextureAtlas();
+          if (terminal.term.rows > 0) {
+            terminal.term.refresh(0, terminal.term.rows - 1);
+          }
+        }
         scheduleTerminalFit(terminal, true);
       });
     },
@@ -746,7 +758,23 @@ export function useAppState(
       configureTerminalOptions(term);
       const fit = new FitAddon();
       term.loadAddon(fit);
+      term.loadAddon(new ImageAddon());
+      term.loadAddon(new SearchAddon());
+      term.loadAddon(new Unicode11Addon());
+      term.unicode.activeVersion = "11";
+      term.loadAddon(new WebLinksAddon());
       term.open(element);
+      try {
+        const webgl = new WebglAddon();
+        term.loadAddon(webgl);
+        runtime.webgl = webgl;
+        webgl.onContextLoss(() => {
+          runtime.webgl = undefined;
+          webgl.dispose();
+        });
+      } catch {
+        // Fallback to canvas renderer when WebGL is unavailable.
+      }
       attachTerminalHandlers(term, runtime, sessionId, kind);
       runtime.term = term;
       runtime.fit = fit;
