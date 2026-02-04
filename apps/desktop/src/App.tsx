@@ -491,6 +491,7 @@ export default function App() {
         onEnvChange={setEnvVars}
         preCommands={preCommands}
         onPreCommandsChange={setPreCommands}
+        onClearPreCommands={() => setPreCommands("")}
         startEnabled={startEnabled}
         onClose={handleCloseDialog}
         onSubmit={handleSubmit}

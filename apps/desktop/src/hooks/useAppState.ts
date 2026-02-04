@@ -540,15 +540,20 @@ export function useAppState(
         return;
       }
       const normalizedEnv = normalizeEnvVars(envVars);
-      const hasPreCommands = preCommands.trim().length > 0;
       updateSettings((settings) => {
         const nextDefaults = { ...(settings.repoDefaults ?? {}) };
+        const existing = nextDefaults[trimmedPath];
+        const nextPreCommands =
+          preCommands.trim().length > 0
+            ? preCommands
+            : existing?.preCommands ?? "";
+        const hasPreCommands = nextPreCommands.trim().length > 0;
         if (normalizedEnv.length === 0 && !hasPreCommands) {
           delete nextDefaults[trimmedPath];
         } else {
           nextDefaults[trimmedPath] = {
             env: normalizedEnv,
-            preCommands,
+            preCommands: nextPreCommands,
           };
         }
         return {

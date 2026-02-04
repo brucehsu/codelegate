@@ -23,6 +23,7 @@ interface NewSessionDialogProps {
   onEnvChange: (vars: EnvVar[]) => void;
   preCommands: string;
   onPreCommandsChange: (value: string) => void;
+  onClearPreCommands: () => void;
   startEnabled: boolean;
   onClose: () => void;
   onSubmit: () => void;
@@ -43,6 +44,7 @@ export default function NewSessionDialog({
   onEnvChange,
   preCommands,
   onPreCommandsChange,
+  onClearPreCommands,
   startEnabled,
   onClose,
   onSubmit,
@@ -99,29 +101,40 @@ export default function NewSessionDialog({
         <div className={styles.grid}>
           <div className={styles.fieldFull}>
             <span>Agent CLI</span>
-        <AgentPicker selected={selectedAgent} onSelect={onSelectAgent} />
-      </div>
-
-      <label className={styles.fieldFull}>
-        <span>Repository path</span>
-        <RepoPicker
-          value={repoPath}
-          recentDirs={recentDirs}
-          onSelect={onSelectRepo}
-          onBrowse={onBrowseRepo}
-          worktreeEnabled={worktreeEnabled}
-          onToggleWorktree={onToggleWorktree}
-        />
-        {repoHint ? <span className={styles.hint}>{repoHint}</span> : null}
-      </label>
-
-      <div className={styles.fieldFull}>
-        <span>Environment variables (optional)</span>
-        <EnvList envVars={envVars} onChange={onEnvChange} />
+            <AgentPicker selected={selectedAgent} onSelect={onSelectAgent} />
           </div>
 
           <label className={styles.fieldFull}>
-            <span>Commands to run before agent (optional)</span>
+            <span>Repository path</span>
+            <RepoPicker
+              value={repoPath}
+              recentDirs={recentDirs}
+              onSelect={onSelectRepo}
+              onBrowse={onBrowseRepo}
+              worktreeEnabled={worktreeEnabled}
+              onToggleWorktree={onToggleWorktree}
+            />
+            {repoHint ? <span className={styles.hint}>{repoHint}</span> : null}
+          </label>
+
+          <div className={styles.fieldFull}>
+            <span>Environment variables (optional)</span>
+            <EnvList envVars={envVars} onChange={onEnvChange} />
+          </div>
+
+          <label className={styles.fieldFull}>
+            <span className={styles.fieldHeader}>
+              <span>Commands to run before agent (optional)</span>
+              <Button
+                variant="ghost"
+                type="button"
+                className={styles.clearButton}
+                onClick={onClearPreCommands}
+                disabled={preCommands.trim().length === 0}
+              >
+                Clear
+              </Button>
+            </span>
             <textarea
               className={styles.input}
               rows={3}

@@ -55,6 +55,18 @@
   font-size: 0.9rem;
 }
 
+.fieldHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.clearButton {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
 
 .input {
   width: 100%;
