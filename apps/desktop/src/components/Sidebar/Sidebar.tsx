@@ -3,7 +3,6 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import type { SessionGroup } from "../../utils/session";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
-import { getRepoName } from "../../utils/session";
 import IconButton from "../ui/IconButton/IconButton";
 import CollapsibleSection from "../ui/CollapsibleSection/CollapsibleSection";
 import styles from "./Sidebar.module.css";
@@ -107,6 +106,7 @@ export default function Sidebar({
                 const shortcut = sessionShortcuts[session.id] ?? null;
                 const isOutputting = Boolean(agentOutputting[session.id]);
                 const isRunning = session.status === "running";
+                const branchTitle = session.branch?.trim() || "Loading branch...";
                 return (
                   <div
                     key={session.id}
@@ -123,10 +123,7 @@ export default function Sidebar({
                         {iconById[agentId]}
                       </span>
                       <div className={styles.sessionText}>
-                        <div className={styles.sessionLabel}>{getRepoName(session.repo.repoPath)}</div>
-                        {session.branch ? (
-                          <div className={styles.sessionBranch}>{session.branch}</div>
-                        ) : null}
+                        <div className={styles.sessionLabel}>{branchTitle}</div>
                       </div>
                       <span
                         className={[
