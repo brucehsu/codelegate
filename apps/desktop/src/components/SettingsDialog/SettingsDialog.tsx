@@ -28,18 +28,29 @@ export default function SettingsDialog({
   onSave,
 }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const fontFamilyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) {
       return;
     }
+    let rafId: number | null = null;
     if (open && !dialog.open) {
       dialog.showModal();
+      rafId = requestAnimationFrame(() => {
+        fontFamilyInputRef.current?.focus();
+        fontFamilyInputRef.current?.select();
+      });
     }
     if (!open && dialog.open) {
       dialog.close();
     }
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, [open]);
 
   return (
@@ -81,6 +92,7 @@ export default function SettingsDialog({
           <label className={styles.field}>
             <span>Terminal font family</span>
             <input
+              ref={fontFamilyInputRef}
               className={styles.input}
               value={fontFamily}
               onChange={(event) => onChangeFontFamily(event.target.value)}

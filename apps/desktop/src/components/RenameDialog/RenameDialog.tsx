@@ -22,18 +22,29 @@ export default function RenameDialog({
   onSave,
 }: RenameDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) {
       return;
     }
+    let rafId: number | null = null;
     if (open && !dialog.open) {
       dialog.showModal();
+      rafId = requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
     }
     if (!open && dialog.open) {
       dialog.close();
     }
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, [open]);
 
   return (
@@ -74,11 +85,11 @@ export default function RenameDialog({
         <div className={styles.grid}>
           <label className={styles.field}>
             <input
+              ref={inputRef}
               className={styles.input}
               value={value}
               onChange={(event) => onChange(event.target.value)}
               placeholder="feature/my-branch"
-              autoFocus
             />
           </label>
         </div>
