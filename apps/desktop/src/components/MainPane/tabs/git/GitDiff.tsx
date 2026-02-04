@@ -20,6 +20,7 @@ interface GitDiffPayload {
 export default function GitDiff({ session, isActive }: GitDiffProps) {
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [actionTarget, setActionTarget] = useState<"staged" | "unstaged" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stagedOpen, setStagedOpen] = useState(true);
   const [unstagedOpen, setUnstagedOpen] = useState(true);
@@ -91,8 +92,8 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
 
   const sections = useMemo<{ key: "staged" | "unstaged"; title: string; files: FileDiff[] }[]>(
     () => [
-      { key: "staged", title: "Staged Diff", files: stagedFiles },
-      { key: "unstaged", title: "Unstaged Diff", files: unstagedFiles },
+      { key: "staged", title: "Staged Diffs", files: stagedFiles },
+      { key: "unstaged", title: "Unstaged Diffs", files: unstagedFiles },
     ],
     [stagedFiles, unstagedFiles]
   );
@@ -112,6 +113,29 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     void loadDiffs();
   }, [loadDiffs]);
 
+  const handleSectionAction = useCallback(
+    async (key: "staged" | "unstaged") => {
+      if (!repoPath) {
+        return;
+      }
+      setActionTarget(key);
+      setError(null);
+      try {
+        if (key === "staged") {
+          await invoke("unstage_all_changes", { path: repoPath });
+        } else {
+          await invoke("stage_all_changes", { path: repoPath });
+        }
+        await loadDiffs();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setActionTarget((current) => (current === key ? null : current));
+      }
+    },
+    [loadDiffs, repoPath]
+  );
+
   return (
     <div className={styles.container}>
       {sections.map((section) => {
@@ -119,6 +143,10 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
         const deletions = section.files.reduce((sum, file) => sum + file.deletions, 0);
         const isOpen = section.key === "staged" ? stagedOpen : unstagedOpen;
         const setOpen = section.key === "staged" ? setStagedOpen : setUnstagedOpen;
+        const sectionActionLabel = section.key === "staged" ? "Unstage All" : "Stage All";
+        const sectionActionPending = actionTarget === section.key;
+        const sectionActionDisabled =
+          !repoPath || isLoading || actionTarget !== null || sectionActionPending || section.files.length === 0;
         return (
           <div key={section.key} className={styles.diffSection}>
             <GitDiffsHeader
@@ -130,6 +158,9 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
               onToggle={() => setOpen((prev) => !prev)}
               onRefresh={handleRefresh}
               refreshDisabled={!repoPath || isLoading}
+              sectionActionLabel={sectionActionLabel}
+              onSectionAction={() => void handleSectionAction(section.key)}
+              sectionActionDisabled={sectionActionDisabled}
             />
 
             {isOpen ? (

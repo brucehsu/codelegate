@@ -15,6 +15,9 @@ interface GitDiffsHeaderProps {
   refreshDisabled?: boolean;
   showStats?: boolean;
   showRefresh?: boolean;
+  sectionActionLabel?: string;
+  onSectionAction?: () => void;
+  sectionActionDisabled?: boolean;
   children?: ReactNode;
   bodyClassName?: string;
 }
@@ -30,11 +33,15 @@ export default function GitDiffsHeader({
   refreshDisabled = false,
   showStats = true,
   showRefresh = true,
+  sectionActionLabel,
+  onSectionAction,
+  sectionActionDisabled = false,
   children,
   bodyClassName,
 }: GitDiffsHeaderProps) {
   const shouldShowStats = showStats;
   const shouldShowRefresh = showRefresh && Boolean(onRefresh);
+  const shouldShowSectionAction = Boolean(sectionActionLabel && onSectionAction);
   return (
     <CollapsibleSection
       title={
@@ -61,6 +68,11 @@ export default function GitDiffsHeader({
       bodyClassName={bodyClassName}
       actions={
         <>
+          {shouldShowSectionAction ? (
+            <ActionButton onClick={onSectionAction} disabled={sectionActionDisabled}>
+              {sectionActionLabel}
+            </ActionButton>
+          ) : null}
           {shouldShowRefresh ? (
             <ActionButton
               icon={<RefreshCw size={16} aria-hidden="true" />}

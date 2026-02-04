@@ -234,6 +234,39 @@ fn run_git_diff(args: &[&str]) -> Result<String, String> {
   Ok(stdout)
 }
 
+fn run_git_command(args: &[&str], fallback_error: &str) -> Result<(), String> {
+  let output = std::process::Command::new("git")
+    .args(args)
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  if output.status.success() {
+    return Ok(());
+  }
+
+  let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+  let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  Err(if !stderr.is_empty() {
+    stderr
+  } else if !stdout.is_empty() {
+    stdout
+  } else {
+    fallback_error.to_string()
+  })
+}
+
+fn has_git_head(root: &str) -> Result<bool, String> {
+  let output = std::process::Command::new("git")
+    .arg("-C")
+    .arg(root)
+    .arg("rev-parse")
+    .arg("--verify")
+    .arg("HEAD")
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+  Ok(output.status.success())
+}
+
 fn get_untracked_files(root: &str) -> Result<Vec<String>, String> {
   let output = std::process::Command::new("git")
     .arg("-C")
@@ -317,6 +350,35 @@ fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
     unstaged,
     untracked,
   })
+}
+
+#[tauri::command]
+fn stage_all_changes(path: String) -> Result<(), String> {
+  let root = resolve_repo_root(path)?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
+  }
+  run_git_command(&["-C", &root, "add", "--all"], "Failed to stage changes")
+}
+
+#[tauri::command]
+fn unstage_all_changes(path: String) -> Result<(), String> {
+  let root = resolve_repo_root(path)?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
+  }
+
+  if has_git_head(&root)? {
+    run_git_command(
+      &["-C", &root, "restore", "--staged", "--", "."],
+      "Failed to unstage changes",
+    )
+  } else {
+    run_git_command(
+      &["-C", &root, "rm", "--cached", "-r", "--ignore-unmatch", "--", "."],
+      "Failed to unstage changes",
+    )
+  }
 }
 
 #[tauri::command]
@@ -526,6 +588,8 @@ pub fn run() {
       get_git_branch,
       rename_git_branch,
       get_git_diff,
+      stage_all_changes,
+      unstage_all_changes,
       load_config,
       save_config,
       spawn_pty,
