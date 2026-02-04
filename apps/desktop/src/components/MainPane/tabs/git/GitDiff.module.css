@@ -52,6 +52,23 @@
   gap: 8px;
 }
 
+.diffSummaryActionButton {
+  min-height: 34px;
+  line-height: 1;
+}
+
+.discardAction {
+  background: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 70%, #000 30%);
+  color: #fff;
+}
+
+.discardAction:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, #000 15%);
+  border-color: color-mix(in srgb, var(--danger) 75%, #000 25%);
+  color: #fff;
+}
+
 .diffSummaryTitle {
   color: var(--text);
   font-size: 0.95rem;

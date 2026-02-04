@@ -4,6 +4,14 @@ import ActionButton from "../../../ui/ActionButton/ActionButton";
 import CollapsibleSection from "../../../ui/CollapsibleSection/CollapsibleSection";
 import styles from "./GitDiff.module.css";
 
+interface SectionAction {
+  key: string;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+}
+
 interface GitDiffsHeaderProps {
   title: ReactNode;
   fileCount?: number;
@@ -15,9 +23,7 @@ interface GitDiffsHeaderProps {
   refreshDisabled?: boolean;
   showStats?: boolean;
   showRefresh?: boolean;
-  sectionActionLabel?: string;
-  onSectionAction?: () => void;
-  sectionActionDisabled?: boolean;
+  sectionActions?: SectionAction[];
   children?: ReactNode;
   bodyClassName?: string;
 }
@@ -33,15 +39,13 @@ export default function GitDiffsHeader({
   refreshDisabled = false,
   showStats = true,
   showRefresh = true,
-  sectionActionLabel,
-  onSectionAction,
-  sectionActionDisabled = false,
+  sectionActions = [],
   children,
   bodyClassName,
 }: GitDiffsHeaderProps) {
   const shouldShowStats = showStats;
   const shouldShowRefresh = showRefresh && Boolean(onRefresh);
-  const shouldShowSectionAction = Boolean(sectionActionLabel && onSectionAction);
+  const hasSectionActions = sectionActions.length > 0;
   return (
     <CollapsibleSection
       title={
@@ -68,16 +72,24 @@ export default function GitDiffsHeader({
       bodyClassName={bodyClassName}
       actions={
         <>
-          {shouldShowSectionAction ? (
-            <ActionButton onClick={onSectionAction} disabled={sectionActionDisabled}>
-              {sectionActionLabel}
-            </ActionButton>
-          ) : null}
+          {hasSectionActions
+            ? sectionActions.map((action) => (
+                <ActionButton
+                  key={action.key}
+                  onClick={action.onClick}
+                  disabled={action.disabled}
+                  className={[styles.diffSummaryActionButton, action.className].filter(Boolean).join(" ")}
+                >
+                  {action.label}
+                </ActionButton>
+              ))
+            : null}
           {shouldShowRefresh ? (
             <ActionButton
               icon={<RefreshCw size={16} aria-hidden="true" />}
               onClick={onRefresh}
               disabled={refreshDisabled}
+              className={styles.diffSummaryActionButton}
             >
               Refresh
             </ActionButton>

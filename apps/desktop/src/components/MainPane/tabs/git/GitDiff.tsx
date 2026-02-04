@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import type { Session } from "../../../../types";
 import { getLanguageFromPath, parseGitDiff, type FileDiff } from "../../../../utils/gitDiff";
 import GitDiffsHeader from "./GitDiffsHeader";
@@ -20,7 +21,7 @@ interface GitDiffPayload {
 export default function GitDiff({ session, isActive }: GitDiffProps) {
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [actionTarget, setActionTarget] = useState<"staged" | "unstaged" | null>(null);
+  const [actionTarget, setActionTarget] = useState<"stageAll" | "unstageAll" | "discardAll" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stagedOpen, setStagedOpen] = useState(true);
   const [unstagedOpen, setUnstagedOpen] = useState(true);
@@ -113,24 +114,35 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     void loadDiffs();
   }, [loadDiffs]);
 
-  const handleSectionAction = useCallback(
-    async (key: "staged" | "unstaged") => {
+  const runBulkAction = useCallback(
+    async (target: "stageAll" | "unstageAll" | "discardAll") => {
       if (!repoPath) {
         return;
       }
-      setActionTarget(key);
+      if (target === "discardAll") {
+        const confirmed = await confirm(
+          "Discard all unstaged changes? This removes unstaged edits and untracked files.",
+          { title: "Codelegate", kind: "warning" }
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+      setActionTarget(target);
       setError(null);
       try {
-        if (key === "staged") {
+        if (target === "unstageAll") {
           await invoke("unstage_all_changes", { path: repoPath });
-        } else {
+        } else if (target === "stageAll") {
           await invoke("stage_all_changes", { path: repoPath });
+        } else {
+          await invoke("discard_all_changes", { path: repoPath });
         }
         await loadDiffs();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
-        setActionTarget((current) => (current === key ? null : current));
+        setActionTarget((current) => (current === target ? null : current));
       }
     },
     [loadDiffs, repoPath]
@@ -143,10 +155,33 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
         const deletions = section.files.reduce((sum, file) => sum + file.deletions, 0);
         const isOpen = section.key === "staged" ? stagedOpen : unstagedOpen;
         const setOpen = section.key === "staged" ? setStagedOpen : setUnstagedOpen;
-        const sectionActionLabel = section.key === "staged" ? "Unstage All" : "Stage All";
-        const sectionActionPending = actionTarget === section.key;
-        const sectionActionDisabled =
-          !repoPath || isLoading || actionTarget !== null || sectionActionPending || section.files.length === 0;
+        const hasFiles = section.files.length > 0;
+        const actionsDisabled = !repoPath || isLoading || actionTarget !== null || !hasFiles;
+        const sectionActions =
+          section.key === "staged"
+            ? [
+                {
+                  key: "unstage-all",
+                  label: "Unstage All",
+                  onClick: () => void runBulkAction("unstageAll"),
+                  disabled: actionsDisabled,
+                },
+              ]
+            : [
+                {
+                  key: "discard-all",
+                  label: "Discard All",
+                  onClick: () => void runBulkAction("discardAll"),
+                  className: styles.discardAction,
+                  disabled: actionsDisabled,
+                },
+                {
+                  key: "stage-all",
+                  label: "Stage All",
+                  onClick: () => void runBulkAction("stageAll"),
+                  disabled: actionsDisabled,
+                },
+              ];
         return (
           <div key={section.key} className={styles.diffSection}>
             <GitDiffsHeader
@@ -158,9 +193,7 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
               onToggle={() => setOpen((prev) => !prev)}
               onRefresh={handleRefresh}
               refreshDisabled={!repoPath || isLoading}
-              sectionActionLabel={sectionActionLabel}
-              onSectionAction={() => void handleSectionAction(section.key)}
-              sectionActionDisabled={sectionActionDisabled}
+              sectionActions={sectionActions}
             />
 
             {isOpen ? (

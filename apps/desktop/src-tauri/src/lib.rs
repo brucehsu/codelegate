@@ -382,6 +382,32 @@ fn unstage_all_changes(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn discard_all_changes(path: String) -> Result<(), String> {
+  let root = resolve_repo_root(path)?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
+  }
+
+  let restore_result = run_git_command(
+    &["-C", &root, "restore", "--worktree", "--", "."],
+    "Failed to discard unstaged changes",
+  );
+  if let Err(message) = restore_result {
+    let ignore_pathspec_error =
+      message.contains("did not match any file(s) known to git")
+      || message.contains("pathspec '.'");
+    if !ignore_pathspec_error {
+      return Err(message);
+    }
+  }
+
+  run_git_command(
+    &["-C", &root, "clean", "-fd", "--", "."],
+    "Failed to discard untracked changes",
+  )
+}
+
+#[tauri::command]
 fn load_config() -> Result<AppConfig, String> {
   let file = config_file()?;
   if !file.exists() {
@@ -590,6 +616,7 @@ pub fn run() {
       get_git_diff,
       stage_all_changes,
       unstage_all_changes,
+      discard_all_changes,
       load_config,
       save_config,
       spawn_pty,
