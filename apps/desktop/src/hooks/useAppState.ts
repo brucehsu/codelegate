@@ -41,6 +41,7 @@ interface TerminalRuntime {
     rows: number;
   };
   isFollowing?: boolean;
+  savedViewportY?: number;
   scrollDisposable?: { dispose: () => void };
   viewportEl?: HTMLDivElement | null;
   viewportHandler?: (() => void) | null;
@@ -844,9 +845,11 @@ export function useAppState(
         if (!runtime) {
           return;
         }
+        if (runtime.term) {
+          runtime.savedViewportY = runtime.term.buffer.active.viewportY;
+        }
         runtime.container = null;
         runtime.lastFit = undefined;
-        runtime.isFollowing = undefined;
         if (runtime.resizeObserver) {
           runtime.resizeObserver.disconnect();
           runtime.resizeObserver = undefined;
@@ -901,6 +904,10 @@ export function useAppState(
           viewport.addEventListener("scroll", handler, { passive: true });
           handler();
         }
+        if (runtime.savedViewportY !== undefined && runtime.isFollowing === false) {
+          term.scrollToLine(runtime.savedViewportY);
+        }
+        runtime.savedViewportY = undefined;
         updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
 
         const pending = pendingFocusRef.current;
