@@ -174,7 +174,11 @@ export default function App() {
 
   const filteredSessions = useMemo(() => {
     const needle = filter.toLowerCase();
-    return visibleSessions.filter((session) => getRepoName(session.repo.repoPath).toLowerCase().includes(needle));
+    return visibleSessions.filter((session) => {
+      const repoName = getRepoName(session.repo.repoPath).toLowerCase();
+      const branchName = (session.branch ?? "").toLowerCase();
+      return repoName.includes(needle) || branchName.includes(needle);
+    });
   }, [visibleSessions, filter]);
 
   const sessionGroups = useMemo(() => groupSessionsByRepo(filteredSessions), [filteredSessions]);
