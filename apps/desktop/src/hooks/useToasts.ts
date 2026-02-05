@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ToastInput, ToastMessage } from "../types";
 
-export function useToasts(timeoutMs = 5000) {
+export function useToasts(timeoutMs = 2000) {
+  const fadeOutMs = 1000;
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const timeouts = useRef<Map<string, number>>(new Map());
+  const displayTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const removeTimeoutsRef = useRef<Map<string, number>>(new Map());
 
   const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    const timeout = timeouts.current.get(id);
-    if (timeout) {
-      clearTimeout(timeout);
-      timeouts.current.delete(id);
+    const displayTimeout = displayTimeoutsRef.current.get(id);
+    if (displayTimeout) {
+      window.clearTimeout(displayTimeout);
+      displayTimeoutsRef.current.delete(id);
     }
-  }, []);
+    if (removeTimeoutsRef.current.has(id)) {
+      return;
+    }
+    setToasts((prev) => prev.map((toast) => (toast.id === id ? { ...toast, exiting: true } : toast)));
+    const removeTimeout = window.setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+      removeTimeoutsRef.current.delete(id);
+      displayTimeoutsRef.current.delete(id);
+    }, fadeOutMs);
+    removeTimeoutsRef.current.set(id, removeTimeout);
+  }, [fadeOutMs]);
 
   const pushToast = useCallback(
     (input: ToastInput) => {
@@ -22,17 +33,19 @@ export function useToasts(timeoutMs = 5000) {
         message: input.message,
         tone: input.tone ?? "error",
       };
-      setToasts((prev) => [...prev, toast]);
-      const timeout = window.setTimeout(() => removeToast(id), timeoutMs);
-      timeouts.current.set(id, timeout);
+      setToasts((prev) => [toast, ...prev]);
+      const displayTimeout = window.setTimeout(() => removeToast(id), timeoutMs);
+      displayTimeoutsRef.current.set(id, displayTimeout);
     },
     [removeToast, timeoutMs]
   );
 
   useEffect(() => {
     return () => {
-      timeouts.current.forEach((timeout) => clearTimeout(timeout));
-      timeouts.current.clear();
+      displayTimeoutsRef.current.forEach((timeout) => window.clearTimeout(timeout));
+      removeTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+      displayTimeoutsRef.current.clear();
+      removeTimeoutsRef.current.clear();
     };
   }, []);
 

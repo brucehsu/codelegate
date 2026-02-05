@@ -65,6 +65,7 @@ export interface ToastMessage {
   id: string;
   message: string;
   tone: "error" | "info" | "success";
+  exiting?: boolean;
 }
 
 export interface ToastInput {
