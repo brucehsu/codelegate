@@ -218,7 +218,7 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
         amend: commitAmend,
       });
       setCommitMessage("");
-      onNotify({ message: commitAmend ? "Amended." : "Committed." });
+      onNotify({ tone: "success", message: commitAmend ? "Amended." : "Committed." });
       await loadDiffs();
     } catch (err) {
       onNotify({ tone: "error", message: err instanceof Error ? err.message : String(err) });

@@ -64,10 +64,10 @@ export interface PtyExit {
 export interface ToastMessage {
   id: string;
   message: string;
-  tone: "error" | "info";
+  tone: "error" | "info" | "success";
 }
 
 export interface ToastInput {
   message: string;
-  tone?: "error" | "info";
+  tone?: "error" | "info" | "success";
 }

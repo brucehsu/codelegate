@@ -17,7 +17,9 @@ export default function Toasts({ toasts, onDismiss }: ToastsProps) {
         <button
           key={toast.id}
           type="button"
-          className={`${styles.toast} ${toast.tone === "error" ? styles.error : styles.info}`}
+          className={`${styles.toast} ${
+            toast.tone === "error" ? styles.error : toast.tone === "success" ? styles.success : styles.info
+          }`}
           onClick={() => onDismiss(toast.id)}
         >
           <span className={styles.message}>{toast.message}</span>
