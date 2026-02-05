@@ -217,16 +217,23 @@ export default function Sidebar({
             </span>
           ) : null}
         </div>
-        <IconButton
-          aria-label="Settings"
-          variant="fab"
-          shape="circle"
-          size="lg"
-          iconSize={18}
-          onClick={onOpenSettings}
-        >
-          <Settings aria-hidden="true" />
-        </IconButton>
+        <div className={styles.actionButton}>
+          <IconButton
+            aria-label="Settings"
+            variant="fab"
+            shape="circle"
+            size="lg"
+            iconSize={18}
+            onClick={onOpenSettings}
+          >
+            <Settings aria-hidden="true" />
+          </IconButton>
+          {showShortcutHints ? (
+            <span className={styles.actionShortcut} aria-hidden="true">
+              P
+            </span>
+          ) : null}
+        </div>
       </div>
     </aside>
   );

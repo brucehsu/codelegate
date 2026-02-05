@@ -250,6 +250,17 @@ export default function App() {
     setActivePaneKind(kind);
   }, [setActivePaneKind]);
 
+  const openSettings = useCallback(() => {
+    setFontFamily(config.settings.terminalFontFamily);
+    setFontSize(config.settings.terminalFontSize);
+    setBatterySaver(config.settings.batterySaver);
+    setSettingsOpen(true);
+  }, [
+    config.settings.batterySaver,
+    config.settings.terminalFontFamily,
+    config.settings.terminalFontSize,
+  ]);
+
   const cycleSessionHotkeyPage = useCallback(() => {
     if (hotkeyPageCount <= 1) {
       return;
@@ -299,6 +310,13 @@ export default function App() {
         handler: () => handleOpenDialog(),
       }),
       defineHotkey({
+        id: "settings-open-alt",
+        combo: "Alt+KeyP",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => openSettings(),
+      }),
+      defineHotkey({
         id: "session-hotkey-page-next-digit",
         combo: "Alt+Digit0",
         preventDefault: true,
@@ -314,7 +332,7 @@ export default function App() {
       }),
       ...buildAltSessionSelectHotkeys(selectSessionByHotkeyIndex),
     ],
-    [cycleSessionHotkeyPage, handleSelectPaneKind, selectSessionByHotkeyIndex, handleOpenDialog]
+    [cycleSessionHotkeyPage, handleSelectPaneKind, selectSessionByHotkeyIndex, handleOpenDialog, openSettings]
   );
 
   function resetForm() {
@@ -325,13 +343,6 @@ export default function App() {
     setEnvVars(emptyEnv);
     setPreCommands("");
   }
-
-  const openSettings = () => {
-    setFontFamily(config.settings.terminalFontFamily);
-    setFontSize(config.settings.terminalFontSize);
-    setBatterySaver(config.settings.batterySaver);
-    setSettingsOpen(true);
-  };
 
   const closeSettings = () => {
     setSettingsOpen(false);
