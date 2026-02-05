@@ -9,8 +9,9 @@ import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { agentCommandById, darkTerminalTheme, lightTerminalTheme } from "../constants";
+import { agentCommandById } from "../constants";
+import { DEFAULT_TERMINAL_LINE_HEIGHT, useTerminalRenderer } from "./useTerminalRenderer";
+import type { TerminalAppearance, TerminalRendererRuntime } from "./useTerminalRenderer";
 import type {
   AppConfig,
   AppSettings,
@@ -25,11 +26,10 @@ import type {
 import { createSessionId, envListToMap, getRepoName } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 
-interface TerminalRuntime {
+interface TerminalRuntime extends TerminalRendererRuntime {
   container?: HTMLDivElement | null;
   term?: Terminal;
   fit?: FitAddon;
-  webgl?: WebglAddon;
   ptyId?: number;
   starting?: boolean;
   resizeObserver?: ResizeObserver;
@@ -229,17 +229,28 @@ export function useAppState(
   const [filter, setFilter] = useState("");
   const [unreadOutput, setUnreadOutput] = useState<Record<string, boolean>>({});
   const [agentOutputting, setAgentOutputting] = useState<Record<string, boolean>>({});
+  const configRef = useRef(config);
+  const configReadyResolveRef = useRef<(() => void) | null>(null);
+  const configReadyPromiseRef = useRef(
+    new Promise<void>((resolve) => {
+      configReadyResolveRef.current = resolve;
+    })
+  );
 
   const unreadOutputRef = useRef(unreadOutput);
   const agentOutputtingRef = useRef(agentOutputting);
   const agentOutputtingTimersRef = useRef<Map<string, number>>(new Map());
   const agentOutputtingSuppressUntilRef = useRef<Map<string, number>>(new Map());
+  const fontRefreshRafRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     unreadOutputRef.current = unreadOutput;
   }, [unreadOutput]);
   useEffect(() => {
     agentOutputtingRef.current = agentOutputting;
   }, [agentOutputting]);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
   const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: PaneKind }>());
@@ -452,6 +463,11 @@ export function useAppState(
     document.body.dataset.batterySaver = enabled ? "on" : "off";
   }, []);
 
+  const markConfigReady = useCallback(() => {
+    configReadyResolveRef.current?.();
+    configReadyResolveRef.current = null;
+  }, []);
+
   const saveConfig = useCallback((updater: (prev: AppConfig) => AppConfig) => {
     setConfig((prev) => {
       const next = updater(prev);
@@ -472,11 +488,6 @@ export function useAppState(
 
   const applyTheme = useCallback((theme: "dark" | "light") => {
     document.body.dataset.theme = theme;
-    forEachTerminalRuntime(runtimeRef.current, (terminal) => {
-      if (terminal.term) {
-        terminal.term.options.theme = theme === "dark" ? darkTerminalTheme : lightTerminalTheme;
-      }
-    });
   }, []);
 
   useEffect(() => {
@@ -491,7 +502,7 @@ export function useAppState(
           settings: {
             ...defaultSettings,
             ...loaded.settings,
-            theme: "dark",
+            theme: loaded.settings?.theme ?? defaultSettings.theme,
             recentDirs: loaded.settings?.recentDirs ?? defaultSettings.recentDirs,
             terminalFontFamily: normalizeFontFamily(
               loaded.settings?.terminalFontFamily ?? defaultSettings.terminalFontFamily
@@ -500,17 +511,20 @@ export function useAppState(
           },
         } as AppConfig;
         setConfig(nextConfig);
-        applyTheme("dark");
+        applyTheme(nextConfig.settings.theme);
         setBatterySaverDataset(nextConfig.settings.batterySaver);
       })
       .catch(() => {
-        applyTheme("dark");
+        applyTheme(defaultSettings.theme);
         setBatterySaverDataset(false);
+      })
+      .finally(() => {
+        markConfigReady();
       });
     return () => {
       mounted = false;
     };
-  }, [applyTheme, setBatterySaverDataset]);
+  }, [applyTheme, markConfigReady, setBatterySaverDataset]);
 
   const updateRecentDirs = useCallback((path: string) => {
     const trimmed = path.trim();
@@ -523,143 +537,80 @@ export function useAppState(
     }));
   }, [updateSettings]);
 
-  const loadTerminalFonts = useCallback((fontFamily: string, fontSize: number) => {
-    if (!document.fonts?.load) {
-      return Promise.resolve();
-    }
-    const sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    const specs = [
-      `${fontSize}px ${fontFamily}`,
-      `italic ${fontSize}px ${fontFamily}`,
-      `700 ${fontSize}px ${fontFamily}`,
-      `italic 700 ${fontSize}px ${fontFamily}`,
-    ];
-    return Promise.allSettled(specs.map((spec) => document.fonts.load(spec, sample))).then(() => undefined);
-  }, []);
-
-  const applyTerminalTypography = useCallback((runtime: TerminalRuntime, fontFamily: string, fontSize: number) => {
-    const term = runtime.term;
-    if (!term) {
-      return;
-    }
-    term.options.fontFamily = fontFamily;
-    term.options.fontSize = fontSize;
-    const root = term.element;
-    if (!root) {
-      return;
-    }
-    const fontSizePx = `${fontSize}px`;
-    root.style.fontFamily = fontFamily;
-    root.style.fontSize = fontSizePx;
-    root.style.lineHeight = "1.25";
-    const accessibilityTree = root.querySelector(".xterm-accessibility-tree") as HTMLElement | null;
-    if (accessibilityTree) {
-      accessibilityTree.style.fontFamily = fontFamily;
-      accessibilityTree.style.fontSize = fontSizePx;
-      accessibilityTree.style.lineHeight = "1.25";
-    }
-  }, []);
-
-  const clearPendingRendererAttach = useCallback((runtime: TerminalRuntime) => {
-    if (runtime.rendererAttachRaf !== undefined) {
-      window.cancelAnimationFrame(runtime.rendererAttachRaf);
-      runtime.rendererAttachRaf = undefined;
-    }
-    if (runtime.webglPostInitTimer !== undefined) {
-      window.clearTimeout(runtime.webglPostInitTimer);
-      runtime.webglPostInitTimer = undefined;
-    }
-  }, []);
-
-  const applyWebglRenderer = useCallback(
-    (runtime: TerminalRuntime, fontFamily: string, fontSize: number) => {
-      const term = runtime.term;
-      if (!term) {
-        return;
-      }
-      if (runtime.webgl) {
-        runtime.webgl.clearTextureAtlas();
-        if (term.rows > 0) {
-          term.refresh(0, term.rows - 1);
-        }
-        return;
-      }
-      clearPendingRendererAttach(runtime);
-      loadTerminalFonts(fontFamily, fontSize).then(() => {
-        if (runtime.term !== term || runtime.webgl) {
-          return;
-        }
-        runtime.rendererAttachRaf = window.requestAnimationFrame(() => {
-          runtime.rendererAttachRaf = window.requestAnimationFrame(() => {
-            runtime.rendererAttachRaf = undefined;
-            if (runtime.term !== term || runtime.webgl) {
-              return;
-            }
-            try {
-              const webgl = new WebglAddon();
-              term.loadAddon(webgl);
-              runtime.webgl = webgl;
-              webgl.onContextLoss(() => {
-                runtime.webgl = undefined;
-                webgl.dispose();
-              });
-              webgl.clearTextureAtlas();
-              if (term.rows > 0) {
-                term.refresh(0, term.rows - 1);
-              }
-              runtime.webglPostInitTimer = window.setTimeout(() => {
-                runtime.webglPostInitTimer = undefined;
-                if (runtime.webgl !== webgl) {
-                  return;
-                }
-                webgl.clearTextureAtlas();
-                if (term.rows > 0) {
-                  term.refresh(0, term.rows - 1);
-                }
-              }, 100);
-            } catch {
-              // Fallback to canvas renderer when WebGL is unavailable.
-            }
-          });
-        });
-      });
-    },
-    [clearPendingRendererAttach, loadTerminalFonts]
+  const toTerminalAppearance = useCallback(
+    (settings: Pick<AppSettings, "terminalFontFamily" | "terminalFontSize">): TerminalAppearance => ({
+      fontFamily: settings.terminalFontFamily,
+      fontSize: settings.terminalFontSize,
+      lineHeight: DEFAULT_TERMINAL_LINE_HEIGHT,
+    }),
+    []
   );
 
-  const applyTerminalFontSettings = useCallback(
-    (fontFamily: string, fontSize: number) => {
-      forEachTerminalRuntime(runtimeRef.current, (terminal) => {
-        if (!terminal.term) {
-          return;
-        }
-        applyTerminalTypography(terminal, fontFamily, fontSize);
-        if (terminal.webgl) {
-          terminal.webgl.clearTextureAtlas();
-          if (terminal.term.rows > 0) {
-            terminal.term.refresh(0, terminal.term.rows - 1);
-          }
-        }
-        scheduleTerminalFit(terminal, true);
+  const {
+    applyTerminalAppearance,
+    clearPendingRendererAttach,
+    ensureWebglRenderer,
+    loadTerminalFonts,
+    refreshTerminalRows,
+    refreshWebglRenderer,
+  } = useTerminalRenderer();
+
+  const applyTerminalAppearanceToRuntime = useCallback(
+    (runtime: TerminalRuntime, appearance: TerminalAppearance, ensureRenderer = true) => {
+      if (!runtime.term) {
+        return;
+      }
+      applyTerminalAppearance(runtime, appearance);
+      if (ensureRenderer) {
+        ensureWebglRenderer(runtime, appearance);
+      }
+      if (runtime.webgl) {
+        refreshWebglRenderer(runtime);
+      } else {
+        refreshTerminalRows(runtime.term);
+      }
+      scheduleTerminalFit(runtime, true);
+    },
+    [applyTerminalAppearance, ensureWebglRenderer, refreshTerminalRows, refreshWebglRenderer, scheduleTerminalFit]
+  );
+
+  const applyTerminalAppearanceToAll = useCallback(
+    (appearance: TerminalAppearance, ensureRenderer = true) => {
+      forEachTerminalRuntime(runtimeRef.current, (runtime) => {
+        applyTerminalAppearanceToRuntime(runtime, appearance, ensureRenderer);
       });
     },
-    [applyTerminalTypography, scheduleTerminalFit]
+    [applyTerminalAppearanceToRuntime]
+  );
+
+  const refreshTerminalRenderersAfterFontLoad = useCallback(() => {
+    applyTerminalAppearanceToAll(toTerminalAppearance(configRef.current.settings));
+  }, [applyTerminalAppearanceToAll, toTerminalAppearance]);
+
+  const terminalAppearance = useMemo(
+    () =>
+      toTerminalAppearance({
+        terminalFontFamily: config.settings.terminalFontFamily,
+        terminalFontSize: config.settings.terminalFontSize,
+      }),
+    [config.settings.terminalFontFamily, config.settings.terminalFontSize, toTerminalAppearance]
   );
 
   const updateTerminalSettings = useCallback(
     (updates: { terminalFontFamily: string; terminalFontSize: number }) => {
       const nextFontFamily = normalizeFontFamily(updates.terminalFontFamily);
+      const appearance = toTerminalAppearance({
+        terminalFontFamily: nextFontFamily,
+        terminalFontSize: updates.terminalFontSize,
+      });
       updateSettings((settings) => ({
         ...settings,
         terminalFontFamily: nextFontFamily,
         terminalFontSize: updates.terminalFontSize,
       }));
-      applyTerminalFontSettings(nextFontFamily, updates.terminalFontSize);
-      forEachTerminalRuntime(runtimeRef.current, (terminal) => {
-        applyWebglRenderer(terminal, nextFontFamily, updates.terminalFontSize);
-      });
+      applyTerminalAppearanceToAll(appearance);
     },
-    [applyTerminalFontSettings, applyWebglRenderer, updateSettings]
+    [applyTerminalAppearanceToAll, toTerminalAppearance, updateSettings]
   );
 
   const updateBatterySaver = useCallback((enabled: boolean) => {
@@ -703,43 +654,53 @@ export function useAppState(
   );
 
   useEffect(() => {
-    applyTerminalFontSettings(config.settings.terminalFontFamily, config.settings.terminalFontSize);
-  }, [config.settings.terminalFontFamily, config.settings.terminalFontSize, applyTerminalFontSettings]);
+    applyTerminalAppearanceToAll(terminalAppearance);
+  }, [applyTerminalAppearanceToAll, terminalAppearance]);
 
   useEffect(() => {
     let cancelled = false;
-    loadTerminalFonts(config.settings.terminalFontFamily, config.settings.terminalFontSize).then(() => {
+    loadTerminalFonts(terminalAppearance).then(() => {
       if (cancelled) {
         return;
       }
-      forEachTerminalRuntime(runtimeRef.current, (terminal) => {
-        if (!terminal.term) {
-          return;
-        }
-        applyTerminalTypography(
-          terminal,
-          config.settings.terminalFontFamily,
-          config.settings.terminalFontSize
-        );
-        applyWebglRenderer(
-          terminal,
-          config.settings.terminalFontFamily,
-          config.settings.terminalFontSize
-        );
-        scheduleTerminalFit(terminal, true);
-      });
+      applyTerminalAppearanceToAll(terminalAppearance);
     });
     return () => {
       cancelled = true;
     };
-  }, [
-    config.settings.terminalFontFamily,
-    config.settings.terminalFontSize,
-    applyTerminalTypography,
-    applyWebglRenderer,
-    loadTerminalFonts,
-    scheduleTerminalFit,
-  ]);
+  }, [applyTerminalAppearanceToAll, loadTerminalFonts, terminalAppearance]);
+
+  useEffect(() => {
+    const fontSet = document.fonts;
+    if (!fontSet || typeof fontSet.addEventListener !== "function") {
+      return;
+    }
+    let cancelled = false;
+    const scheduleRefresh = () => {
+      if (cancelled || fontRefreshRafRef.current !== undefined) {
+        return;
+      }
+      fontRefreshRafRef.current = window.requestAnimationFrame(() => {
+        fontRefreshRafRef.current = undefined;
+        if (cancelled) {
+          return;
+        }
+        refreshTerminalRenderersAfterFontLoad();
+      });
+    };
+    void fontSet.ready.then(() => {
+      scheduleRefresh();
+    });
+    fontSet.addEventListener("loadingdone", scheduleRefresh);
+    return () => {
+      cancelled = true;
+      fontSet.removeEventListener("loadingdone", scheduleRefresh);
+      if (fontRefreshRafRef.current !== undefined) {
+        window.cancelAnimationFrame(fontRefreshRafRef.current);
+        fontRefreshRafRef.current = undefined;
+      }
+    };
+  }, [refreshTerminalRenderersAfterFontLoad]);
 
   const cycleSession = useCallback(() => {
     const list = sessionsRef.current;
@@ -915,10 +876,9 @@ export function useAppState(
       const term = new Terminal({
         allowProposedApi: true,
         cursorBlink: true,
-        fontFamily: config.settings.terminalFontFamily,
-        theme: config.settings.theme === "dark" ? darkTerminalTheme : lightTerminalTheme,
-        fontSize: config.settings.terminalFontSize,
-        lineHeight: 1.25,
+        fontFamily: terminalAppearance.fontFamily,
+        fontSize: terminalAppearance.fontSize,
+        lineHeight: terminalAppearance.lineHeight,
         scrollback: 1000,
       });
       configureTerminalOptions(term);
@@ -933,21 +893,15 @@ export function useAppState(
       attachTerminalHandlers(term, runtime, sessionId, kind);
       runtime.term = term;
       runtime.fit = fit;
-      applyTerminalTypography(runtime, config.settings.terminalFontFamily, config.settings.terminalFontSize);
-      applyWebglRenderer(
-        runtime,
-        config.settings.terminalFontFamily,
-        config.settings.terminalFontSize
-      );
+      applyTerminalAppearance(runtime, terminalAppearance);
+      ensureWebglRenderer(runtime, terminalAppearance);
     },
     [
-      applyTerminalTypography,
-      applyWebglRenderer,
+      applyTerminalAppearance,
       attachTerminalHandlers,
-      config.settings.terminalFontFamily,
-      config.settings.terminalFontSize,
-      config.settings.theme,
       configureTerminalOptions,
+      ensureWebglRenderer,
+      terminalAppearance,
     ]
   );
 
@@ -967,6 +921,68 @@ export function useAppState(
       return runtime[kind];
     },
     [ensureSessionRuntime]
+  );
+
+  const cleanupTerminalRuntimeAttachment = useCallback(
+    (runtime: TerminalRuntime) => {
+      clearPendingRendererAttach(runtime);
+      runtime.container = null;
+      runtime.lastFit = undefined;
+      if (runtime.resizeObserver) {
+        runtime.resizeObserver.disconnect();
+        runtime.resizeObserver = undefined;
+      }
+      runtime.scrollDisposable?.dispose();
+      runtime.scrollDisposable = undefined;
+      if (runtime.viewportEl && runtime.viewportHandler) {
+        runtime.viewportEl.removeEventListener("scroll", runtime.viewportHandler);
+      }
+      runtime.viewportEl = null;
+      runtime.viewportHandler = null;
+      if (runtime.resizeRaf !== undefined) {
+        window.cancelAnimationFrame(runtime.resizeRaf);
+        runtime.resizeRaf = undefined;
+      }
+    },
+    [clearPendingRendererAttach]
+  );
+
+  const detachTerminalRuntime = useCallback(
+    (runtime: TerminalRuntime, preserveViewport = false) => {
+      if (preserveViewport && runtime.term) {
+        runtime.savedViewportY = runtime.term.buffer.active.viewportY;
+      }
+      cleanupTerminalRuntimeAttachment(runtime);
+    },
+    [cleanupTerminalRuntimeAttachment]
+  );
+
+  const disposeTerminalRuntime = useCallback(
+    (runtime: TerminalRuntime) => {
+      detachTerminalRuntime(runtime);
+      if (runtime.term) {
+        runtime.term.dispose();
+      } else {
+        runtime.webgl?.dispose();
+      }
+      runtime.webgl = undefined;
+      runtime.term = undefined;
+      runtime.fit = undefined;
+      runtime.ptyId = undefined;
+      runtime.starting = false;
+      runtime.isFollowing = undefined;
+      runtime.savedViewportY = undefined;
+    },
+    [detachTerminalRuntime]
+  );
+
+  const disposeSessionRuntime = useCallback(
+    (runtime: SessionRuntime) => {
+      disposeTerminalRuntime(runtime.agent);
+      disposeTerminalRuntime(runtime.git);
+      disposeTerminalRuntime(runtime.terminal);
+    },
+    [disposeTerminalRuntime]
   );
 
   const setActivePaneKind = useCallback(
@@ -1007,27 +1023,7 @@ export function useAppState(
         if (!runtime) {
           return;
         }
-        clearPendingRendererAttach(runtime);
-        if (runtime.term) {
-          runtime.savedViewportY = runtime.term.buffer.active.viewportY;
-        }
-        runtime.container = null;
-        runtime.lastFit = undefined;
-        if (runtime.resizeObserver) {
-          runtime.resizeObserver.disconnect();
-          runtime.resizeObserver = undefined;
-        }
-        runtime.scrollDisposable?.dispose();
-        runtime.scrollDisposable = undefined;
-        if (runtime.viewportEl && runtime.viewportHandler) {
-          runtime.viewportEl.removeEventListener("scroll", runtime.viewportHandler);
-        }
-        runtime.viewportEl = null;
-        runtime.viewportHandler = null;
-        if (runtime.resizeRaf !== undefined) {
-          window.cancelAnimationFrame(runtime.resizeRaf);
-          runtime.resizeRaf = undefined;
-        }
+        detachTerminalRuntime(runtime, true);
         return;
       }
       const runtime = ensureTerminalRuntime(sessionId, kind);
@@ -1117,8 +1113,8 @@ export function useAppState(
       }
     },
     [
-      clearPendingRendererAttach,
       createTerminal,
+      detachTerminalRuntime,
       ensureTerminalRuntime,
       focusSession,
       registerPty,
@@ -1209,9 +1205,7 @@ export function useAppState(
 
       clearAgentOutputting(sessionId);
       if (runtime) {
-        clearPendingRendererAttach(runtime.agent);
-        clearPendingRendererAttach(runtime.git);
-        clearPendingRendererAttach(runtime.terminal);
+        disposeSessionRuntime(runtime);
       }
       runtimeRef.current.delete(sessionId);
       setSessions((prev) => prev.filter((session) => session.id !== sessionId));
@@ -1220,11 +1214,12 @@ export function useAppState(
         setActiveSessionId(nextActiveId);
       }
     },
-    [clearAgentOutputting, clearPendingRendererAttach, notify, setActiveSessionId]
+    [clearAgentOutputting, disposeSessionRuntime, notify, setActiveSessionId]
   );
 
   const startSession = useCallback(
     async (repo: RepoConfig) => {
+      await configReadyPromiseRef.current;
       const activeElement = document.activeElement;
       if (activeElement instanceof HTMLElement) {
         activeElement.blur();
@@ -1251,6 +1246,8 @@ export function useAppState(
       }
 
       const envMap = ensureTermEnv(envListToMap(repo.env));
+      const currentSettings = configRef.current.settings;
+      await loadTerminalFonts(toTerminalAppearance(currentSettings));
 
       const repoRoot = repo.repoPath;
       let sessionCwd = repoRoot;
@@ -1329,7 +1326,7 @@ export function useAppState(
       registerPty(runtime, sessionId, "agent", ptyId);
       updateSession(sessionId, { status: "running", lastError: undefined, startedAt: Date.now(), ptyId });
     },
-    [ensureTerminalRuntime, registerPty, updateSession]
+    [ensureTerminalRuntime, loadTerminalFonts, registerPty, toTerminalAppearance, updateSession]
   );
 
   useEffect(() => {
@@ -1492,6 +1489,22 @@ export function useAppState(
       window.removeEventListener("keydown", handler);
     };
   }, [globalHotkeys]);
+
+  useEffect(
+    () => () => {
+      forEachTerminalRuntime(runtimeRef.current, (runtime) => {
+        disposeTerminalRuntime(runtime);
+      });
+      runtimeRef.current.clear();
+      ptyToSessionRef.current.clear();
+      agentOutputtingTimersRef.current.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      agentOutputtingTimersRef.current.clear();
+      agentOutputtingSuppressUntilRef.current.clear();
+    },
+    [disposeTerminalRuntime]
+  );
 
   return {
     config,
