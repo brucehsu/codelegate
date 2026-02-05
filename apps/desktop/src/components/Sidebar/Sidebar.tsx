@@ -159,13 +159,18 @@ export default function Sidebar({
                         <div className={styles.menu}>
                           <button
                             type="button"
-                            className={styles.menuItem}
+                            className={`${styles.menuItem} ${styles.menuItemWithShortcut}`}
                             onClick={() => {
                               setOpenMenuId(null);
                               onRenameSession(session.id);
                             }}
                           >
-                            Rename Branch
+                            <span>Rename Branch</span>
+                            <span className={styles.menuShortcut} aria-hidden="true">
+                              <span className={styles.menuShortcutPill}>Alt</span>
+                              <span className={styles.menuShortcutPlus}>+</span>
+                              <span className={styles.menuShortcutPill}>R</span>
+                            </span>
                           </button>
                           <button
                             type="button"

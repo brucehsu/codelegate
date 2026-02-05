@@ -353,12 +353,14 @@
 .menuItem {
   width: 100%;
   text-align: left;
+  display: block;
   padding: 8px 10px;
   border-radius: 10px;
   background: transparent;
   border: 1px solid transparent;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .menuItem:hover {
@@ -372,4 +374,36 @@
 .menuItemDanger:hover {
   color: #ffffff;
   background: var(--danger);
+}
+
+.menuItemWithShortcut {
+  position: relative;
+  padding-right: 72px;
+}
+
+.menuShortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+}
+
+.menuShortcutPill {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 5px;
+  background: var(--surface-2);
+}
+
+.menuShortcutPlus {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: var(--muted);
 }

@@ -250,6 +250,20 @@ export default function App() {
     setActivePaneKind(kind);
   }, [setActivePaneKind]);
 
+  const openRename = useCallback((sessionId: string) => {
+    const session = sessions.find((item) => item.id === sessionId);
+    setRenameSessionId(sessionId);
+    setRenameValue(session?.branch ?? "");
+    setRenameOpen(true);
+  }, [sessions]);
+
+  const renameActiveSession = useCallback(() => {
+    if (!activeSessionId) {
+      return;
+    }
+    openRename(activeSessionId);
+  }, [activeSessionId, openRename]);
+
   const openSettings = useCallback(() => {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
@@ -317,6 +331,13 @@ export default function App() {
         handler: () => openSettings(),
       }),
       defineHotkey({
+        id: "session-rename-alt",
+        combo: "Alt+KeyR",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => renameActiveSession(),
+      }),
+      defineHotkey({
         id: "session-hotkey-page-next-digit",
         combo: "Alt+Digit0",
         preventDefault: true,
@@ -332,7 +353,14 @@ export default function App() {
       }),
       ...buildAltSessionSelectHotkeys(selectSessionByHotkeyIndex),
     ],
-    [cycleSessionHotkeyPage, handleSelectPaneKind, selectSessionByHotkeyIndex, handleOpenDialog, openSettings]
+    [
+      cycleSessionHotkeyPage,
+      handleSelectPaneKind,
+      selectSessionByHotkeyIndex,
+      handleOpenDialog,
+      openSettings,
+      renameActiveSession,
+    ]
   );
 
   function resetForm() {
@@ -367,13 +395,6 @@ export default function App() {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     requestAnimationFrame(() => focusActiveSession());
-  };
-
-  const openRename = (sessionId: string) => {
-    const session = sessions.find((item) => item.id === sessionId);
-    setRenameSessionId(sessionId);
-    setRenameValue(session?.branch ?? "");
-    setRenameOpen(true);
   };
 
   const applyRepoDefaults = useCallback(
