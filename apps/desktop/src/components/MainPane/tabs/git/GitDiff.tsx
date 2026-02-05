@@ -113,6 +113,7 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
   const commitAmend = commitMode === "amend";
   const commitActionDisabled = !repoPath || isLoading || isCommitting;
   const refreshDisabled = !repoPath || isLoading;
+  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -229,6 +230,26 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
     }
   }, [commitAmend, commitMessage, hasStagedChanges, loadDiffs, onNotify, repoPath]);
 
+  const handleCommitShortcut = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (event.key !== "Enter") {
+        return;
+      }
+      const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+      if (!modifierPressed) {
+        return;
+      }
+      event.preventDefault();
+      if (!commitActionDisabled) {
+        void handleCommit();
+      }
+    },
+    [commitActionDisabled, handleCommit, isMac]
+  );
+
   const handleSelectCommitMode = useCallback(
     async (mode: "commit" | "amend") => {
       setCommitMode(mode);
@@ -268,6 +289,7 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
                 setCommitMessageInvalid(false);
               }
             }}
+            onKeyDown={handleCommitShortcut}
             disabled={!repoPath || isCommitting}
           />
           <div className={styles.commitActions}>

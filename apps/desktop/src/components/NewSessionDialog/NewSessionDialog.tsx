@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import type { AgentId, EnvVar } from "../../types";
 import AgentPicker from "../AgentPicker/AgentPicker";
@@ -50,6 +50,24 @@ export default function NewSessionDialog({
   onSubmit,
 }: NewSessionDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+
+  const handleSubmitShortcut = (event: React.KeyboardEvent) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key !== "Enter") {
+      return;
+    }
+    const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+    if (!modifierPressed) {
+      return;
+    }
+    event.preventDefault();
+    if (startEnabled) {
+      onSubmit();
+    }
+  };
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -80,6 +98,7 @@ export default function NewSessionDialog({
           event.preventDefault();
           onSubmit();
         }}
+        onKeyDown={handleSubmitShortcut}
       >
         <div className={styles.header}>
           <div>

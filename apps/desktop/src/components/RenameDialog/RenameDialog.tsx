@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import IconButton from "../ui/IconButton/IconButton";
 import Button from "../ui/Button/Button";
@@ -23,6 +23,22 @@ export default function RenameDialog({
 }: RenameDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+
+  const handleSubmitShortcut = (event: React.KeyboardEvent) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key !== "Enter") {
+      return;
+    }
+    const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+    if (!modifierPressed) {
+      return;
+    }
+    event.preventDefault();
+    onSave();
+  };
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -63,6 +79,7 @@ export default function RenameDialog({
           event.preventDefault();
           onSave();
         }}
+        onKeyDown={handleSubmitShortcut}
       >
         <div className={styles.header}>
           <div>

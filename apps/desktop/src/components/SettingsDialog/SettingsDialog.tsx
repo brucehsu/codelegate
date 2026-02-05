@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import IconButton from "../ui/IconButton/IconButton";
 import Button from "../ui/Button/Button";
@@ -41,6 +41,22 @@ export default function SettingsDialog({
   const shortcutModifierInputRef = useRef<HTMLInputElement>(null);
   const shortcutModifierRef = useRef(normalizeShortcutModifier(shortcutModifier));
   const shortcutModifierDraftRef = useRef(normalizeShortcutModifier(shortcutModifier));
+  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+
+  const handleSubmitShortcut = (event: React.KeyboardEvent) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key !== "Enter") {
+      return;
+    }
+    const modifierPressed = isMac ? event.metaKey : event.ctrlKey;
+    if (!modifierPressed) {
+      return;
+    }
+    event.preventDefault();
+    onSave();
+  };
 
   useEffect(() => {
     const normalized = normalizeShortcutModifier(shortcutModifier);
@@ -113,6 +129,7 @@ export default function SettingsDialog({
           event.preventDefault();
           onSave();
         }}
+        onKeyDown={handleSubmitShortcut}
       >
         <div className={styles.header}>
           <div>
