@@ -342,6 +342,7 @@
   top: calc(100% + 6px);
   right: 0;
   min-width: 180px;
+  width: max-content;
   padding: 6px;
   border-radius: 12px;
   background: var(--surface);
@@ -378,16 +379,16 @@
 
 .menuItemWithShortcut {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto auto;
   align-items: end;
   column-gap: 6px;
 }
 
 .menuItemLabel {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: max-content;
   white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .menuShortcut {
