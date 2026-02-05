@@ -123,6 +123,38 @@ function runHotkeys(event: KeyboardEvent, hotkeys: Hotkey[]) {
   return false;
 }
 
+function isTextInputElement(element: Element | null) {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+  if (element.isContentEditable) {
+    return true;
+  }
+  if (element instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  if (element instanceof HTMLSelectElement) {
+    return true;
+  }
+  if (element instanceof HTMLInputElement) {
+    const nonTextTypes = new Set([
+      "button",
+      "checkbox",
+      "color",
+      "file",
+      "hidden",
+      "image",
+      "radio",
+      "range",
+      "reset",
+      "submit",
+    ]);
+    return !nonTextTypes.has((element.type || "text").toLowerCase());
+  }
+  const role = element.getAttribute("role");
+  return role === "textbox" || role === "searchbox";
+}
+
 function decodeBase64ToUint8(data: string) {
   const binary = atob(data);
   const bytes = new Uint8Array(binary.length);
@@ -436,6 +468,11 @@ export function useAppState(
   const focusSession = useCallback((sessionId: string, kind: PaneKind) => {
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (runtime?.term) {
+      const activeElement = document.activeElement;
+      const activeInsideTerminal = activeElement instanceof Element && Boolean(activeElement.closest(".xterm"));
+      if (isTextInputElement(activeElement) && !activeInsideTerminal) {
+        return true;
+      }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           runtime.term?.focus();
