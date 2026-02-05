@@ -25,6 +25,7 @@ import type {
 } from "../types";
 import { createSessionId, envListToMap, getRepoName } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
+import { defineHotkey, runHotkeys, type HotkeyBinding } from "../utils/hotkeys";
 
 interface TerminalRuntime extends TerminalRendererRuntime {
   container?: HTMLDivElement | null;
@@ -55,18 +56,6 @@ interface SessionRuntime {
   terminal: TerminalRuntime;
 }
 
-interface Hotkey {
-  key?: string;
-  code?: string;
-  ctrl?: boolean;
-  shift?: boolean;
-  alt?: boolean;
-  meta?: boolean;
-  preventDefault?: boolean;
-  stopPropagation?: boolean;
-  handler: (event: KeyboardEvent) => void;
-}
-
 function forEachTerminalRuntime(
   runtimeMap: Map<string, SessionRuntime>,
   apply: (terminal: TerminalRuntime) => void
@@ -76,51 +65,6 @@ function forEachTerminalRuntime(
     apply(runtime.git);
     apply(runtime.terminal);
   });
-}
-
-function matchesHotkey(event: KeyboardEvent, hotkey: Hotkey) {
-  if (hotkey.code !== undefined && event.code !== hotkey.code) {
-    return false;
-  }
-  if (hotkey.key !== undefined) {
-    const key = event.key.toLowerCase();
-    if (key !== hotkey.key) {
-      return false;
-    }
-  }
-  if (hotkey.key === undefined && hotkey.code === undefined) {
-    return false;
-  }
-  if (hotkey.ctrl !== undefined && hotkey.ctrl !== event.ctrlKey) {
-    return false;
-  }
-  if (hotkey.shift !== undefined && hotkey.shift !== event.shiftKey) {
-    return false;
-  }
-  if (hotkey.alt !== undefined && hotkey.alt !== event.altKey) {
-    return false;
-  }
-  if (hotkey.meta !== undefined && hotkey.meta !== event.metaKey) {
-    return false;
-  }
-  return true;
-}
-
-function runHotkeys(event: KeyboardEvent, hotkeys: Hotkey[]) {
-  for (const hotkey of hotkeys) {
-    if (!matchesHotkey(event, hotkey)) {
-      continue;
-    }
-    if (hotkey.preventDefault) {
-      event.preventDefault();
-    }
-    if (hotkey.stopPropagation) {
-      event.stopPropagation();
-    }
-    hotkey.handler(event);
-    return true;
-  }
-  return false;
 }
 
 function isTextInputElement(element: Element | null) {
@@ -764,35 +708,26 @@ export function useAppState(
     setActiveSessionId(list[nextIndex].id);
   }, [setActiveSessionId]);
 
-  const globalHotkeys = useMemo<Hotkey[]>(
+  const globalHotkeys = useMemo<HotkeyBinding[]>(
     () => [
-      {
-        key: "tab",
-        ctrl: true,
-        shift: false,
-        alt: false,
-        meta: false,
+      defineHotkey({
+        id: "session-cycle",
+        combo: "Ctrl+Tab",
         preventDefault: true,
         handler: () => cycleSession(),
-      },
-      {
-        key: "t",
-        ctrl: true,
-        shift: true,
-        alt: false,
-        meta: false,
+      }),
+      defineHotkey({
+        id: "session-new",
+        combo: "Ctrl+Shift+KeyT",
         preventDefault: true,
         handler: () => onOpenNewSession?.(),
-      },
-      {
-        code: "KeyS",
-        ctrl: false,
-        shift: false,
-        alt: true,
-        meta: false,
+      }),
+      defineHotkey({
+        id: "focus-search",
+        combo: "Alt+KeyS",
         preventDefault: true,
         handler: () => onFocusSearch?.(),
-      },
+      }),
     ],
     [cycleSession, onOpenNewSession, onFocusSearch]
   );
@@ -829,6 +764,14 @@ export function useAppState(
 
   const attachTerminalHandlers = useCallback(
     (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
+      const copyHotkey = defineHotkey({
+        id: "terminal-copy-selection",
+        combo: isMac ? "Meta+KeyC" : "Ctrl+Shift+KeyC",
+        preventDefault: true,
+        handler: () => copySelection(term),
+      });
+      const terminalHotkeys = [...globalHotkeys, copyHotkey];
+
       term.onData((data) => {
         if (runtime.isFollowing === false) {
           setFollowingState(runtime, sessionId, kind, true);
@@ -890,27 +833,7 @@ export function useAppState(
           }
         }
         */
-        const copyHotkey: Hotkey = isMac
-          ? {
-              key: "c",
-              ctrl: false,
-              shift: false,
-              alt: false,
-              meta: true,
-              preventDefault: true,
-              handler: () => copySelection(term),
-            }
-          : {
-              key: "c",
-              ctrl: true,
-              shift: true,
-              alt: false,
-              meta: false,
-              preventDefault: true,
-              handler: () => copySelection(term),
-            };
-
-        const handled = runHotkeys(event, [...globalHotkeys, copyHotkey]);
+        const handled = runHotkeys(event, terminalHotkeys);
         return !handled;
       });
     },

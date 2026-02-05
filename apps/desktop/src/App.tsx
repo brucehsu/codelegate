@@ -18,8 +18,36 @@ import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
 import type { AgentId, EnvVar, RepoConfig, PaneKind } from "./types";
 import { getRepoName, groupSessionsByRepo, validateEnvVars } from "./utils/session";
+import { defineHotkey, runHotkeys, type HotkeyBinding } from "./utils/hotkeys";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
+
+function buildAltSessionSelectHotkeys(
+  selectSessionByHotkeyIndex: (index: number) => void
+): HotkeyBinding[] {
+  const bindings: HotkeyBinding[] = [];
+  for (let index = 0; index < 9; index += 1) {
+    const number = index + 1;
+    const sharedOptions = {
+      preventDefault: true,
+      stopPropagation: true,
+      handler: () => selectSessionByHotkeyIndex(index),
+    };
+    bindings.push(
+      defineHotkey({
+        id: `session-select-digit-${number}`,
+        combo: `Alt+Digit${number}`,
+        ...sharedOptions,
+      }),
+      defineHotkey({
+        id: `session-select-numpad-${number}`,
+        combo: `Alt+Numpad${number}`,
+        ...sharedOptions,
+      })
+    );
+  }
+  return bindings;
+}
 
 export default function App() {
   const { toasts, pushToast, removeToast } = useToasts();
@@ -217,6 +245,71 @@ export default function App() {
     return shortcuts;
   }, [sessionHotkeyPage, visualSessions]);
 
+  const handleSelectPaneKind = useCallback((kind: PaneKind) => {
+    setActivePaneKindState(kind);
+    setActivePaneKind(kind);
+  }, [setActivePaneKind]);
+
+  const cycleSessionHotkeyPage = useCallback(() => {
+    if (hotkeyPageCount <= 1) {
+      return;
+    }
+    setSessionHotkeyPage((prev) => (prev + 1) % hotkeyPageCount);
+  }, [hotkeyPageCount]);
+
+  const selectSessionByHotkeyIndex = useCallback(
+    (index: number) => {
+      const target = visualSessions[sessionHotkeyPage * 9 + index];
+      if (!target) {
+        return;
+      }
+      setActiveSessionId(target.id);
+    },
+    [sessionHotkeyPage, setActiveSessionId, visualSessions]
+  );
+
+  const altHotkeys = useMemo<HotkeyBinding[]>(
+    () => [
+      defineHotkey({
+        id: "pane-agent",
+        combo: "Alt+KeyA",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => handleSelectPaneKind("agent"),
+      }),
+      defineHotkey({
+        id: "pane-git",
+        combo: "Alt+KeyG",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => handleSelectPaneKind("git"),
+      }),
+      defineHotkey({
+        id: "pane-terminal",
+        combo: "Alt+KeyT",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => handleSelectPaneKind("terminal"),
+      }),
+      defineHotkey({
+        id: "session-hotkey-page-next-digit",
+        combo: "Alt+Digit0",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => cycleSessionHotkeyPage(),
+      }),
+      defineHotkey({
+        id: "session-hotkey-page-next-numpad",
+        combo: "Alt+Numpad0",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => cycleSessionHotkeyPage(),
+      }),
+      ...buildAltSessionSelectHotkeys(selectSessionByHotkeyIndex),
+    ],
+    [cycleSessionHotkeyPage, handleSelectPaneKind, selectSessionByHotkeyIndex]
+  );
+
   function resetForm() {
     setSelectedAgent("claude");
     setRepoPath("");
@@ -353,10 +446,6 @@ export default function App() {
   };
 
   const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent);
-  const handleSelectPaneKind = useCallback((kind: PaneKind) => {
-    setActivePaneKindState(kind);
-    setActivePaneKind(kind);
-  }, [setActivePaneKind]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -366,36 +455,7 @@ export default function App() {
       if (!event.altKey || event.repeat) {
         return;
       }
-      let handled = false;
-      if (event.code === "KeyA") {
-        handleSelectPaneKind("agent");
-        handled = true;
-      } else if (event.code === "KeyG") {
-        handleSelectPaneKind("git");
-        handled = true;
-      } else if (event.code === "KeyT") {
-        handleSelectPaneKind("terminal");
-        handled = true;
-      } else if (event.code === "Digit0" || event.code === "Numpad0") {
-        if (hotkeyPageCount > 1) {
-          setSessionHotkeyPage((prev) => (prev + 1) % hotkeyPageCount);
-        }
-        handled = true;
-      } else {
-        const match = /^(Digit|Numpad)([1-9])$/.exec(event.code);
-        if (match) {
-          const index = Number(match[2]) - 1;
-          const target = visualSessions[sessionHotkeyPage * 9 + index];
-          if (target) {
-            setActiveSessionId(target.id);
-            handled = true;
-          }
-        }
-      }
-      if (handled) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      runHotkeys(event, altHotkeys);
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -418,7 +478,7 @@ export default function App() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [handleSelectPaneKind, hotkeyPageCount, setActiveSessionId, sessionHotkeyPage, visualSessions]);
+  }, [altHotkeys]);
 
   const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
