@@ -94,6 +94,7 @@ export default function App() {
   } = useAppState(pushToast, handleOpenDialog, focusSearch);
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogRecentDirs, setDialogRecentDirs] = useState<string[]>(config.settings.recentDirs);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("claude");
   const [repoPath, setRepoPath] = useState("");
   const [repoHint, setRepoHint] = useState("");
@@ -433,6 +434,7 @@ export default function App() {
 
   function handleOpenDialog() {
     resetForm();
+    setDialogRecentDirs(config.settings.recentDirs);
     setDialogOpen(true);
   }
 
@@ -483,7 +485,6 @@ export default function App() {
     const trimmedPath = path.trim();
     setRepoPath(trimmedPath);
     setRepoHint("");
-    updateRecentDirs(trimmedPath);
     applyRepoDefaults(trimmedPath);
   };
 
@@ -523,6 +524,7 @@ export default function App() {
         : undefined,
     };
 
+    updateRecentDirs(trimmedPath);
     updateRepoDefaults(trimmedPath, envVars, preCommands);
     setDialogOpen(false);
     await startSession(repoConfig);
@@ -629,7 +631,7 @@ export default function App() {
         selectedAgent={selectedAgent}
         onSelectAgent={setSelectedAgent}
         repoPath={repoPath}
-        recentDirs={config.settings.recentDirs}
+        recentDirs={dialogRecentDirs}
         onSelectRepo={handleSelectRepo}
         onBrowseRepo={handleBrowseRepo}
         repoHint={repoHint}

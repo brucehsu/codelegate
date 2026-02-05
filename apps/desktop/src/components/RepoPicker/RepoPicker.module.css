@@ -82,6 +82,11 @@
   background: var(--surface-2);
 }
 
+.itemActive {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
 .disabled {
   cursor: default;
   color: var(--muted);
