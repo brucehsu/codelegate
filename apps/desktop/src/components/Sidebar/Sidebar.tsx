@@ -200,16 +200,23 @@ export default function Sidebar({
         })}
       </div>
       <div className={styles.actions}>
-        <IconButton
-          aria-label="New session"
-          variant="fab"
-          shape="circle"
-          size="lg"
-          iconSize={18}
-          onClick={onNewSession}
-        >
-          <Plus aria-hidden="true" />
-        </IconButton>
+        <div className={styles.actionButton}>
+          <IconButton
+            aria-label="New session"
+            variant="fab"
+            shape="circle"
+            size="lg"
+            iconSize={18}
+            onClick={onNewSession}
+          >
+            <Plus aria-hidden="true" />
+          </IconButton>
+          {showShortcutHints ? (
+            <span className={styles.actionShortcut} aria-hidden="true">
+              N
+            </span>
+          ) : null}
+        </div>
         <IconButton
           aria-label="Settings"
           variant="fab"

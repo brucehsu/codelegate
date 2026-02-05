@@ -292,6 +292,13 @@ export default function App() {
         handler: () => handleSelectPaneKind("terminal"),
       }),
       defineHotkey({
+        id: "session-new-alt",
+        combo: "Alt+KeyN",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => handleOpenDialog(),
+      }),
+      defineHotkey({
         id: "session-hotkey-page-next-digit",
         combo: "Alt+Digit0",
         preventDefault: true,
@@ -307,7 +314,7 @@ export default function App() {
       }),
       ...buildAltSessionSelectHotkeys(selectSessionByHotkeyIndex),
     ],
-    [cycleSessionHotkeyPage, handleSelectPaneKind, selectSessionByHotkeyIndex]
+    [cycleSessionHotkeyPage, handleSelectPaneKind, selectSessionByHotkeyIndex, handleOpenDialog]
   );
 
   function resetForm() {
