@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import Button from "../../../ui/Button/Button";
+import ActionButton from "../../../ui/ActionButton/ActionButton";
 import type { Session, ToastInput } from "../../../../types";
 import { getLanguageFromPath, parseGitDiff, type FileDiff } from "../../../../utils/gitDiff";
 import GitDiffsHeader from "./GitDiffsHeader";
@@ -111,6 +112,7 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
   const trimmedCommitMessage = commitMessage.trim();
   const commitAmend = commitMode === "amend";
   const commitActionDisabled = !repoPath || isLoading || isCommitting;
+  const refreshDisabled = !repoPath || isLoading;
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -269,6 +271,13 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
             disabled={!repoPath || isCommitting}
           />
           <div className={styles.commitActions}>
+            <ActionButton
+              icon={<RefreshCw size={16} aria-hidden="true" />}
+              onClick={handleRefresh}
+              disabled={refreshDisabled}
+              className={styles.commitRefreshButton}
+              aria-label="Refresh diffs"
+            />
             <div
               className={`${styles.commitButtonGroup} ${commitActionDisabled ? styles.commitButtonGroupDisabled : ""}`}
               ref={commitMenuRef}
@@ -354,8 +363,7 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
               deletions={deletions}
               isOpen={isOpen}
               onToggle={() => setOpen((prev) => !prev)}
-              onRefresh={handleRefresh}
-              refreshDisabled={!repoPath || isLoading}
+              showRefresh={false}
               sectionActions={sectionActions}
             />
 

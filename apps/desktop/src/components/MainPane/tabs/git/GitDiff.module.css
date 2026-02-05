@@ -63,10 +63,20 @@
 }
 
 .commitActions {
+  --commit-action-height: 40px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.commitRefreshButton {
+  width: var(--commit-action-height);
+  height: var(--commit-action-height);
+  padding: 0;
+  border-radius: 10px;
+  justify-content: center;
+  gap: 0;
 }
 
 .commitButtonGroup {
@@ -75,6 +85,7 @@
   position: relative;
   display: inline-block;
   min-width: 168px;
+  height: var(--commit-action-height);
 }
 
 .commitButtonGroupDisabled {
@@ -83,6 +94,7 @@
 
 .commitSplitButton {
   width: 100%;
+  height: var(--commit-action-height);
   padding-right: 40px;
   background: var(--commit-action-bg);
   color: var(--commit-action-fg);
@@ -104,6 +116,7 @@
   bottom: 0;
   width: 20%;
   min-width: 34px;
+  height: var(--commit-action-height);
   border: none;
   border-left: 1px solid color-mix(in srgb, var(--accent) 78%, #000 22%);
   border-radius: 0 10px 10px 0;
