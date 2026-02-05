@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import type { Session } from "../../../../types";
+import { ChevronDown } from "lucide-react";
+import Button from "../../../ui/Button/Button";
+import type { Session, ToastInput } from "../../../../types";
 import { getLanguageFromPath, parseGitDiff, type FileDiff } from "../../../../utils/gitDiff";
 import GitDiffsHeader from "./GitDiffsHeader";
 import GitFileCard from "./GitFileCard";
@@ -10,6 +12,7 @@ import styles from "./GitDiff.module.css";
 interface GitDiffProps {
   session?: Session | null;
   isActive: boolean;
+  onNotify: (toast: ToastInput) => void;
 }
 
 interface GitDiffPayload {
@@ -18,7 +21,7 @@ interface GitDiffPayload {
   untracked: Array<{ path: string; diff: string }>;
 }
 
-export default function GitDiff({ session, isActive }: GitDiffProps) {
+export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [actionTarget, setActionTarget] = useState<"stageAll" | "unstageAll" | "discardAll" | null>(null);
@@ -26,6 +29,12 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
   const [stagedOpen, setStagedOpen] = useState(true);
   const [unstagedOpen, setUnstagedOpen] = useState(true);
   const [fileOpenMap, setFileOpenMap] = useState<Record<string, boolean>>({});
+  const [commitMessage, setCommitMessage] = useState("");
+  const [commitMode, setCommitMode] = useState<"commit" | "amend">("commit");
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [commitMessageInvalid, setCommitMessageInvalid] = useState(false);
+  const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const commitMenuRef = useRef<HTMLDivElement | null>(null);
 
   const repoPath = session?.cwd ?? session?.repo.repoPath ?? "";
 
@@ -98,6 +107,10 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     ],
     [stagedFiles, unstagedFiles]
   );
+  const hasStagedChanges = stagedFiles.length > 0;
+  const trimmedCommitMessage = commitMessage.trim();
+  const commitAmend = commitMode === "amend";
+  const commitActionDisabled = !repoPath || isLoading || isCommitting;
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -109,6 +122,39 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     }
     setFileOpenMap(next);
   }, [sections]);
+
+  useEffect(() => {
+    setCommitMessage("");
+    setCommitMode("commit");
+    setCommitMessageInvalid(false);
+    setCommitMenuOpen(false);
+  }, [repoPath]);
+
+  useEffect(() => {
+    if (!commitMenuOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (!commitMenuRef.current?.contains(target)) {
+        setCommitMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCommitMenuOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [commitMenuOpen]);
 
   const handleRefresh = useCallback(() => {
     void loadDiffs();
@@ -148,8 +194,125 @@ export default function GitDiff({ session, isActive }: GitDiffProps) {
     [loadDiffs, repoPath]
   );
 
+  const handleCommit = useCallback(async () => {
+    if (!repoPath) {
+      return;
+    }
+    const message = commitMessage.trim();
+    if (!message) {
+      setCommitMessageInvalid(true);
+      onNotify({ tone: "error", message: "Commit message should not be empty." });
+      return;
+    }
+    if (!commitAmend && !hasStagedChanges) {
+      onNotify({ tone: "error", message: "No staged changes to commit." });
+      return;
+    }
+    setCommitMessageInvalid(false);
+    setIsCommitting(true);
+    setError(null);
+    try {
+      await invoke("commit_git_changes", {
+        path: repoPath,
+        message,
+        amend: commitAmend,
+      });
+      setCommitMessage("");
+      onNotify({ message: commitAmend ? "Amended." : "Committed." });
+      await loadDiffs();
+    } catch (err) {
+      onNotify({ tone: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setIsCommitting(false);
+    }
+  }, [commitAmend, commitMessage, hasStagedChanges, loadDiffs, onNotify, repoPath]);
+
+  const handleSelectCommitMode = useCallback(
+    async (mode: "commit" | "amend") => {
+      setCommitMode(mode);
+      setCommitMenuOpen(false);
+      if (mode !== "amend" || !repoPath || isCommitting) {
+        return;
+      }
+      try {
+        const previousMessage = await invoke<string>("get_last_commit_message", { path: repoPath });
+        setCommitMessage(previousMessage);
+        setCommitMessageInvalid(previousMessage.trim().length === 0);
+      } catch (err) {
+        onNotify({ tone: "error", message: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    [isCommitting, onNotify, repoPath]
+  );
+
   return (
     <div className={styles.container}>
+      <section className={styles.commitSection}>
+        <div className={styles.commitHeader}>
+          <h3 className={styles.commitTitle}>Commit</h3>
+          <span className={styles.commitMeta}>
+            {stagedFiles.length} staged {stagedFiles.length === 1 ? "file" : "files"}
+          </span>
+        </div>
+        <div className={styles.commitBody}>
+          <textarea
+            className={`${styles.commitInput} ${commitMessageInvalid ? styles.commitInputInvalid : ""}`}
+            rows={3}
+            placeholder="Write commit message"
+            value={commitMessage}
+            onChange={(event) => {
+              setCommitMessage(event.target.value);
+              if (commitMessageInvalid) {
+                setCommitMessageInvalid(false);
+              }
+            }}
+            disabled={!repoPath || isCommitting}
+          />
+          <div className={styles.commitActions}>
+            <div
+              className={`${styles.commitButtonGroup} ${commitActionDisabled ? styles.commitButtonGroupDisabled : ""}`}
+              ref={commitMenuRef}
+            >
+              <Button
+                variant="primary"
+                className={styles.commitSplitButton}
+                onClick={() => void handleCommit()}
+                disabled={commitActionDisabled}
+              >
+                {isCommitting ? "Committing..." : commitAmend ? "Amend" : "Commit"}
+              </Button>
+              <button
+                type="button"
+                className={styles.commitDropdownButton}
+                aria-label="Select commit mode"
+                aria-expanded={commitMenuOpen}
+                onClick={() => setCommitMenuOpen((prev) => !prev)}
+                disabled={commitActionDisabled}
+              >
+                <ChevronDown size={15} aria-hidden="true" />
+              </button>
+              {commitMenuOpen ? (
+                <div className={styles.commitMenu}>
+                  <button
+                    type="button"
+                    className={`${styles.commitMenuItem} ${!commitAmend ? styles.commitMenuItemActive : ""}`}
+                    onClick={() => void handleSelectCommitMode("commit")}
+                  >
+                    Commit
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.commitMenuItem} ${commitAmend ? styles.commitMenuItemActive : ""}`}
+                    onClick={() => void handleSelectCommitMode("amend")}
+                  >
+                    Amend
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
       {sections.map((section) => {
         const additions = section.files.reduce((sum, file) => sum + file.additions, 0);
         const deletions = section.files.reduce((sum, file) => sum + file.deletions, 0);

@@ -410,6 +410,82 @@ fn discard_all_changes(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn commit_git_changes(path: String, message: String, amend: bool) -> Result<(), String> {
+  let root = resolve_repo_root(path)?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
+  }
+
+  let trimmed = message.trim();
+  if trimmed.is_empty() {
+    return Err("Commit message cannot be empty".to_string());
+  }
+
+  let mut command = std::process::Command::new("git");
+  command
+    .arg("-C")
+    .arg(&root)
+    .arg("commit")
+    .arg("-m")
+    .arg(trimmed);
+  if amend {
+    command.arg("--amend");
+  }
+
+  let output = command
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  if output.status.success() {
+    return Ok(());
+  }
+
+  let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+  let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  Err(if !stderr.is_empty() {
+    stderr
+  } else if !stdout.is_empty() {
+    stdout
+  } else {
+    "Failed to commit changes".to_string()
+  })
+}
+
+#[tauri::command]
+fn get_last_commit_message(path: String) -> Result<String, String> {
+  let root = resolve_repo_root(path)?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
+  }
+
+  let output = std::process::Command::new("git")
+    .arg("-C")
+    .arg(&root)
+    .arg("log")
+    .arg("-1")
+    .arg("--pretty=%B")
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    return Err(if stderr.is_empty() {
+      "Unable to read previous commit message".to_string()
+    } else {
+      stderr
+    });
+  }
+
+  let message = String::from_utf8_lossy(&output.stdout)
+    .trim_end_matches(['\r', '\n'])
+    .to_string();
+  if message.is_empty() {
+    return Err("Previous commit message is empty".to_string());
+  }
+  Ok(message)
+}
+
+#[tauri::command]
 fn load_config() -> Result<AppConfig, String> {
   let file = config_file()?;
   if !file.exists() {
@@ -624,6 +700,8 @@ pub fn run() {
       stage_all_changes,
       unstage_all_changes,
       discard_all_changes,
+      commit_git_changes,
+      get_last_commit_message,
       load_config,
       save_config,
       spawn_pty,

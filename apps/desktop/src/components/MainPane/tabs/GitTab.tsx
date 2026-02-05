@@ -1,16 +1,17 @@
-import type { Session } from "../../../types";
+import type { Session, ToastInput } from "../../../types";
 import GitDiff from "./git/GitDiff";
 import styles from "../MainPane.module.css";
 
 interface GitTabProps {
   session?: Session;
   isActive: boolean;
+  onNotify: (toast: ToastInput) => void;
 }
 
-export default function GitTab({ session, isActive }: GitTabProps) {
+export default function GitTab({ session, isActive, onNotify }: GitTabProps) {
   return (
     <div className={`${styles.gitPane} ${isActive ? "" : styles.terminalHidden}`}>
-      <GitDiff session={session} isActive={isActive} />
+      <GitDiff session={session} isActive={isActive} onNotify={onNotify} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Session, PaneKind } from "../../types";
+import type { Session, PaneKind, ToastInput } from "../../types";
 import AgentTab from "./tabs/AgentTab";
 import GitTab from "./tabs/GitTab";
 import TerminalTab from "./tabs/TerminalTab";
@@ -20,6 +20,7 @@ interface MainPaneProps {
   onRegisterTerminal: (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => void;
   unreadOutput: Record<string, boolean>;
   onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
+  onNotify: (toast: ToastInput) => void;
   showShortcutHints?: boolean;
 }
 
@@ -31,6 +32,7 @@ export default function MainPane({
   onRegisterTerminal,
   unreadOutput,
   onJumpToBottom,
+  onNotify,
   showShortcutHints = false,
 }: MainPaneProps) {
   const showTabPane = Boolean(activeSessionId);
@@ -80,7 +82,7 @@ export default function MainPane({
             showUpdates={showTerminalUpdates}
             onJumpToBottom={onJumpToBottom}
           />
-          <GitTab session={activeSession} isActive={activePaneKind === "git"} />
+          <GitTab session={activeSession} isActive={activePaneKind === "git"} onNotify={onNotify} />
         </div>
         <div className={styles.sessionFooter}>
           <span className={styles.sessionPath}>{activeSession?.cwd ?? activeSession?.repo.repoPath ?? ""}</span>

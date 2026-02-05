@@ -5,6 +5,173 @@
   min-height: 100%;
 }
 
+.commitSection {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: visible;
+}
+
+.commitHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.commitTitle {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.commitMeta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.commitBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.commitInput {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: inherit;
+  font: inherit;
+}
+
+.commitInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+}
+
+.commitInputInvalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.commitActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.commitButtonGroup {
+  --commit-action-bg: var(--accent);
+  --commit-action-fg: #0b0e14;
+  position: relative;
+  display: inline-block;
+  min-width: 168px;
+}
+
+.commitButtonGroupDisabled {
+  opacity: 0.6;
+}
+
+.commitSplitButton {
+  width: 100%;
+  padding-right: 40px;
+  background: var(--commit-action-bg);
+  color: var(--commit-action-fg);
+}
+
+.commitSplitButton:disabled {
+  opacity: 1;
+}
+
+.commitSplitButton:hover:not(:disabled) {
+  background: var(--commit-action-bg);
+  color: var(--commit-action-fg);
+}
+
+.commitDropdownButton {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20%;
+  min-width: 34px;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 78%, #000 22%);
+  border-radius: 0 10px 10px 0;
+  background: var(--commit-action-bg);
+  color: var(--commit-action-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.commitDropdownButton:disabled {
+  background: var(--commit-action-bg);
+  color: var(--commit-action-fg);
+  cursor: not-allowed;
+}
+
+.commitDropdownButton:hover:not(:disabled) {
+  background: var(--commit-action-bg);
+  color: var(--commit-action-fg);
+}
+
+.commitMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 132px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 6px;
+  z-index: 4;
+}
+
+.commitMenuItem {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.commitMenuItem:hover {
+  background: var(--surface-2);
+}
+
+.commitMenuItemActive {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.commitStatus {
+  margin: 0;
+  font-size: 0.84rem;
+}
+
+.commitStatusError {
+  color: var(--danger);
+}
+
+.commitStatusSuccess {
+  color: #22c55e;
+}
+
 .diffSection {
   border-radius: 16px;
   border: 1px solid var(--border);

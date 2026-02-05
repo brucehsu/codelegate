@@ -624,6 +624,7 @@ export default function App() {
         onRegisterTerminal={registerTerminal}
         unreadOutput={unreadOutput}
         onJumpToBottom={jumpToBottom}
+        onNotify={pushToast}
         showShortcutHints={showShortcutHints}
       />
       <NewSessionDialog
