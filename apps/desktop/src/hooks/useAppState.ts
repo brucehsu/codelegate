@@ -47,6 +47,7 @@ interface TerminalRuntime extends TerminalRendererRuntime {
   scrollDisposable?: { dispose: () => void };
   viewportEl?: HTMLDivElement | null;
   viewportHandler?: (() => void) | null;
+  activationRaf?: number;
   rendererAttachRaf?: number;
   webglPostInitTimer?: number;
 }
@@ -98,6 +99,15 @@ function isTextInputElement(element: Element | null) {
   }
   const role = element.getAttribute("role");
   return role === "textbox" || role === "searchbox";
+}
+
+function isRuntimeVisible(runtime?: TerminalRuntime) {
+  const container = runtime?.container;
+  if (!container || !container.isConnected) {
+    return false;
+  }
+  const rect = container.getBoundingClientRect();
+  return rect.width >= 8 && rect.height >= 8;
 }
 
 function decodeBase64ToUint8(data: string) {
@@ -419,14 +429,13 @@ export function useAppState(
       if (isTextInputElement(activeElement) && !activeInsideTerminal) {
         return true;
       }
+      if (!isRuntimeVisible(runtime)) {
+        return false;
+      }
+      runtime.term.clearSelection();
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          runtime.term?.focus();
-        });
-      });
-      setTimeout(() => {
         runtime.term?.focus();
-      }, 0);
+      });
       return true;
     }
     return false;
@@ -576,6 +585,33 @@ export function useAppState(
       });
     },
     [applyTerminalAppearanceToRuntime]
+  );
+
+  const activateRuntime = useCallback(
+    (runtime: TerminalRuntime, options?: { focus?: boolean; clearSelection?: boolean }) => {
+      const term = runtime.term;
+      if (!term) {
+        return;
+      }
+      if (runtime.activationRaf !== undefined) {
+        window.cancelAnimationFrame(runtime.activationRaf);
+      }
+      runtime.activationRaf = window.requestAnimationFrame(() => {
+        runtime.activationRaf = undefined;
+        if (!runtime.term || !isRuntimeVisible(runtime)) {
+          return;
+        }
+        const appearance = toTerminalAppearance(configRef.current.settings);
+        applyTerminalAppearanceToRuntime(runtime, appearance, true);
+        if (options?.clearSelection !== false) {
+          runtime.term.clearSelection();
+        }
+        if (options?.focus) {
+          runtime.term.focus();
+        }
+      });
+    },
+    [applyTerminalAppearanceToRuntime, toTerminalAppearance]
   );
 
   const refreshTerminalRenderersAfterFontLoad = useCallback(() => {
@@ -911,6 +947,10 @@ export function useAppState(
   const cleanupTerminalRuntimeAttachment = useCallback(
     (runtime: TerminalRuntime) => {
       clearPendingRendererAttach(runtime);
+      if (runtime.activationRaf !== undefined) {
+        window.cancelAnimationFrame(runtime.activationRaf);
+        runtime.activationRaf = undefined;
+      }
       runtime.container = null;
       runtime.lastFit = undefined;
       if (runtime.resizeObserver) {
@@ -957,6 +997,7 @@ export function useAppState(
       runtime.starting = false;
       runtime.isFollowing = undefined;
       runtime.savedViewportY = undefined;
+      runtime.activationRaf = undefined;
     },
     [detachTerminalRuntime]
   );
@@ -977,15 +1018,17 @@ export function useAppState(
       if (!sessionId) {
         return;
       }
+      const runtime = runtimeRef.current.get(sessionId)?.[kind];
+      if (runtime?.term) {
+        activateRuntime(runtime, { focus: true, clearSelection: true });
+        scheduleTerminalFit(runtime);
+        return;
+      }
       if (!focusSession(sessionId, kind)) {
         pendingFocusRef.current = { sessionId, kind };
       }
-      const runtime = runtimeRef.current.get(sessionId)?.[kind];
-      if (runtime) {
-        scheduleTerminalFit(runtime);
-      }
     },
-    [focusSession, scheduleTerminalFit]
+    [activateRuntime, focusSession, scheduleTerminalFit]
   );
 
   const jumpToBottom = useCallback(
@@ -1054,13 +1097,19 @@ export function useAppState(
         runtime.savedViewportY = undefined;
         updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
 
+        const isActiveRuntime = activeSessionRef.current === sessionId && activePaneKindRef.current === kind;
         const pending = pendingFocusRef.current;
         if (
           (pending && pending.sessionId === sessionId && pending.kind === kind) ||
-          (activeSessionRef.current === sessionId && activePaneKindRef.current === kind)
+          isActiveRuntime
         ) {
           focusSession(sessionId, kind);
           pendingFocusRef.current = null;
+        }
+        if (isActiveRuntime) {
+          activateRuntime(runtime, { focus: true, clearSelection: true });
+        } else {
+          activateRuntime(runtime, { focus: false, clearSelection: false });
         }
       }
 
@@ -1106,6 +1155,7 @@ export function useAppState(
       scheduleTerminalFit,
       updateFollowState,
       notify,
+      activateRuntime,
     ]
   );
 
@@ -1410,15 +1460,16 @@ export function useAppState(
       return;
     }
     const kind = activePaneKindRef.current;
+    const runtime = runtimeRef.current.get(sessionId)?.[kind];
+    if (runtime?.term) {
+      activateRuntime(runtime, { focus: true, clearSelection: true });
+      scheduleTerminalFit(runtime);
+      return;
+    }
     if (!focusSession(sessionId, kind)) {
       pendingFocusRef.current = { sessionId, kind };
     }
-    const runtime = runtimeRef.current.get(sessionId)?.[kind];
-    if (!runtime) {
-      return;
-    }
-    scheduleTerminalFit(runtime);
-  }, [activeSessionId, focusSession, scheduleTerminalFit]);
+  }, [activeSessionId, activateRuntime, focusSession, scheduleTerminalFit]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
