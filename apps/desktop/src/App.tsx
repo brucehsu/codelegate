@@ -6,7 +6,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
 import MainPane from "./components/MainPane/MainPane";
@@ -264,6 +264,20 @@ export default function App() {
     openRename(activeSessionId);
   }, [activeSessionId, openRename]);
 
+  const terminateActiveSession = useCallback(async () => {
+    if (!activeSessionId) {
+      return;
+    }
+    const confirmed = await confirm(
+      "Terminate this session? This will close the tab and stop ongoing shell sessions.",
+      { title: "Codelegate", kind: "warning" }
+    );
+    if (!confirmed) {
+      return;
+    }
+    terminateSession(activeSessionId);
+  }, [activeSessionId, terminateSession]);
+
   const openSettings = useCallback(() => {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
@@ -338,6 +352,15 @@ export default function App() {
         handler: () => renameActiveSession(),
       }),
       defineHotkey({
+        id: "session-terminate-alt",
+        combo: "Alt+KeyW",
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => {
+          void terminateActiveSession();
+        },
+      }),
+      defineHotkey({
         id: "session-hotkey-page-next-digit",
         combo: "Alt+Digit0",
         preventDefault: true,
@@ -360,6 +383,7 @@ export default function App() {
       handleOpenDialog,
       openSettings,
       renameActiveSession,
+      terminateActiveSession,
     ]
   );
 

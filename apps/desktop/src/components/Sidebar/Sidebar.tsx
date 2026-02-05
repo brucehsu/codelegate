@@ -174,7 +174,7 @@ export default function Sidebar({
                           </button>
                           <button
                             type="button"
-                            className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                            className={`${styles.menuItem} ${styles.menuItemWithShortcut} ${styles.menuItemDanger}`}
                             onClick={async () => {
                               const confirmed = await confirm(
                                 "Terminate this session? This will close the tab and stop ongoing shell sessions.",
@@ -187,7 +187,12 @@ export default function Sidebar({
                               onTerminateSession(session.id);
                             }}
                           >
-                            Terminate Session
+                            <span>Terminate Session</span>
+                            <span className={styles.menuShortcut} aria-hidden="true">
+                              <span className={styles.menuShortcutPill}>Alt</span>
+                              <span className={styles.menuShortcutPlus}>+</span>
+                              <span className={styles.menuShortcutPill}>W</span>
+                            </span>
                           </button>
                         </div>
                       ) : null}
