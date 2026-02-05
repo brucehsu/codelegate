@@ -377,8 +377,17 @@
 }
 
 .menuItemWithShortcut {
-  position: relative;
-  padding-right: 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: 6px;
+}
+
+.menuItemLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menuShortcut {
@@ -386,9 +395,8 @@
   align-items: center;
   gap: 2px;
   white-space: nowrap;
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
+  justify-self: end;
+  align-self: end;
 }
 
 .menuShortcutPill {

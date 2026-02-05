@@ -84,6 +84,8 @@ struct AppSettings {
   terminal_font_family: String,
   #[serde(default = "default_terminal_font_size")]
   terminal_font_size: u16,
+  #[serde(default = "default_shortcut_modifier")]
+  shortcut_modifier: String,
   #[serde(default = "default_battery_saver", alias = "backgroundAnimation")]
   battery_saver: bool,
   #[serde(default)]
@@ -576,6 +578,7 @@ fn default_config() -> AppConfig {
       recent_dirs: Vec::new(),
       terminal_font_family: default_terminal_font_family(),
       terminal_font_size: default_terminal_font_size(),
+      shortcut_modifier: default_shortcut_modifier(),
       battery_saver: default_battery_saver(),
       repo_defaults: HashMap::new(),
     },
@@ -599,6 +602,10 @@ fn default_terminal_font_size() -> u16 {
 
 fn default_battery_saver() -> bool {
   false
+}
+
+fn default_shortcut_modifier() -> String {
+  "Alt".to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

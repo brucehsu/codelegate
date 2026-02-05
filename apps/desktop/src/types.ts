@@ -28,6 +28,7 @@ export interface AppSettings {
   recentDirs: string[];
   terminalFontFamily: string;
   terminalFontSize: number;
+  shortcutModifier: string;
   batterySaver: boolean;
   repoDefaults?: Record<string, RepoSessionDefaults>;
 }

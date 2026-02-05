@@ -26,6 +26,7 @@ import type {
 import { createSessionId, envListToMap, getRepoName } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "../utils/hotkeys";
+import { buildShortcutCombo, normalizeShortcutModifier } from "../utils/shortcutModifier";
 
 interface TerminalRuntime extends TerminalRendererRuntime {
   container?: HTMLDivElement | null;
@@ -113,6 +114,7 @@ const defaultSettings = {
   recentDirs: [],
   terminalFontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
   terminalFontSize: 13,
+  shortcutModifier: "Alt",
   batterySaver: false,
   repoDefaults: {},
 };
@@ -497,6 +499,9 @@ export function useAppState(
             terminalFontFamily: normalizeFontFamily(
               loaded.settings?.terminalFontFamily ?? defaultSettings.terminalFontFamily
             ),
+            shortcutModifier: normalizeShortcutModifier(
+              loaded.settings?.shortcutModifier ?? defaultSettings.shortcutModifier
+            ),
             repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
           },
         } as AppConfig;
@@ -611,6 +616,17 @@ export function useAppState(
     setBatterySaverDataset(enabled);
   }, [setBatterySaverDataset, updateSettings]);
 
+  const updateShortcutModifier = useCallback(
+    (modifier: string) => {
+      const normalized = normalizeShortcutModifier(modifier);
+      updateSettings((settings) => ({
+        ...settings,
+        shortcutModifier: normalized,
+      }));
+    },
+    [updateSettings]
+  );
+
   const updateRepoDefaults = useCallback(
     (repoPath: string, envVars: EnvVar[], preCommands: string) => {
       const trimmedPath = repoPath.trim();
@@ -724,12 +740,12 @@ export function useAppState(
       }),
       defineHotkey({
         id: "focus-search",
-        combo: "Alt+KeyS",
+        combo: buildShortcutCombo(config.settings.shortcutModifier, "KeyS"),
         preventDefault: true,
         handler: () => onFocusSearch?.(),
       }),
     ],
-    [cycleSession, onOpenNewSession, onFocusSearch]
+    [config.settings.shortcutModifier, cycleSession, onOpenNewSession, onFocusSearch]
   );
 
   const copySelection = useCallback((term: Terminal) => {
@@ -1485,6 +1501,7 @@ export function useAppState(
     updateRecentDirs,
     updateTerminalSettings,
     updateBatterySaver,
+    updateShortcutModifier,
     updateRepoDefaults,
     startSession,
     registerTerminal,

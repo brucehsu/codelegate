@@ -19,10 +19,16 @@ import Toasts from "./components/Toasts/Toasts";
 import type { AgentId, EnvVar, RepoConfig, PaneKind } from "./types";
 import { getRepoName, groupSessionsByRepo, validateEnvVars } from "./utils/session";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "./utils/hotkeys";
+import {
+  buildShortcutCombo,
+  getShortcutModifierTokens,
+  matchesShortcutModifierState,
+} from "./utils/shortcutModifier";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
 
-function buildAltSessionSelectHotkeys(
+function buildModifierSessionSelectHotkeys(
+  shortcutModifier: string,
   selectSessionByHotkeyIndex: (index: number) => void
 ): HotkeyBinding[] {
   const bindings: HotkeyBinding[] = [];
@@ -36,12 +42,12 @@ function buildAltSessionSelectHotkeys(
     bindings.push(
       defineHotkey({
         id: `session-select-digit-${number}`,
-        combo: `Alt+Digit${number}`,
+        combo: buildShortcutCombo(shortcutModifier, `Digit${number}`),
         ...sharedOptions,
       }),
       defineHotkey({
         id: `session-select-numpad-${number}`,
-        combo: `Alt+Numpad${number}`,
+        combo: buildShortcutCombo(shortcutModifier, `Numpad${number}`),
         ...sharedOptions,
       })
     );
@@ -74,6 +80,7 @@ export default function App() {
     updateRecentDirs,
     updateTerminalSettings,
     updateBatterySaver,
+    updateShortcutModifier,
     updateRepoDefaults,
     startSession,
     registerTerminal,
@@ -106,6 +113,11 @@ export default function App() {
   const [showShortcutHints, setShowShortcutHints] = useState(false);
   const [collapsedRepoGroups, setCollapsedRepoGroups] = useState<Record<string, boolean>>({});
   const [sessionHotkeyPage, setSessionHotkeyPage] = useState(0);
+  const shortcutModifier = config.settings.shortcutModifier;
+  const shortcutModifierTokens = useMemo(
+    () => getShortcutModifierTokens(shortcutModifier),
+    [shortcutModifier]
+  );
 
   const requestTerminalResize = useCallback(() => {
     if (terminalResizeRafRef.current !== null) {
@@ -307,53 +319,53 @@ export default function App() {
     [sessionHotkeyPage, setActiveSessionId, visualSessions]
   );
 
-  const altHotkeys = useMemo<HotkeyBinding[]>(
+  const modifierHotkeys = useMemo<HotkeyBinding[]>(
     () => [
       defineHotkey({
         id: "pane-agent",
-        combo: "Alt+KeyA",
+        combo: buildShortcutCombo(shortcutModifier, "KeyA"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => handleSelectPaneKind("agent"),
       }),
       defineHotkey({
         id: "pane-git",
-        combo: "Alt+KeyG",
+        combo: buildShortcutCombo(shortcutModifier, "KeyG"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => handleSelectPaneKind("git"),
       }),
       defineHotkey({
         id: "pane-terminal",
-        combo: "Alt+KeyT",
+        combo: buildShortcutCombo(shortcutModifier, "KeyT"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => handleSelectPaneKind("terminal"),
       }),
       defineHotkey({
         id: "session-new-alt",
-        combo: "Alt+KeyN",
+        combo: buildShortcutCombo(shortcutModifier, "KeyN"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => handleOpenDialog(),
       }),
       defineHotkey({
         id: "settings-open-alt",
-        combo: "Alt+KeyP",
+        combo: buildShortcutCombo(shortcutModifier, "KeyP"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => openSettings(),
       }),
       defineHotkey({
         id: "session-rename-alt",
-        combo: "Alt+KeyR",
+        combo: buildShortcutCombo(shortcutModifier, "KeyR"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => renameActiveSession(),
       }),
       defineHotkey({
         id: "session-terminate-alt",
-        combo: "Alt+KeyW",
+        combo: buildShortcutCombo(shortcutModifier, "KeyW"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => {
@@ -362,21 +374,22 @@ export default function App() {
       }),
       defineHotkey({
         id: "session-hotkey-page-next-digit",
-        combo: "Alt+Digit0",
+        combo: buildShortcutCombo(shortcutModifier, "Digit0"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => cycleSessionHotkeyPage(),
       }),
       defineHotkey({
         id: "session-hotkey-page-next-numpad",
-        combo: "Alt+Numpad0",
+        combo: buildShortcutCombo(shortcutModifier, "Numpad0"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => cycleSessionHotkeyPage(),
       }),
-      ...buildAltSessionSelectHotkeys(selectSessionByHotkeyIndex),
+      ...buildModifierSessionSelectHotkeys(shortcutModifier, selectSessionByHotkeyIndex),
     ],
     [
+      shortcutModifier,
       cycleSessionHotkeyPage,
       handleSelectPaneKind,
       selectSessionByHotkeyIndex,
@@ -400,6 +413,13 @@ export default function App() {
     setSettingsOpen(false);
     requestAnimationFrame(() => focusActiveSession());
   };
+
+  const handleShortcutModifierCommit = useCallback(
+    (modifier: string) => {
+      updateShortcutModifier(modifier);
+    },
+    [updateShortcutModifier]
+  );
 
   const saveSettings = () => {
     updateTerminalSettings({
@@ -512,18 +532,18 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Alt" || event.altKey) {
-        setShowShortcutHints(true);
-      }
-      if (!event.altKey || event.repeat) {
+      const modifierActive = matchesShortcutModifierState(event, shortcutModifier);
+      setShowShortcutHints(modifierActive);
+      if (!modifierActive || event.repeat) {
         return;
       }
-      runHotkeys(event, altHotkeys);
+      runHotkeys(event, modifierHotkeys);
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Alt") {
-        setShowShortcutHints(false);
+      const modifierActive = matchesShortcutModifierState(event, shortcutModifier);
+      setShowShortcutHints(modifierActive);
+      if (!modifierActive) {
         setSessionHotkeyPage(0);
       }
     };
@@ -541,7 +561,7 @@ export default function App() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [altHotkeys]);
+  }, [modifierHotkeys, shortcutModifier]);
 
   const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -584,6 +604,7 @@ export default function App() {
           agentOutputting={agentOutputting}
           searchRef={searchInputRef}
           showShortcutHints={showShortcutHints}
+          shortcutModifierTokens={shortcutModifierTokens}
         />
         <div
           className={styles.sidebarResizeHandle}
@@ -628,9 +649,11 @@ export default function App() {
         fontFamily={fontFamily}
         fontSize={fontSize}
         batterySaver={batterySaver}
+        shortcutModifier={shortcutModifier}
         onChangeFontFamily={setFontFamily}
         onChangeFontSize={setFontSize}
         onToggleBatterySaver={setBatterySaver}
+        onCommitShortcutModifier={handleShortcutModifierCommit}
         onClose={closeSettings}
         onSave={saveSettings}
       />

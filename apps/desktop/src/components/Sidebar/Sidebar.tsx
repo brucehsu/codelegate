@@ -1,6 +1,6 @@
 import { MoreHorizontal, Plus, Settings } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { SessionGroup } from "../../utils/session";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import IconButton from "../ui/IconButton/IconButton";
@@ -23,6 +23,7 @@ interface SidebarProps {
   onToggleRepoGroup: (repoPath: string) => void;
   searchRef?: React.RefObject<HTMLInputElement>;
   showShortcutHints?: boolean;
+  shortcutModifierTokens: string[];
 }
 
 export default function Sidebar({
@@ -41,6 +42,7 @@ export default function Sidebar({
   onToggleRepoGroup,
   searchRef,
   showShortcutHints = false,
+  shortcutModifierTokens,
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -53,6 +55,19 @@ export default function Sidebar({
     claude: styles.agentClaude,
     codex: styles.agentCodex,
   } as const;
+
+  const renderMenuShortcut = (key: string) => (
+    <span className={styles.menuShortcut} aria-hidden="true">
+      {shortcutModifierTokens.map((token, index) => (
+        <Fragment key={token}>
+          {index > 0 ? <span className={styles.menuShortcutPlus}>+</span> : null}
+          <span className={styles.menuShortcutPill}>{token}</span>
+        </Fragment>
+      ))}
+      <span className={styles.menuShortcutPlus}>+</span>
+      <span className={styles.menuShortcutPill}>{key}</span>
+    </span>
+  );
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -165,12 +180,8 @@ export default function Sidebar({
                               onRenameSession(session.id);
                             }}
                           >
-                            <span>Rename Branch</span>
-                            <span className={styles.menuShortcut} aria-hidden="true">
-                              <span className={styles.menuShortcutPill}>Alt</span>
-                              <span className={styles.menuShortcutPlus}>+</span>
-                              <span className={styles.menuShortcutPill}>R</span>
-                            </span>
+                            <span className={styles.menuItemLabel}>Rename Branch</span>
+                            {renderMenuShortcut("R")}
                           </button>
                           <button
                             type="button"
@@ -187,12 +198,8 @@ export default function Sidebar({
                               onTerminateSession(session.id);
                             }}
                           >
-                            <span>Terminate Session</span>
-                            <span className={styles.menuShortcut} aria-hidden="true">
-                              <span className={styles.menuShortcutPill}>Alt</span>
-                              <span className={styles.menuShortcutPlus}>+</span>
-                              <span className={styles.menuShortcutPill}>W</span>
-                            </span>
+                            <span className={styles.menuItemLabel}>Terminate Session</span>
+                            {renderMenuShortcut("W")}
                           </button>
                         </div>
                       ) : null}
