@@ -77,13 +77,20 @@ export default function Sidebar({
   return (
     <aside className={styles.sidebar}>
       <div className={styles.controls}>
-        <input
-          className={styles.searchInput}
-          value={filter}
-          onChange={(event) => onFilterChange(event.target.value)}
-          placeholder="Search sessions"
-          ref={searchRef}
-        />
+        <div className={styles.searchField}>
+          <input
+            className={styles.searchInput}
+            value={filter}
+            onChange={(event) => onFilterChange(event.target.value)}
+            placeholder="Search sessions"
+            ref={searchRef}
+          />
+          {showShortcutHints ? (
+            <span className={styles.searchShortcut} aria-hidden="true">
+              S
+            </span>
+          ) : null}
+        </div>
       </div>
       <div className={styles.sessionList}>
         {sessionGroups.map((group) => {

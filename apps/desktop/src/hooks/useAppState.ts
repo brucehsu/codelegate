@@ -56,7 +56,8 @@ interface SessionRuntime {
 }
 
 interface Hotkey {
-  key: string;
+  key?: string;
+  code?: string;
   ctrl?: boolean;
   shift?: boolean;
   alt?: boolean;
@@ -78,8 +79,16 @@ function forEachTerminalRuntime(
 }
 
 function matchesHotkey(event: KeyboardEvent, hotkey: Hotkey) {
-  const key = event.key.toLowerCase();
-  if (key !== hotkey.key) {
+  if (hotkey.code !== undefined && event.code !== hotkey.code) {
+    return false;
+  }
+  if (hotkey.key !== undefined) {
+    const key = event.key.toLowerCase();
+    if (key !== hotkey.key) {
+      return false;
+    }
+  }
+  if (hotkey.key === undefined && hotkey.code === undefined) {
     return false;
   }
   if (hotkey.ctrl !== undefined && hotkey.ctrl !== event.ctrlKey) {
@@ -739,10 +748,10 @@ export function useAppState(
         handler: () => onOpenNewSession?.(),
       },
       {
-        key: "s",
-        ctrl: true,
-        shift: true,
-        alt: false,
+        code: "KeyS",
+        ctrl: false,
+        shift: false,
+        alt: true,
         meta: false,
         preventDefault: true,
         handler: () => onFocusSearch?.(),
