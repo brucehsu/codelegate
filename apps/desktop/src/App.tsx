@@ -13,10 +13,11 @@ import MainPane from "./components/MainPane/MainPane";
 import NewSessionDialog from "./components/NewSessionDialog/NewSessionDialog";
 import SettingsDialog from "./components/SettingsDialog/SettingsDialog";
 import RenameDialog from "./components/RenameDialog/RenameDialog";
+import CloseDialog from "./components/CloseDialog/CloseDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
-import type { AgentId, EnvVar, RepoConfig, PaneKind } from "./types";
+import type { AgentId, CloseConfirmPayload, CloseConfirmResult, EnvVar, RepoConfig, PaneKind } from "./types";
 import { getRepoName, groupSessionsByRepo, validateEnvVars } from "./utils/session";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "./utils/hotkeys";
 import {
@@ -62,6 +63,12 @@ export default function App() {
   const sidebarPaneRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef({ startX: 0, startWidth: 360 });
   const terminalResizeRafRef = useRef<number | null>(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closeDialogRemember, setCloseDialogRemember] = useState(true);
+  const [closeDialogHasRunning, setCloseDialogHasRunning] = useState(false);
+  const [closeDialogSessionCount, setCloseDialogSessionCount] = useState(0);
+  const closeDialogResolveRef = useRef<((result: CloseConfirmResult) => void) | null>(null);
+  const closeDialogPromiseRef = useRef<Promise<CloseConfirmResult> | null>(null);
 
   function focusSearch() {
     if (searchInputRef.current) {
@@ -69,6 +76,32 @@ export default function App() {
       searchInputRef.current.select();
     }
   }
+
+  const resolveCloseDialog = useCallback((result: CloseConfirmResult) => {
+    const resolve = closeDialogResolveRef.current;
+    if (!resolve) {
+      return false;
+    }
+    closeDialogResolveRef.current = null;
+    closeDialogPromiseRef.current = null;
+    resolve(result);
+    return true;
+  }, []);
+
+  const requestCloseConfirm = useCallback((payload: CloseConfirmPayload) => {
+    if (closeDialogPromiseRef.current) {
+      return closeDialogPromiseRef.current;
+    }
+    const promise = new Promise<CloseConfirmResult>((resolve) => {
+      closeDialogResolveRef.current = resolve;
+      setCloseDialogHasRunning(payload.hasRunning);
+      setCloseDialogSessionCount(payload.sessionCount);
+      setCloseDialogRemember(true);
+      setCloseDialogOpen(true);
+    });
+    closeDialogPromiseRef.current = promise;
+    return promise;
+  }, []);
 
   const {
     config,
@@ -91,7 +124,7 @@ export default function App() {
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
-  } = useAppState(pushToast, handleOpenDialog, focusSearch);
+  } = useAppState(pushToast, handleOpenDialog, focusSearch, requestCloseConfirm);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogRecentDirs, setDialogRecentDirs] = useState<string[]>(config.settings.recentDirs);
@@ -443,6 +476,19 @@ export default function App() {
     requestAnimationFrame(() => focusActiveSession());
   };
 
+  const handleCloseConfirmCancel = useCallback(() => {
+    setCloseDialogOpen(false);
+    const resolved = resolveCloseDialog({ confirmed: false, remember: false });
+    if (resolved) {
+      requestAnimationFrame(() => focusActiveSession());
+    }
+  }, [focusActiveSession, resolveCloseDialog]);
+
+  const handleCloseConfirmSubmit = useCallback(() => {
+    setCloseDialogOpen(false);
+    resolveCloseDialog({ confirmed: true, remember: closeDialogRemember });
+  }, [closeDialogRemember, resolveCloseDialog]);
+
   const applyRepoDefaults = useCallback(
     (path: string) => {
       const trimmed = path.trim();
@@ -673,6 +719,15 @@ export default function App() {
         onChange={setRenameValue}
         onClose={closeRename}
         onSave={saveRename}
+      />
+      <CloseDialog
+        open={closeDialogOpen}
+        hasRunning={closeDialogHasRunning}
+        sessionCount={closeDialogSessionCount}
+        remember={closeDialogRemember}
+        onRememberChange={setCloseDialogRemember}
+        onClose={handleCloseConfirmCancel}
+        onConfirm={handleCloseConfirmSubmit}
       />
       <Toasts toasts={toasts} onDismiss={removeToast} />
     </div>

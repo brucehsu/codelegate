@@ -52,6 +52,26 @@ export interface Session {
   isTabClosed?: boolean;
 }
 
+export interface PreviousSessionEntry {
+  repo: RepoConfig;
+  cwd?: string;
+}
+
+export interface PreviousSessionsPayload {
+  sessions: PreviousSessionEntry[];
+  activeIndex: number;
+}
+
+export interface CloseConfirmPayload {
+  hasRunning: boolean;
+  sessionCount: number;
+}
+
+export interface CloseConfirmResult {
+  confirmed: boolean;
+  remember: boolean;
+}
+
 export interface PtyOutput {
   session_id: number;
   data_base64: string;

@@ -5,7 +5,11 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{atomic::{AtomicU32, Ordering}, Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, RunEvent, State, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
+#[cfg(target_os = "macos")]
+use tauri::Runtime;
 
 struct AppState {
   next_id: AtomicU32,
@@ -72,6 +76,42 @@ struct RepoDefaults {
   env: Vec<EnvVar>,
   #[serde(default)]
   pre_commands: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorktreeConfig {
+  enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepoConfigSnapshot {
+  repo_path: String,
+  agent: String,
+  #[serde(default)]
+  env: Vec<EnvVar>,
+  #[serde(default)]
+  pre_commands: String,
+  #[serde(default)]
+  worktree: Option<WorktreeConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviousSessionEntry {
+  repo: RepoConfigSnapshot,
+  #[serde(default)]
+  cwd: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviousSessionsPayload {
+  #[serde(default)]
+  sessions: Vec<PreviousSessionEntry>,
+  #[serde(default)]
+  active_index: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -524,6 +564,43 @@ fn save_config(config: AppConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn load_previous_sessions() -> Result<Option<PreviousSessionsPayload>, String> {
+  let file = previous_sessions_file()?;
+  if !file.exists() {
+    return Ok(None);
+  }
+  let raw = std::fs::read_to_string(&file)
+    .map_err(|error| format!("Failed to read previous sessions: {error}"))?;
+  let payload: PreviousSessionsPayload = serde_json::from_str(&raw)
+    .map_err(|error| format!("Failed to parse previous sessions: {error}"))?;
+  Ok(Some(payload))
+}
+
+#[tauri::command]
+fn save_previous_sessions(payload: PreviousSessionsPayload) -> Result<(), String> {
+  let file = previous_sessions_file()?;
+  if let Some(parent) = file.parent() {
+    std::fs::create_dir_all(parent)
+      .map_err(|error| format!("Failed to create previous sessions directory: {error}"))?;
+  }
+  let payload = serde_json::to_string_pretty(&payload)
+    .map_err(|error| format!("Failed to serialize previous sessions: {error}"))?;
+  std::fs::write(&file, payload)
+    .map_err(|error| format!("Failed to write previous sessions: {error}"))?;
+  Ok(())
+}
+
+#[tauri::command]
+fn clear_previous_sessions() -> Result<(), String> {
+  let file = previous_sessions_file()?;
+  if file.exists() {
+    std::fs::remove_file(&file)
+      .map_err(|error| format!("Failed to remove previous sessions: {error}"))?;
+  }
+  Ok(())
+}
+
+#[tauri::command]
 fn spawn_pty(
   app: AppHandle,
   state: State<'_, AppState>,
@@ -668,6 +745,66 @@ fn config_file() -> Result<PathBuf, String> {
   Ok(home.join(".codelegate").join("config.json"))
 }
 
+fn previous_sessions_file() -> Result<PathBuf, String> {
+  let home = std::env::var_os("HOME")
+    .map(PathBuf::from)
+    .ok_or_else(|| "Unable to locate home directory".to_string())?;
+  Ok(home.join(".codelegate").join("previous_sessions.json"))
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+  let quit = MenuItemBuilder::with_id("app-quit", "Quit Codelegate")
+    .accelerator("Cmd+Q")
+    .build(app)?;
+
+  let app_menu = Submenu::with_items(
+    app,
+    "Codelegate",
+    true,
+    &[
+      &PredefinedMenuItem::about(app, None, None)?,
+      &PredefinedMenuItem::separator(app)?,
+      &PredefinedMenuItem::services(app, None)?,
+      &PredefinedMenuItem::separator(app)?,
+      &PredefinedMenuItem::hide(app, None)?,
+      &PredefinedMenuItem::hide_others(app, None)?,
+      &PredefinedMenuItem::show_all(app, None)?,
+      &PredefinedMenuItem::separator(app)?,
+      &quit,
+    ],
+  )?;
+
+  let edit_menu = Submenu::with_items(
+    app,
+    "Edit",
+    true,
+    &[
+      &PredefinedMenuItem::undo(app, None)?,
+      &PredefinedMenuItem::redo(app, None)?,
+      &PredefinedMenuItem::separator(app)?,
+      &PredefinedMenuItem::cut(app, None)?,
+      &PredefinedMenuItem::copy(app, None)?,
+      &PredefinedMenuItem::paste(app, None)?,
+      &PredefinedMenuItem::select_all(app, None)?,
+    ],
+  )?;
+
+  let window_menu = Submenu::with_items(
+    app,
+    "Window",
+    true,
+    &[
+      &PredefinedMenuItem::minimize(app, None)?,
+      &PredefinedMenuItem::fullscreen(app, None)?,
+      &PredefinedMenuItem::separator(app)?,
+      &PredefinedMenuItem::close_window(app, None)?,
+    ],
+  )?;
+
+  Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])
+}
+
 fn default_terminal_font_family() -> String {
   "\"JetBrains Mono\", \"SF Mono\", \"Fira Code\", monospace".to_string()
 }
@@ -686,7 +823,7 @@ fn default_shortcut_modifier() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+  let builder = tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .manage(AppState::default())
     .invoke_handler(tauri::generate_handler![
@@ -704,11 +841,46 @@ pub fn run() {
       get_last_commit_message,
       load_config,
       save_config,
+      load_previous_sessions,
+      save_previous_sessions,
+      clear_previous_sessions,
       spawn_pty,
       write_pty,
       resize_pty,
       kill_pty,
-    ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    ]);
+
+  #[cfg(target_os = "macos")]
+  let builder = builder
+    .menu(|app| build_macos_menu(app))
+    .on_menu_event(|app, event| {
+      if event.id() == "app-quit" {
+        let _ = app.emit("app-exit-requested", ());
+      }
+    })
+    .enable_macos_default_menu(false);
+
+  let app = builder
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application");
+
+  app.run(|app_handle, event| {
+    let emit_exit = || {
+      let _ = app_handle.emit("app-exit-requested", ());
+    };
+    match event {
+      RunEvent::ExitRequested { api, .. } => {
+        api.prevent_exit();
+        emit_exit();
+      }
+      RunEvent::WindowEvent {
+        event: WindowEvent::CloseRequested { api, .. },
+        ..
+      } => {
+        api.prevent_close();
+        emit_exit();
+      }
+      _ => {}
+    }
+  });
 }

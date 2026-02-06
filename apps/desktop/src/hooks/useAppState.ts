@@ -15,9 +15,12 @@ import type { TerminalAppearance, TerminalRendererRuntime } from "./useTerminalR
 import type {
   AppConfig,
   AppSettings,
+  CloseConfirmPayload,
+  CloseConfirmResult,
   EnvVar,
   PtyExit,
   PtyOutput,
+  PreviousSessionsPayload,
   RepoConfig,
   Session,
   PaneKind,
@@ -218,7 +221,8 @@ function getNextVisibleSessionId(sessions: Session[], closingId: string) {
 export function useAppState(
   notify: (toast: ToastInput) => void,
   onOpenNewSession?: () => void,
-  onFocusSearch?: () => void
+  onFocusSearch?: () => void,
+  onConfirmClose?: (payload: CloseConfirmPayload) => Promise<CloseConfirmResult>
 ) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -255,6 +259,8 @@ export function useAppState(
   const activeSessionRef = useRef<string | null>(null);
   const activePaneKindRef = useRef<PaneKind>("agent");
   const closeInProgressRef = useRef(false);
+  const closePromptInProgressRef = useRef(false);
+  const restoreInProgressRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
@@ -308,7 +314,7 @@ export function useAppState(
         }
       });
     });
-  }, []);
+  }, [notify, onConfirmClose]);
 
   const registerPty = useCallback(
     (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, ptyId: number) => {
@@ -1253,11 +1259,14 @@ export function useAppState(
   );
 
   const startSession = useCallback(
-    async (repo: RepoConfig) => {
+    async (repo: RepoConfig, options: { activate?: boolean; cwd?: string | null } = {}) => {
       await configReadyPromiseRef.current;
-      const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLElement) {
-        activeElement.blur();
+      const shouldActivate = options.activate !== false;
+      if (shouldActivate) {
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLElement) {
+          activeElement.blur();
+        }
       }
       const sessionId = createSessionId(repo.repoPath);
       const session: Session = {
@@ -1268,8 +1277,10 @@ export function useAppState(
       };
 
       setSessions((prev) => [...prev, session]);
-      setActiveSessionId(sessionId);
-      pendingFocusRef.current = { sessionId, kind: activePaneKindRef.current };
+      if (shouldActivate) {
+        setActiveSessionId(sessionId);
+        pendingFocusRef.current = { sessionId, kind: activePaneKindRef.current };
+      }
 
       let shell = "";
       try {
@@ -1277,7 +1288,7 @@ export function useAppState(
       } catch (error) {
         updateSession(sessionId, { status: "error", lastError: String(error) });
         notify({ message: String(error), tone: "error" });
-        return;
+        return null;
       }
 
       const envMap = ensureTermEnv(envListToMap(repo.env));
@@ -1295,7 +1306,7 @@ export function useAppState(
         } catch (error) {
           updateSession(sessionId, { status: "error", lastError: String(error) });
           notify({ message: `Failed to resolve home directory: ${String(error)}`, tone: "error" });
-          return;
+          return null;
         }
 
         const repoSlug = sanitizeRepoSlug(getRepoName(repoRoot));
@@ -1308,6 +1319,11 @@ export function useAppState(
         initCommands.push(`mkdir -p ${escapeShellArg(worktreeRoot)}`);
         initCommands.push(`git -C ${base} worktree add ${target}`);
         sessionCwd = worktreePath;
+      } else if (options.cwd) {
+        const trimmed = options.cwd.trim();
+        if (trimmed.length > 0 && trimmed.startsWith(repoRoot)) {
+          sessionCwd = trimmed;
+        }
       }
 
       initCommands.push(`cd ${escapeShellArg(sessionCwd)}`);
@@ -1355,14 +1371,64 @@ export function useAppState(
       } catch (error) {
         updateSession(sessionId, { status: "error", lastError: String(error) });
         notify({ message: `Failed to start session: ${String(error)}`, tone: "error" });
-        return;
+        return null;
       }
 
       registerPty(runtime, sessionId, "agent", ptyId);
       updateSession(sessionId, { status: "running", lastError: undefined, startedAt: Date.now(), ptyId });
+      return sessionId;
     },
     [ensureTerminalRuntime, loadTerminalFonts, registerPty, toTerminalAppearance, updateSession]
   );
+
+  useEffect(() => {
+    if (restoreInProgressRef.current) {
+      return;
+    }
+    restoreInProgressRef.current = true;
+    let cancelled = false;
+
+    const restorePreviousSessions = async () => {
+      await configReadyPromiseRef.current;
+      if (cancelled || sessionsRef.current.length > 0) {
+        return;
+      }
+      let payload: PreviousSessionsPayload | null = null;
+      try {
+        payload = await invoke<PreviousSessionsPayload | null>("load_previous_sessions");
+      } catch (error) {
+        notify({ message: `Failed to load previous sessions: ${String(error)}`, tone: "error" });
+        return;
+      }
+      if (!payload || payload.sessions.length === 0 || cancelled) {
+        return;
+      }
+      const restoredIds: string[] = [];
+      for (const entry of payload.sessions) {
+        const restoredId = await startSession(entry.repo, {
+          activate: false,
+          cwd: entry.cwd ?? null,
+        });
+        if (restoredId) {
+          restoredIds.push(restoredId);
+        }
+      }
+      if (cancelled || restoredIds.length === 0) {
+        return;
+      }
+      const rawIndex = Number.isFinite(payload.activeIndex) ? payload.activeIndex : 0;
+      const activeIndex = Math.min(Math.max(rawIndex, 0), restoredIds.length - 1);
+      const activeId = restoredIds[activeIndex] ?? restoredIds[0];
+      if (activeId) {
+        setActiveSessionId(activeId);
+      }
+    };
+
+    restorePreviousSessions();
+    return () => {
+      cancelled = true;
+    };
+  }, [notify, setActiveSessionId, startSession]);
 
   useEffect(() => {
     let unlistenOutput: (() => void) | undefined;
@@ -1471,38 +1537,84 @@ export function useAppState(
     }
   }, [activeSessionId, activateRuntime, focusSession, scheduleTerminalFit]);
 
+  const handleCloseRequest = useCallback(async () => {
+    if (closeInProgressRef.current || closePromptInProgressRef.current) {
+      return;
+    }
+    const visibleSessions = sessionsRef.current.filter((session) => !session.isTabClosed);
+    const hasRunning = visibleSessions.some((session) => session.status === "running");
+    const sessionCount = visibleSessions.length;
+    if (!onConfirmClose && !hasRunning) {
+      closeInProgressRef.current = true;
+      try {
+        await invoke("exit_app");
+      } catch (error) {
+        closeInProgressRef.current = false;
+        notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
+      }
+      return;
+    }
+    closePromptInProgressRef.current = true;
+    let result: CloseConfirmResult;
+    try {
+      if (onConfirmClose) {
+        result = await onConfirmClose({ hasRunning, sessionCount });
+      } else {
+        const confirmed = await confirm("You have active sessions. Close anyway?", {
+          title: "Codelegate",
+          kind: "warning",
+        });
+        result = { confirmed, remember: false };
+      }
+    } catch (error) {
+      notify({ message: `Unable to confirm close: ${String(error)}`, tone: "error" });
+      return;
+    } finally {
+      closePromptInProgressRef.current = false;
+    }
+    if (!result.confirmed) {
+      return;
+    }
+    closeInProgressRef.current = true;
+    if (onConfirmClose) {
+      try {
+        if (result.remember) {
+          const activeId = activeSessionRef.current;
+          const activeIndex = activeId
+            ? visibleSessions.findIndex((session) => session.id === activeId)
+            : -1;
+          const payload: PreviousSessionsPayload = {
+            sessions: visibleSessions.map((session) => ({
+              repo: session.repo,
+              cwd: session.cwd || undefined,
+            })),
+            activeIndex: activeIndex >= 0 ? activeIndex : 0,
+          };
+          await invoke("save_previous_sessions", { payload });
+        } else {
+          await invoke("clear_previous_sessions");
+        }
+      } catch (error) {
+        notify({
+          message: `Failed to save previous sessions: ${String(error)}`,
+          tone: "error",
+        });
+      }
+    }
+    try {
+      await invoke("exit_app");
+    } catch (error) {
+      closeInProgressRef.current = false;
+      notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
+    }
+  }, [notify, onConfirmClose]);
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
         event.preventDefault();
-        if (closeInProgressRef.current) {
-          return;
-        }
-        const hasRunning = sessionsRef.current.some((session) => session.status === "running");
-        if (!hasRunning) {
-          closeInProgressRef.current = true;
-          try {
-            await invoke("exit_app");
-          } catch (error) {
-            closeInProgressRef.current = false;
-            notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
-          }
-          return;
-        }
-        const confirmed = await confirm("You have active sessions. Close anyway?", {
-          title: "Codelegate",
-          kind: "warning",
-        });
-        if (confirmed) {
-          closeInProgressRef.current = true;
-          try {
-            await invoke("exit_app");
-          } catch (error) {
-            closeInProgressRef.current = false;
-            notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
-          }
-        }
+        await handleCloseRequest();
       })
       .then((fn) => {
         unlisten = fn;
@@ -1510,7 +1622,19 @@ export function useAppState(
     return () => {
       unlisten?.();
     };
-  }, []);
+  }, [handleCloseRequest]);
+
+  useEffect(() => {
+    let unlistenExit: (() => void) | undefined;
+    listen("app-exit-requested", () => {
+      handleCloseRequest();
+    }).then((fn) => {
+      unlistenExit = fn;
+    });
+    return () => {
+      unlistenExit?.();
+    };
+  }, [handleCloseRequest]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
