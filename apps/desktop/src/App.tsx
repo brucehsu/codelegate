@@ -70,6 +70,7 @@ export default function App() {
   const [closeDialogSessionCount, setCloseDialogSessionCount] = useState(0);
   const closeDialogResolveRef = useRef<((result: CloseConfirmResult) => void) | null>(null);
   const closeDialogPromiseRef = useRef<Promise<CloseConfirmResult> | null>(null);
+  const previousActiveSessionIdRef = useRef<string | null>(null);
 
   function focusSearch() {
     if (searchInputRef.current) {
@@ -248,6 +249,20 @@ export default function App() {
   }, []);
 
   const visibleSessions = useMemo(() => sessions.filter((session) => !session.isTabClosed), [sessions]);
+
+  useEffect(() => {
+    const previous = previousActiveSessionIdRef.current;
+    if (previous && activeSessionId && previous !== activeSessionId) {
+      const nextSession = sessions.find((session) => session.id === activeSessionId);
+      if (nextSession) {
+        const repoName = getRepoName(nextSession.repo.repoPath);
+        const branchName = nextSession.branch?.trim();
+        const destination = branchName ? `${repoName} - ${branchName}` : repoName;
+        pushToast({ tone: "success", message: `Switched to: ${destination}` });
+      }
+    }
+    previousActiveSessionIdRef.current = activeSessionId;
+  }, [activeSessionId, sessions, pushToast]);
 
   const filteredSessions = useMemo(() => {
     const needle = filter.toLowerCase();
