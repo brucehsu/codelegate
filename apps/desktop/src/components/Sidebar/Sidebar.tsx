@@ -1,4 +1,4 @@
-import { MoreHorizontal, Plus, Settings } from "lucide-react";
+import { Bot, MoreHorizontal, Plus, Settings } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Fragment, useEffect, useState } from "react";
 import type { SessionGroup } from "../../utils/session";
@@ -46,15 +46,18 @@ export default function Sidebar({
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  const iconById = {
+  const iconById: Record<string, JSX.Element> = {
     claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
     codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
-  } as const;
+  };
 
-  const classById = {
+  const classById: Record<string, string> = {
     claude: styles.agentClaude,
     codex: styles.agentCodex,
-  } as const;
+  };
+
+  const resolveAgentIcon = (agentId: string) => iconById[agentId] ?? <Bot aria-hidden="true" />;
+  const resolveAgentClass = (agentId: string) => classById[agentId] ?? styles.agentDefault;
 
   const renderMenuShortcut = (key: string) => (
     <span className={styles.menuShortcut} aria-hidden="true">
@@ -141,8 +144,8 @@ export default function Sidebar({
                       type="button"
                       onClick={() => onSelectSession(session.id)}
                     >
-                      <span className={`${styles.agentIcon} ${classById[agentId]}`}>
-                        {iconById[agentId]}
+                      <span className={`${styles.agentIcon} ${resolveAgentClass(agentId)}`}>
+                        {resolveAgentIcon(agentId)}
                       </span>
                       <div className={styles.sessionText}>
                         <div className={styles.sessionLabel}>{branchTitle}</div>

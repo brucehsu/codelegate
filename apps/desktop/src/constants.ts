@@ -5,7 +5,7 @@ export const agentCatalog: Array<{ id: AgentId; label: string }> = [
   { id: "codex", label: "Codex CLI" },
 ];
 
-export const agentCommandById: Record<AgentId, string> = {
+export const agentCommandById: Record<string, string> = {
   claude:
     'if command -v claude >/dev/null 2>&1; then exec claude; elif command -v claude-code >/dev/null 2>&1; then exec claude-code; else echo "Claude Code not found in PATH"; fi',
   codex:

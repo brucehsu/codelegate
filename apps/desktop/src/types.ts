@@ -31,6 +31,7 @@ export interface AppSettings {
   shortcutModifier: string;
   batterySaver: boolean;
   repoDefaults?: Record<string, RepoSessionDefaults>;
+  agentArgs?: Record<string, string>;
 }
 
 export interface AppConfig {

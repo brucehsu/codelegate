@@ -316,6 +316,10 @@
   color: #ffffff;
 }
 
+.agentDefault {
+  color: var(--accent);
+}
+
 .sessionMenu {
   position: relative;
   margin-right: 6px;

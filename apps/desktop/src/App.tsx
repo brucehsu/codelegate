@@ -25,6 +25,7 @@ import {
   getShortcutModifierTokens,
   matchesShortcutModifierState,
 } from "./utils/shortcutModifier";
+import { agentCatalog } from "./constants";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
 
@@ -115,6 +116,7 @@ export default function App() {
     updateBatterySaver,
     updateShortcutModifier,
     updateRepoDefaults,
+    updateAgentSettings,
     startSession,
     registerTerminal,
     setActivePaneKind,
@@ -138,6 +140,7 @@ export default function App() {
   const [fontFamily, setFontFamily] = useState(config.settings.terminalFontFamily);
   const [fontSize, setFontSize] = useState(config.settings.terminalFontSize);
   const [batterySaver, setBatterySaver] = useState(config.settings.batterySaver);
+  const [agentArgs, setAgentArgs] = useState<Record<string, string>>(config.settings.agentArgs ?? {});
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -152,7 +155,6 @@ export default function App() {
     () => getShortcutModifierTokens(shortcutModifier),
     [shortcutModifier]
   );
-
   const requestTerminalResize = useCallback(() => {
     if (terminalResizeRafRef.current !== null) {
       return;
@@ -328,9 +330,11 @@ export default function App() {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
     setBatterySaver(config.settings.batterySaver);
+    setAgentArgs(config.settings.agentArgs ?? {});
     setSettingsOpen(true);
   }, [
     config.settings.batterySaver,
+    config.settings.agentArgs,
     config.settings.terminalFontFamily,
     config.settings.terminalFontSize,
   ]);
@@ -456,11 +460,21 @@ export default function App() {
   );
 
   const saveSettings = () => {
+    const allowedAgentIds = new Set(agentCatalog.map((agent) => agent.id));
+    const cleanedArgs: Record<string, string> = {};
+    Object.entries(agentArgs).forEach(([id, value]) => {
+      const trimmed = value.trim();
+      if (trimmed.length > 0 && allowedAgentIds.has(id as AgentId)) {
+        cleanedArgs[id] = trimmed;
+      }
+    });
     updateTerminalSettings({
       terminalFontFamily: fontFamily.trim() || config.settings.terminalFontFamily,
       terminalFontSize: Number.isNaN(fontSize) ? config.settings.terminalFontSize : fontSize,
     });
     updateBatterySaver(batterySaver);
+    updateAgentSettings(cleanedArgs);
+    setAgentArgs(cleanedArgs);
     setSettingsOpen(false);
     requestAnimationFrame(() => focusActiveSession());
   };
@@ -699,10 +713,12 @@ export default function App() {
         fontSize={fontSize}
         batterySaver={batterySaver}
         shortcutModifier={shortcutModifier}
+        agentArgs={agentArgs}
         onChangeFontFamily={setFontFamily}
         onChangeFontSize={setFontSize}
         onToggleBatterySaver={setBatterySaver}
         onCommitShortcutModifier={handleShortcutModifierCommit}
+        onAgentArgsChange={setAgentArgs}
         onClose={closeSettings}
         onSave={saveSettings}
       />

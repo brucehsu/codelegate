@@ -130,6 +130,7 @@ const defaultSettings = {
   shortcutModifier: "Alt",
   batterySaver: false,
   repoDefaults: {},
+  agentArgs: {},
 };
 
 const defaultConfig: AppConfig = {
@@ -154,6 +155,17 @@ function ensureTermEnv(env: Record<string, string>) {
     env.TERM = "xterm-256color";
   }
   return env;
+}
+
+function applyAgentArgs(command: string, args: string) {
+  const trimmed = args.trim();
+  if (!trimmed) {
+    return command;
+  }
+  if (!command.includes("exec ")) {
+    return `${command} ${trimmed}`;
+  }
+  return command.replace(/exec ([^;]+)/g, `exec $1 ${trimmed}`);
 }
 
 function normalizeEnvVars(env: EnvVar[]) {
@@ -518,6 +530,7 @@ export function useAppState(
               loaded.settings?.shortcutModifier ?? defaultSettings.shortcutModifier
             ),
             repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
+            agentArgs: loaded.settings?.agentArgs ?? defaultSettings.agentArgs,
           },
         } as AppConfig;
         setConfig(nextConfig);
@@ -697,6 +710,16 @@ export function useAppState(
           repoDefaults: nextDefaults,
         };
       });
+    },
+    [updateSettings]
+  );
+
+  const updateAgentSettings = useCallback(
+    (agentArgs: Record<string, string>) => {
+      updateSettings((settings) => ({
+        ...settings,
+        agentArgs,
+      }));
     },
     [updateSettings]
   );
@@ -1335,7 +1358,9 @@ export function useAppState(
           .filter((line) => line.length > 0)
           .forEach((line) => initCommands.push(line));
       }
-      initCommands.push(agentCommandById[repo.agent] ?? repo.agent);
+      const agentCommand = agentCommandById[repo.agent] ?? repo.agent;
+      const agentArgs = configRef.current.settings.agentArgs?.[repo.agent]?.trim() ?? "";
+      initCommands.push(applyAgentArgs(agentCommand, agentArgs));
       const commandLine = initCommands.filter((line) => line.trim().length > 0).join(" && ");
       updateSession(sessionId, { cwd: sessionCwd });
 
@@ -1678,6 +1703,7 @@ export function useAppState(
     updateBatterySaver,
     updateShortcutModifier,
     updateRepoDefaults,
+    updateAgentSettings,
     startSession,
     registerTerminal,
     setActivePaneKind,

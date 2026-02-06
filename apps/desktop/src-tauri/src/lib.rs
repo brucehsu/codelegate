@@ -130,6 +130,8 @@ struct AppSettings {
   battery_saver: bool,
   #[serde(default)]
   repo_defaults: HashMap<String, RepoDefaults>,
+  #[serde(default)]
+  agent_args: HashMap<String, String>,
 }
 
 #[tauri::command]
@@ -734,6 +736,7 @@ fn default_config() -> AppConfig {
       shortcut_modifier: default_shortcut_modifier(),
       battery_saver: default_battery_saver(),
       repo_defaults: HashMap::new(),
+      agent_args: HashMap::new(),
     },
   }
 }

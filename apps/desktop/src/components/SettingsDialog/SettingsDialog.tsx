@@ -7,6 +7,8 @@ import {
   modifierFromKeyboardEvent,
   normalizeShortcutModifier,
 } from "../../utils/shortcutModifier";
+import { agentCatalog } from "../../constants";
+import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import styles from "./SettingsDialog.module.css";
 
 interface SettingsDialogProps {
@@ -15,10 +17,12 @@ interface SettingsDialogProps {
   fontSize: number;
   batterySaver: boolean;
   shortcutModifier: string;
+  agentArgs: Record<string, string>;
   onChangeFontFamily: (value: string) => void;
   onChangeFontSize: (value: number) => void;
   onToggleBatterySaver: (value: boolean) => void;
   onCommitShortcutModifier: (value: string) => void;
+  onAgentArgsChange: (next: Record<string, string>) => void;
   onClose: () => void;
   onSave: () => void;
 }
@@ -29,10 +33,12 @@ export default function SettingsDialog({
   fontSize,
   batterySaver,
   shortcutModifier,
+  agentArgs,
   onChangeFontFamily,
   onChangeFontSize,
   onToggleBatterySaver,
   onCommitShortcutModifier,
+  onAgentArgsChange,
   onClose,
   onSave,
 }: SettingsDialogProps) {
@@ -42,6 +48,16 @@ export default function SettingsDialog({
   const shortcutModifierRef = useRef(normalizeShortcutModifier(shortcutModifier));
   const shortcutModifierDraftRef = useRef(normalizeShortcutModifier(shortcutModifier));
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+
+  const iconById: Record<string, JSX.Element> = {
+    claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
+    codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
+  };
+
+  const iconClassById: Record<string, string> = {
+    claude: styles.agentIconClaude,
+    codex: styles.agentIconCodex,
+  };
 
   const handleSubmitShortcut = (event: React.KeyboardEvent) => {
     if (event.defaultPrevented) {
@@ -87,6 +103,13 @@ export default function SettingsDialog({
     shortcutModifierRef.current = normalized;
     updateShortcutModifierInput(normalized);
     onCommitShortcutModifier(normalized);
+  };
+
+  const handleAgentArgsChange = (agentId: string, value: string) => {
+    onAgentArgsChange({
+      ...agentArgs,
+      [agentId]: value,
+    });
   };
 
   useEffect(() => {
@@ -232,6 +255,32 @@ export default function SettingsDialog({
             >
               <span className={styles.toggleKnob} />
             </button>
+          </div>
+
+          <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <span className={styles.sectionTitle}>Agents</span>
+            </div>
+            <div className={styles.agentList}>
+              {agentCatalog.map((agent) => (
+                <div key={agent.id} className={styles.agentRow}>
+                  <div className={styles.agentHeader}>
+                    <div className={styles.agentMeta}>
+                      <span className={`${styles.agentIcon} ${iconClassById[agent.id] ?? ""}`}>
+                        {iconById[agent.id]}
+                      </span>
+                      <span className={styles.agentLabel}>{agent.label}</span>
+                    </div>
+                  </div>
+                  <input
+                    className={styles.input}
+                    value={agentArgs[agent.id] ?? ""}
+                    onChange={(event) => handleAgentArgsChange(agent.id, event.target.value)}
+                    placeholder="--help"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
