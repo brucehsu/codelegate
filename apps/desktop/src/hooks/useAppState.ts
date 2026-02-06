@@ -1333,15 +1333,30 @@ export function useAppState(
         }
 
         const repoSlug = sanitizeRepoSlug(getRepoName(repoRoot));
-        const stamp = formatWorktreeStamp(new Date());
         const worktreeRoot = `${homeDir}/.codelegate/worktrees/${repoSlug}`;
-        const worktreePath = `${worktreeRoot}/${stamp}-${repo.agent}`;
-        const base = escapeShellArg(repoRoot);
-        const target = escapeShellArg(worktreePath);
+        const worktreeRootWithSlash = `${worktreeRoot}/`;
+        const trimmed = options.cwd?.trim() ?? "";
+        if (trimmed.length > 0 && trimmed.startsWith(worktreeRootWithSlash)) {
+          try {
+            const exists = await invoke<boolean>("path_exists", { path: trimmed });
+            if (exists) {
+              sessionCwd = trimmed;
+            }
+          } catch {
+            // Ignore and fall back to creating a new worktree below.
+          }
+        }
 
-        initCommands.push(`mkdir -p ${escapeShellArg(worktreeRoot)}`);
-        initCommands.push(`git -C ${base} worktree add ${target}`);
-        sessionCwd = worktreePath;
+        if (sessionCwd === repoRoot) {
+          const stamp = formatWorktreeStamp(new Date());
+          const worktreePath = `${worktreeRoot}/${stamp}-${repo.agent}`;
+          const base = escapeShellArg(repoRoot);
+          const target = escapeShellArg(worktreePath);
+
+          initCommands.push(`mkdir -p ${escapeShellArg(worktreeRoot)}`);
+          initCommands.push(`git -C ${base} worktree add ${target}`);
+          sessionCwd = worktreePath;
+        }
       } else if (options.cwd) {
         const trimmed = options.cwd.trim();
         if (trimmed.length > 0 && trimmed.startsWith(repoRoot)) {

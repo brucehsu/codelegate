@@ -4,6 +4,7 @@ description = "Default permissions for app commands"
 commands.allow = [
   "get_default_shell",
   "get_home_dir",
+  "path_exists",
   "exit_app",
   "resolve_repo_root",
   "get_git_branch",
@@ -31,6 +32,7 @@ description = "Allow all app commands for the desktop app"
 commands.allow = [
   "get_default_shell",
   "get_home_dir",
+  "path_exists",
   "exit_app",
   "resolve_repo_root",
   "get_git_branch",

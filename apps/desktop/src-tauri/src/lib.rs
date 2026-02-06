@@ -162,6 +162,15 @@ fn get_home_dir() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn path_exists(path: String) -> Result<bool, String> {
+  let trimmed = path.trim();
+  if trimmed.is_empty() {
+    return Ok(false);
+  }
+  Ok(Path::new(trimmed).is_dir())
+}
+
+#[tauri::command]
 fn exit_app() {
   std::process::exit(0);
 }
@@ -832,6 +841,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       get_default_shell,
       get_home_dir,
+      path_exists,
       exit_app,
       resolve_repo_root,
       get_git_branch,
