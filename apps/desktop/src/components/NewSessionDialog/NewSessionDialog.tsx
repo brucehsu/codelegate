@@ -74,12 +74,22 @@ export default function NewSessionDialog({
     if (!dialog) {
       return;
     }
+    let rafId: number | null = null;
     if (open && !dialog.open) {
       dialog.showModal();
+      rafId = requestAnimationFrame(() => {
+        const trigger = dialog.querySelector<HTMLButtonElement>("[data-repo-picker-trigger]");
+        trigger?.focus();
+      });
     }
     if (!open && dialog.open) {
       dialog.close();
     }
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, [open]);
 
   return (

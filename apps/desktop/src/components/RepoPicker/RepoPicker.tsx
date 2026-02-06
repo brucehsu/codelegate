@@ -119,6 +119,7 @@ export default function RepoPicker({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={menuId}
+          data-repo-picker-trigger
         >
           <span>{placeholder}</span>
           <ChevronDown className={styles.icon} aria-hidden="true" />
