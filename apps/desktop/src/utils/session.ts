@@ -26,7 +26,13 @@ export function groupSessionsByRepo(sessions: Session[]): SessionGroup[] {
     }
     group.sessions.push(session);
   });
-  return groups;
+  return groups.sort((a, b) => {
+    const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+    if (byName !== 0) {
+      return byName;
+    }
+    return a.key.localeCompare(b.key, undefined, { sensitivity: "base", numeric: true });
+  });
 }
 
 export function createSessionId(repoPath: string) {
