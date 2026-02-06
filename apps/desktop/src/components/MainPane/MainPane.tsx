@@ -18,6 +18,7 @@ interface MainPaneProps {
   activePaneKind: PaneKind;
   onSelectPaneKind: (kind: PaneKind) => void;
   onRegisterTerminal: (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => void;
+  onRefreshSessionBranch: (sessionId: string) => Promise<void>;
   unreadOutput: Record<string, boolean>;
   onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
   onNotify: (toast: ToastInput) => void;
@@ -30,6 +31,7 @@ export default function MainPane({
   activePaneKind,
   onSelectPaneKind,
   onRegisterTerminal,
+  onRefreshSessionBranch,
   unreadOutput,
   onJumpToBottom,
   onNotify,
@@ -82,7 +84,14 @@ export default function MainPane({
             showUpdates={showTerminalUpdates}
             onJumpToBottom={onJumpToBottom}
           />
-          <GitTab session={activeSession} isActive={activePaneKind === "git"} onNotify={onNotify} />
+          <GitTab
+            session={activeSession}
+            isActive={activePaneKind === "git"}
+            onNotify={onNotify}
+            onRefreshBranch={() =>
+              activeSession?.id ? onRefreshSessionBranch(activeSession.id) : Promise.resolve()
+            }
+          />
         </div>
         <div className={styles.sessionFooter}>
           <span className={styles.sessionPath}>{activeSession?.cwd ?? activeSession?.repo.repoPath ?? ""}</span>

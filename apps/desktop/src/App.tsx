@@ -121,6 +121,7 @@ export default function App() {
     registerTerminal,
     setActivePaneKind,
     renameBranch,
+    refreshSessionBranch,
     terminateSession,
     agentOutputting,
     focusActiveSession,
@@ -682,6 +683,7 @@ export default function App() {
         activePaneKind={activePaneKind}
         onSelectPaneKind={handleSelectPaneKind}
         onRegisterTerminal={registerTerminal}
+        onRefreshSessionBranch={refreshSessionBranch}
         unreadOutput={unreadOutput}
         onJumpToBottom={jumpToBottom}
         onNotify={pushToast}

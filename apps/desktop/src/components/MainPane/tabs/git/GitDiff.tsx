@@ -14,6 +14,7 @@ interface GitDiffProps {
   session?: Session | null;
   isActive: boolean;
   onNotify: (toast: ToastInput) => void;
+  onRefreshBranch?: () => Promise<void>;
 }
 
 interface GitDiffPayload {
@@ -22,7 +23,7 @@ interface GitDiffPayload {
   untracked: Array<{ path: string; diff: string }>;
 }
 
-export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
+export default function GitDiff({ session, isActive, onNotify, onRefreshBranch }: GitDiffProps) {
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [actionTarget, setActionTarget] = useState<"stageAll" | "unstageAll" | "discardAll" | null>(null);
@@ -160,8 +161,8 @@ export default function GitDiff({ session, isActive, onNotify }: GitDiffProps) {
   }, [commitMenuOpen]);
 
   const handleRefresh = useCallback(() => {
-    void loadDiffs();
-  }, [loadDiffs]);
+    void Promise.all([loadDiffs(), onRefreshBranch ? onRefreshBranch() : Promise.resolve()]);
+  }, [loadDiffs, onRefreshBranch]);
 
   const runBulkAction = useCallback(
     async (target: "stageAll" | "unstageAll" | "discardAll") => {

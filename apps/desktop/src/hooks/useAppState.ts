@@ -1217,6 +1217,26 @@ export function useAppState(
     [notify, updateSession]
   );
 
+  const refreshSessionBranch = useCallback(
+    async (sessionId: string) => {
+      const session = sessionsRef.current.find((item) => item.id === sessionId);
+      const cwd = resolveSessionCwd(session);
+      if (!cwd) {
+        return;
+      }
+      try {
+        const branch = await invoke<string>("get_git_branch", { path: cwd });
+        const nextBranch = branch.trim();
+        if (nextBranch.length > 0) {
+          updateSession(sessionId, { branch: nextBranch });
+        }
+      } catch {
+        // Ignore refresh failures to avoid noisy toasts during manual refresh.
+      }
+    },
+    [updateSession]
+  );
+
   const closeSessionTab = useCallback(
     (sessionId: string) => {
       const closingActive = activeSessionRef.current === sessionId;
@@ -1723,6 +1743,7 @@ export function useAppState(
     registerTerminal,
     setActivePaneKind,
     renameBranch,
+    refreshSessionBranch,
     closeSessionTab,
     terminateSession,
     agentOutputting,
