@@ -138,6 +138,8 @@ const defaultConfig: AppConfig = {
   settings: defaultSettings,
 };
 
+const TERMINAL_SCROLLBACK_LINES = 30000;
+
 function formatWorktreeStamp(date: Date) {
   const pad = (value: number) => value.toString().padStart(2, "0");
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(
@@ -929,7 +931,7 @@ export function useAppState(
         fontFamily: terminalAppearance.fontFamily,
         fontSize: terminalAppearance.fontSize,
         lineHeight: terminalAppearance.lineHeight,
-        scrollback: 1000,
+        scrollback: TERMINAL_SCROLLBACK_LINES,
       });
       configureTerminalOptions(term);
       const fit = new FitAddon();
