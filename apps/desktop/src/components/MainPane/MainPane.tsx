@@ -4,7 +4,8 @@ import GitTab from "./tabs/GitTab";
 import TerminalTab from "./tabs/TerminalTab";
 import styles from "./MainPane.module.css";
 import TabButton from "../ui/TabButton/TabButton";
-import { Command, Copy } from "lucide-react";
+import { Copy } from "lucide-react";
+import appLogo from "../../assets/logo.png";
 
 interface TabDefinition {
   kind: PaneKind;
@@ -113,7 +114,7 @@ export default function MainPane({
 
       <div className={`${styles.emptyState} ${showTabPane ? styles.hidden : ""}`}>
         <div className={styles.emptyLogo}>
-          <Command aria-hidden="true" />
+          <img src={appLogo} alt="" />
         </div>
         <h1>Codelegate</h1>
       </div>
