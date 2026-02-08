@@ -8,8 +8,10 @@
   "scripts": {
     "build": "tsc -b",
     "build:desktop": "pnpm --filter @codelegate/desktop build",
+    "build:website": "pnpm --filter @codelegate/website build",
     "clean": "tsc -b --clean",
     "dev:desktop": "pnpm --filter @codelegate/desktop dev",
+    "dev:website": "pnpm --filter @codelegate/website dev",
     "tauri:desktop": "pnpm --filter @codelegate/desktop tauri",
     "typecheck": "tsc -b --pretty false"
   },

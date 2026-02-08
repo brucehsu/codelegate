@@ -1,0 +1,356 @@
+/* ── Tokens (matching desktop app) ── */
+:root {
+  --bg: #0b0e14;
+  --bg-soft: #111827;
+  --surface: #151c2b;
+  --surface-2: #1b2436;
+  --border: #28324a;
+  --text: #e7ecf3;
+  --muted: #9aa6bb;
+  --accent: #4fd1c5;
+  --accent-2: #38b2ac;
+  --danger: #ef6a5f;
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Reset ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── Hero ── */
+.hero {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 7.5rem 1.5rem;
+  text-align: center;
+  background:
+    radial-gradient(circle at top left, rgba(79, 209, 197, 0.15), transparent 35%),
+    radial-gradient(circle at 20% 40%, rgba(56, 178, 172, 0.12), transparent 40%);
+}
+
+.hero-content {
+  max-width: 800px;
+  width: 100%;
+}
+
+/* Hero load animation */
+.fade-in-load {
+  animation: fadeInLoad 1.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+@keyframes fadeInLoad {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-logo {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 1.5rem;
+  object-fit: contain;
+}
+
+.hero-title {
+  font-size: 3.5rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+
+.hero-subtitle {
+  font-size: 1.25rem;
+  color: var(--muted);
+  max-width: 560px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.5;
+}
+
+/* ── Screencast placeholder ── */
+.screencast-placeholder {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hero-screencast {
+  aspect-ratio: 16 / 9;
+  max-width: 720px;
+  margin: 0 auto 2.5rem;
+  box-shadow: var(--shadow);
+}
+
+.screencast-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.play-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.4;
+}
+
+.feature-screencast .play-icon {
+  width: 48px;
+  height: 48px;
+}
+
+/* ── Buttons ── */
+.hero-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.btn:hover {
+  text-decoration: none;
+}
+
+.btn-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.btn-primary:hover {
+  background: var(--accent-2);
+  box-shadow: 0 0 24px rgba(79, 209, 197, 0.3);
+}
+
+.btn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.35rem;
+  opacity: 0.85;
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-2);
+  border-color: var(--muted);
+}
+
+/* ── Feature Sections ── */
+.feature-section {
+  min-height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7.5rem 2rem;
+  position: relative;
+}
+
+.feature-section:nth-child(even) {
+  background: radial-gradient(ellipse at 70% 50%, rgba(79, 209, 197, 0.06), transparent 60%);
+}
+
+.feature-section:nth-child(odd) {
+  background: radial-gradient(ellipse at 30% 50%, rgba(56, 178, 172, 0.05), transparent 60%);
+}
+
+.feature-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 4rem;
+  align-items: center;
+  max-width: 1200px;
+  width: 100%;
+}
+
+.feature-layout--reversed {
+  direction: rtl;
+}
+
+.feature-layout--reversed > * {
+  direction: ltr;
+}
+
+.feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.feature-headline {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.feature-description {
+  font-size: 1.2rem;
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 480px;
+}
+
+.feature-media {
+  width: 100%;
+}
+
+.feature-screencast {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  box-shadow: var(--shadow);
+}
+
+/* ── Scroll Animations ── */
+.fade-up {
+  opacity: 0;
+  transform: translateY(60px);
+  transition: opacity 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.fade-up.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Footer ── */
+.footer {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .feature-layout {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+    text-align: center;
+  }
+
+  .feature-layout--reversed {
+    direction: ltr;
+  }
+
+  .feature-description {
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .feature-headline {
+    font-size: 2.25rem;
+  }
+
+  .feature-section {
+    min-height: auto;
+    padding: 7.5rem 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: 2.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1.1rem;
+  }
+
+  .hero-subtitle br {
+    display: none;
+  }
+
+  .feature-headline {
+    font-size: 2rem;
+  }
+
+  .feature-description {
+    font-size: 1.05rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-title {
+    font-size: 2rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn {
+    justify-content: center;
+  }
+
+  .feature-headline {
+    font-size: 1.75rem;
+  }
+}
