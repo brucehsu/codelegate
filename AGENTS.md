@@ -5,7 +5,16 @@ This repository currently targets **desktop only**. Treat `apps/desktop` as the 
 ## Key Paths
 - `apps/desktop/src`: React UI, CSS Modules, app logic.
 - `apps/desktop/src-tauri`: Rust backend, Tauri commands/permissions.
-- `packages/shared`: Shared TS utilities.
+- `packages/shared`: Shared TS utilities/icons.
+- `apps/desktop/src-tauri/icons/icon.png`: Tauri app/bundle icon.
+- `apps/desktop/src/assets/logo.png`: UI logo asset.
+
+## Current App Scope
+- Multi-session workspace with repo grouping and search.
+- Per-session panes: Agent, Git, Terminal.
+- Git pane supports staged/unstaged/untracked diffs, commit/amend, and bulk actions.
+- Optional worktree-based session startup.
+- Close flow supports optional session restore on next launch.
 
 ## Data Locations
 - Settings: `~/.codelegate/config.json`
@@ -30,3 +39,7 @@ This repository currently targets **desktop only**. Treat `apps/desktop` as the 
 ## Release/Build
 - `pnpm build:desktop`
 - `pnpm tauri:desktop build`
+- `pnpm --filter @codelegate/desktop tauri build --no-bundle`
+
+## CI
+- GitHub Actions build verification: `.github/workflows/desktop-build.yml`
