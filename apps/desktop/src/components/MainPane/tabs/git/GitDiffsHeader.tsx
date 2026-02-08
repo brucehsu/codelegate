@@ -6,10 +6,12 @@ import styles from "./GitDiff.module.css";
 
 interface SectionAction {
   key: string;
-  label: string;
+  label: ReactNode;
   onClick: () => void;
   disabled?: boolean;
   className?: string;
+  shortcutHint?: string;
+  showShortcutHint?: boolean;
 }
 
 interface GitDiffsHeaderProps {
@@ -74,14 +76,20 @@ export default function GitDiffsHeader({
         <>
           {hasSectionActions
             ? sectionActions.map((action) => (
-                <ActionButton
-                  key={action.key}
-                  onClick={action.onClick}
-                  disabled={action.disabled}
-                  className={[styles.diffSummaryActionButton, action.className].filter(Boolean).join(" ")}
-                >
-                  {action.label}
-                </ActionButton>
+                <span key={action.key} className={styles.shortcutBadgeWrap}>
+                  <ActionButton
+                    onClick={action.onClick}
+                    disabled={action.disabled}
+                    className={[styles.diffSummaryActionButton, action.className].filter(Boolean).join(" ")}
+                  >
+                    {action.label}
+                  </ActionButton>
+                  {action.showShortcutHint && action.shortcutHint ? (
+                    <span className={styles.shortcutBadge} aria-hidden="true">
+                      {action.shortcutHint}
+                    </span>
+                  ) : null}
+                </span>
               ))
             : null}
           {shouldShowRefresh ? (

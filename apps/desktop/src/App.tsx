@@ -412,7 +412,7 @@ export default function App() {
       }),
       defineHotkey({
         id: "session-rename-alt",
-        combo: buildShortcutCombo(shortcutModifier, "KeyR"),
+        combo: buildShortcutCombo(shortcutModifier, "KeyB"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => renameActiveSession(),
@@ -702,6 +702,7 @@ export default function App() {
         unreadOutput={unreadOutput}
         onJumpToBottom={jumpToBottom}
         onNotify={pushToast}
+        shortcutModifier={shortcutModifier}
         showShortcutHints={showShortcutHints}
       />
       <NewSessionDialog

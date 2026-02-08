@@ -184,7 +184,7 @@ export default function Sidebar({
                             }}
                           >
                             <span className={styles.menuItemLabel}>Rename Branch</span>
-                            {renderMenuShortcut("R")}
+                            {renderMenuShortcut("B")}
                           </button>
                           <button
                             type="button"

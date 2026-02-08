@@ -23,6 +23,7 @@ interface MainPaneProps {
   unreadOutput: Record<string, boolean>;
   onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
   onNotify: (toast: ToastInput) => void;
+  shortcutModifier: string;
   showShortcutHints?: boolean;
 }
 
@@ -36,6 +37,7 @@ export default function MainPane({
   unreadOutput,
   onJumpToBottom,
   onNotify,
+  shortcutModifier,
   showShortcutHints = false,
 }: MainPaneProps) {
   const showTabPane = Boolean(activeSessionId);
@@ -89,6 +91,8 @@ export default function MainPane({
             session={activeSession}
             isActive={activePaneKind === "git"}
             onNotify={onNotify}
+            shortcutModifier={shortcutModifier}
+            showShortcutHints={showShortcutHints}
             onRefreshBranch={() =>
               activeSession?.id ? onRefreshSessionBranch(activeSession.id) : Promise.resolve()
             }

@@ -6,14 +6,51 @@ import Button from "../../../ui/Button/Button";
 import ActionButton from "../../../ui/ActionButton/ActionButton";
 import type { Session, ToastInput } from "../../../../types";
 import { getLanguageFromPath, parseGitDiff, type FileDiff } from "../../../../utils/gitDiff";
+import { defineHotkey, runHotkeys } from "../../../../utils/hotkeys";
+import { buildShortcutCombo } from "../../../../utils/shortcutModifier";
 import GitDiffsHeader from "./GitDiffsHeader";
 import GitFileCard from "./GitFileCard";
 import styles from "./GitDiff.module.css";
+
+const nonTextInputTypes = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+function isTextInputElement(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  if (target.closest("[contenteditable]:not([contenteditable='false'])")) {
+    return true;
+  }
+  const formField = target.closest("input, textarea, select, [role='textbox'], [role='searchbox']");
+  if (!(formField instanceof HTMLElement)) {
+    return false;
+  }
+  if (formField instanceof HTMLInputElement) {
+    return !nonTextInputTypes.has((formField.type || "text").toLowerCase());
+  }
+  return true;
+}
 
 interface GitDiffProps {
   session?: Session | null;
   isActive: boolean;
   onNotify: (toast: ToastInput) => void;
+  shortcutModifier: string;
+  showShortcutHints?: boolean;
   onRefreshBranch?: () => Promise<void>;
 }
 
@@ -23,7 +60,14 @@ interface GitDiffPayload {
   untracked: Array<{ path: string; diff: string }>;
 }
 
-export default function GitDiff({ session, isActive, onNotify, onRefreshBranch }: GitDiffProps) {
+export default function GitDiff({
+  session,
+  isActive,
+  onNotify,
+  shortcutModifier,
+  showShortcutHints = false,
+  onRefreshBranch,
+}: GitDiffProps) {
   const [payload, setPayload] = useState<GitDiffPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [actionTarget, setActionTarget] = useState<"stageAll" | "unstageAll" | "discardAll" | null>(null);
@@ -251,6 +295,84 @@ export default function GitDiff({ session, isActive, onNotify, onRefreshBranch }
     [commitActionDisabled, handleCommit, isMac]
   );
 
+  const gitHotkeys = useMemo(() => {
+    return [
+      defineHotkey({
+        id: "git-refresh-status",
+        combo: buildShortcutCombo(shortcutModifier, "KeyR"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => {
+          if (!refreshDisabled) {
+            handleRefresh();
+          }
+        },
+      }),
+      defineHotkey({
+        id: "git-discard-all",
+        combo: buildShortcutCombo(shortcutModifier, "KeyD"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => {
+          if (!repoPath || isLoading || actionTarget !== null || unstagedFiles.length === 0) {
+            return;
+          }
+          void runBulkAction("discardAll");
+        },
+      }),
+      defineHotkey({
+        id: "git-unstage-all",
+        combo: buildShortcutCombo(shortcutModifier, "KeyZ"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => {
+          if (!repoPath || isLoading || actionTarget !== null || stagedFiles.length === 0) {
+            return;
+          }
+          void runBulkAction("unstageAll");
+        },
+      }),
+      defineHotkey({
+        id: "git-stage-all",
+        combo: buildShortcutCombo(shortcutModifier, "KeyX"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => {
+          if (!repoPath || isLoading || actionTarget !== null || unstagedFiles.length === 0) {
+            return;
+          }
+          void runBulkAction("stageAll");
+        },
+      }),
+    ];
+  }, [
+    actionTarget,
+    handleRefresh,
+    isLoading,
+    refreshDisabled,
+    repoPath,
+    runBulkAction,
+    shortcutModifier,
+    stagedFiles.length,
+    unstagedFiles.length,
+  ]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || isTextInputElement(event.target)) {
+        return;
+      }
+      runHotkeys(event, gitHotkeys);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [gitHotkeys, isActive]);
+
   const handleSelectCommitMode = useCallback(
     async (mode: "commit" | "amend") => {
       setCommitMode(mode);
@@ -294,13 +416,20 @@ export default function GitDiff({ session, isActive, onNotify, onRefreshBranch }
             disabled={!repoPath || isCommitting}
           />
           <div className={styles.commitActions}>
-            <ActionButton
-              icon={<RefreshCw size={16} aria-hidden="true" />}
-              onClick={handleRefresh}
-              disabled={refreshDisabled}
-              className={styles.commitRefreshButton}
-              aria-label="Refresh diffs"
-            />
+            <span className={styles.shortcutBadgeWrap}>
+              <ActionButton
+                icon={<RefreshCw size={16} aria-hidden="true" />}
+                onClick={handleRefresh}
+                disabled={refreshDisabled}
+                className={styles.commitRefreshButton}
+                aria-label="Refresh diffs"
+              />
+              {showShortcutHints ? (
+                <span className={styles.shortcutBadge} aria-hidden="true">
+                  R
+                </span>
+              ) : null}
+            </span>
             <div
               className={`${styles.commitButtonGroup} ${commitActionDisabled ? styles.commitButtonGroupDisabled : ""}`}
               ref={commitMenuRef}
@@ -360,6 +489,8 @@ export default function GitDiff({ session, isActive, onNotify, onRefreshBranch }
                   label: "Unstage All",
                   onClick: () => void runBulkAction("unstageAll"),
                   disabled: actionsDisabled,
+                  shortcutHint: "Z",
+                  showShortcutHint: showShortcutHints,
                 },
               ]
             : [
@@ -369,12 +500,16 @@ export default function GitDiff({ session, isActive, onNotify, onRefreshBranch }
                   onClick: () => void runBulkAction("discardAll"),
                   className: styles.discardAction,
                   disabled: actionsDisabled,
+                  shortcutHint: "D",
+                  showShortcutHint: showShortcutHints,
                 },
                 {
                   key: "stage-all",
                   label: "Stage All",
                   onClick: () => void runBulkAction("stageAll"),
                   disabled: actionsDisabled,
+                  shortcutHint: "X",
+                  showShortcutHint: showShortcutHints,
                 },
               ];
         return (
