@@ -234,7 +234,6 @@ function getNextVisibleSessionId(sessions: Session[], closingId: string) {
 
 export function useAppState(
   notify: (toast: ToastInput) => void,
-  onOpenNewSession?: () => void,
   onFocusSearch?: () => void,
   onConfirmClose?: (payload: CloseConfirmPayload) => Promise<CloseConfirmResult>
 ) {
@@ -800,19 +799,13 @@ export function useAppState(
         handler: () => cycleSession(),
       }),
       defineHotkey({
-        id: "session-new",
-        combo: "Ctrl+Shift+KeyT",
-        preventDefault: true,
-        handler: () => onOpenNewSession?.(),
-      }),
-      defineHotkey({
         id: "focus-search",
         combo: buildShortcutCombo(config.settings.shortcutModifier, "KeyS"),
         preventDefault: true,
         handler: () => onFocusSearch?.(),
       }),
     ],
-    [config.settings.shortcutModifier, cycleSession, onOpenNewSession, onFocusSearch]
+    [config.settings.shortcutModifier, cycleSession, onFocusSearch]
   );
 
   const copySelection = useCallback((term: Terminal) => {

@@ -128,7 +128,7 @@ export default function App() {
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
-  } = useAppState(pushToast, handleOpenDialog, focusSearch, requestCloseConfirm);
+  } = useAppState(pushToast, focusSearch, requestCloseConfirm);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogRecentDirs, setDialogRecentDirs] = useState<string[]>(config.settings.recentDirs);

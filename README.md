@@ -40,7 +40,6 @@ This repository currently targets **desktop only** (`apps/desktop`).
 - `<Modifier> + 1..9` = Select session from current hotkey page
 - `<Modifier> + 0` = Next hotkey page
 - `Ctrl + Tab` = Cycle sessions
-- `Ctrl + Shift + T` = New session
 
 ## Repository Layout
 - `apps/desktop`: Desktop app (React + Vite frontend, Tauri + Rust backend)
