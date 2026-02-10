@@ -1296,6 +1296,127 @@ export function useAppState(
     [clearAgentOutputting, disposeSessionRuntime, notify, setActiveSessionId]
   );
 
+  const spawnAgentForSession = useCallback(
+    async ({
+      sessionId,
+      repo,
+      repoRoot,
+      sessionCwd,
+      initialCommands = [],
+      failureMessage,
+    }: {
+      sessionId: string;
+      repo: RepoConfig;
+      repoRoot: string;
+      sessionCwd: string;
+      initialCommands?: string[];
+      failureMessage: string;
+    }) => {
+      let shell = "";
+      try {
+        shell = await invoke<string>("get_default_shell");
+      } catch (error) {
+        updateSession(sessionId, { status: "error", lastError: String(error) });
+        notify({ message: String(error), tone: "error" });
+        return false;
+      }
+
+      const envMap = ensureTermEnv(envListToMap(repo.env));
+      const currentSettings = configRef.current.settings;
+      await loadTerminalFonts(toTerminalAppearance(currentSettings));
+
+      const initCommands: string[] = [...initialCommands, `cd ${escapeShellArg(sessionCwd)}`];
+      const preCommands = repo.preCommands.trim();
+      if (preCommands) {
+        preCommands
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .forEach((line) => initCommands.push(line));
+      }
+      const agentCommand = agentCommandById[repo.agent] ?? repo.agent;
+      const agentArgs = configRef.current.settings.agentArgs?.[repo.agent]?.trim() ?? "";
+      initCommands.push(applyAgentArgs(agentCommand, agentArgs));
+
+      const runtime = ensureTerminalRuntime(sessionId, "agent");
+      if (runtime.starting) {
+        return false;
+      }
+
+      runtime.starting = true;
+      let ptyId: number;
+      try {
+        ptyId = await invoke<number>("spawn_pty", {
+          shell,
+          args: shellArgs(shell, initCommands.join(" && ")),
+          cwd: repoRoot,
+          env: envMap,
+          cols: runtime.term?.cols ?? 80,
+          rows: runtime.term?.rows ?? 24,
+        });
+      } catch (error) {
+        updateSession(sessionId, { status: "error", lastError: String(error) });
+        notify({ message: `${failureMessage}: ${String(error)}`, tone: "error" });
+        return false;
+      } finally {
+        runtime.starting = false;
+      }
+
+      registerPty(runtime, sessionId, "agent", ptyId);
+      updateSession(sessionId, {
+        cwd: sessionCwd,
+        status: "running",
+        lastError: undefined,
+        startedAt: Date.now(),
+        ptyId,
+      });
+      return true;
+    },
+    [ensureTerminalRuntime, loadTerminalFonts, notify, registerPty, toTerminalAppearance, updateSession]
+  );
+
+  const restartAgentSession = useCallback(
+    async (sessionId: string) => {
+      await configReadyPromiseRef.current;
+
+      const session = sessionsRef.current.find((item) => item.id === sessionId);
+      if (!session) {
+        return false;
+      }
+
+      const sessionCwd = resolveSessionCwd(session);
+      if (!sessionCwd) {
+        notify({ message: "Unable to resolve session path.", tone: "error" });
+        return false;
+      }
+
+      const runtime = ensureTerminalRuntime(sessionId, "agent");
+      const currentPtyId = runtime.ptyId;
+      if (currentPtyId) {
+        runtime.ptyId = undefined;
+        ptyToSessionRef.current.delete(currentPtyId);
+        try {
+          await invoke("kill_pty", { sessionId: currentPtyId });
+        } catch (error) {
+          notify({ message: `Failed to terminate previous agent process: ${String(error)}`, tone: "error" });
+        }
+      }
+
+      clearAgentOutputting(sessionId);
+      agentOutputtingSuppressUntilRef.current.delete(sessionId);
+      updateSession(sessionId, { status: "stopped", lastError: undefined, ptyId: undefined });
+
+      return spawnAgentForSession({
+        sessionId,
+        repo: session.repo,
+        repoRoot: session.repo.repoPath,
+        sessionCwd,
+        failureMessage: "Failed to restart agent",
+      });
+    },
+    [clearAgentOutputting, ensureTerminalRuntime, notify, spawnAgentForSession, updateSession]
+  );
+
   const startSession = useCallback(
     async (repo: RepoConfig, options: { activate?: boolean; cwd?: string | null } = {}) => {
       await configReadyPromiseRef.current;
@@ -1319,19 +1440,6 @@ export function useAppState(
         setActiveSessionId(sessionId);
         pendingFocusRef.current = { sessionId, kind: activePaneKindRef.current };
       }
-
-      let shell = "";
-      try {
-        shell = await invoke<string>("get_default_shell");
-      } catch (error) {
-        updateSession(sessionId, { status: "error", lastError: String(error) });
-        notify({ message: String(error), tone: "error" });
-        return null;
-      }
-
-      const envMap = ensureTermEnv(envListToMap(repo.env));
-      const currentSettings = configRef.current.settings;
-      await loadTerminalFonts(toTerminalAppearance(currentSettings));
 
       const repoRoot = repo.repoPath;
       let sessionCwd = repoRoot;
@@ -1379,19 +1487,6 @@ export function useAppState(
         }
       }
 
-      initCommands.push(`cd ${escapeShellArg(sessionCwd)}`);
-      const preCommands = repo.preCommands.trim();
-      if (preCommands) {
-        preCommands
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0)
-          .forEach((line) => initCommands.push(line));
-      }
-      const agentCommand = agentCommandById[repo.agent] ?? repo.agent;
-      const agentArgs = configRef.current.settings.agentArgs?.[repo.agent]?.trim() ?? "";
-      initCommands.push(applyAgentArgs(agentCommand, agentArgs));
-      const commandLine = initCommands.filter((line) => line.trim().length > 0).join(" && ");
       updateSession(sessionId, { cwd: sessionCwd });
 
       const resolveBranch = async (attempts: number) => {
@@ -1411,29 +1506,21 @@ export function useAppState(
 
       resolveBranch(repo.worktree?.enabled ? 5 : 1);
 
-      const runtime = ensureTerminalRuntime(sessionId, "agent");
-
-      let ptyId: number;
-      try {
-        ptyId = await invoke<number>("spawn_pty", {
-          shell,
-          args: shellArgs(shell, commandLine),
-          cwd: repoRoot,
-          env: envMap,
-          cols: runtime.term?.cols ?? 80,
-          rows: runtime.term?.rows ?? 24,
-        });
-      } catch (error) {
-        updateSession(sessionId, { status: "error", lastError: String(error) });
-        notify({ message: `Failed to start session: ${String(error)}`, tone: "error" });
+      const started = await spawnAgentForSession({
+        sessionId,
+        repo,
+        repoRoot,
+        sessionCwd,
+        initialCommands: initCommands,
+        failureMessage: "Failed to start session",
+      });
+      if (!started) {
         return null;
       }
 
-      registerPty(runtime, sessionId, "agent", ptyId);
-      updateSession(sessionId, { status: "running", lastError: undefined, startedAt: Date.now(), ptyId });
       return sessionId;
     },
-    [ensureTerminalRuntime, loadTerminalFonts, registerPty, toTerminalAppearance, updateSession]
+    [setActiveSessionId, spawnAgentForSession, updateSession]
   );
 
   useEffect(() => {
@@ -1735,6 +1822,7 @@ export function useAppState(
     updateRepoDefaults,
     updateAgentSettings,
     startSession,
+    restartAgentSession,
     registerTerminal,
     setActivePaneKind,
     renameBranch,

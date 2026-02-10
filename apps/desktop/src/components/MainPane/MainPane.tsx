@@ -22,6 +22,7 @@ interface MainPaneProps {
   onRefreshSessionBranch: (sessionId: string) => Promise<void>;
   unreadOutput: Record<string, boolean>;
   onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
+  onRestartAgentSession: (sessionId: string) => Promise<boolean>;
   onNotify: (toast: ToastInput) => void;
   shortcutModifier: string;
   showShortcutHints?: boolean;
@@ -36,6 +37,7 @@ export default function MainPane({
   onRefreshSessionBranch,
   unreadOutput,
   onJumpToBottom,
+  onRestartAgentSession,
   onNotify,
   shortcutModifier,
   showShortcutHints = false,
@@ -48,6 +50,10 @@ export default function MainPane({
     activePaneKind === "agent" && activeAgentKey ? Boolean(unreadOutput[activeAgentKey]) : false;
   const showTerminalUpdates =
     activePaneKind === "terminal" && activeTerminalKey ? Boolean(unreadOutput[activeTerminalKey]) : false;
+  const showAgentRestart =
+    activePaneKind === "agent" &&
+    Boolean(activeSession) &&
+    (activeSession?.status === "stopped" || activeSession?.status === "error");
   const tabs: TabDefinition[] = [
     { kind: "agent", name: "Agent", navigationHotKey: "A" },
     { kind: "git", name: "Git", navigationHotKey: "G" },
@@ -77,7 +83,12 @@ export default function MainPane({
             isActive={activePaneKind === "agent"}
             onRegisterTerminal={onRegisterTerminal}
             showUpdates={showAgentUpdates}
+            showShortcutHints={showShortcutHints}
             onJumpToBottom={onJumpToBottom}
+            showRestart={showAgentRestart}
+            onRestart={() =>
+              activeSession?.id ? onRestartAgentSession(activeSession.id) : Promise.resolve(false)
+            }
           />
           <TerminalTab
             sessions={sessions}

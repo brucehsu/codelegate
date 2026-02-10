@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
-import { ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import type { PaneKind, Session } from "../../../types";
 import styles from "../MainPane.module.css";
 
@@ -9,7 +9,10 @@ interface AgentTabProps {
   isActive: boolean;
   onRegisterTerminal: (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => void;
   showUpdates: boolean;
+  showShortcutHints?: boolean;
   onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
+  showRestart: boolean;
+  onRestart: () => Promise<boolean>;
 }
 
 export default function AgentTab({
@@ -18,9 +21,13 @@ export default function AgentTab({
   isActive,
   onRegisterTerminal,
   showUpdates,
+  showShortcutHints = false,
   onJumpToBottom,
+  showRestart,
+  onRestart,
 }: AgentTabProps) {
   const refCallbacksRef = useRef(new Map<string, (element: HTMLDivElement | null) => void>());
+  const [isRestarting, setIsRestarting] = useState(false);
 
   useEffect(() => {
     refCallbacksRef.current.clear();
@@ -50,6 +57,24 @@ export default function AgentTab({
     [onRegisterTerminal]
   );
 
+  useEffect(() => {
+    if (!showRestart && isRestarting) {
+      setIsRestarting(false);
+    }
+  }, [isRestarting, showRestart]);
+
+  const handleRestart = useCallback(() => {
+    if (isRestarting) {
+      return;
+    }
+    setIsRestarting(true);
+    void onRestart()
+      .catch(() => {})
+      .finally(() => {
+        setIsRestarting(false);
+      });
+  }, [isRestarting, onRestart]);
+
   return (
     <div className={`${styles.terminalStack} ${isActive ? "" : styles.terminalHidden}`}>
       {sessions.map((session) => (
@@ -59,7 +84,29 @@ export default function AgentTab({
           className={`${styles.terminalSession} ${activeSessionId === session.id ? "" : styles.terminalHidden}`}
         />
       ))}
-      {showUpdates && activeSessionId ? (
+      {showRestart ? (
+        <span className={styles.agentRestartHotkeyWrap}>
+          <button
+            type="button"
+            className={styles.agentRestartButton}
+            onClick={handleRestart}
+            disabled={isRestarting}
+            aria-label="Restart agent process"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={`${styles.agentRestartIcon} ${isRestarting ? styles.agentRestartIconSpinning : ""}`}
+            />
+            <span>{isRestarting ? "Restarting..." : "Refresh"}</span>
+          </button>
+          {showShortcutHints ? (
+            <span className={styles.shortcutBadge} aria-hidden="true">
+              R
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+      {showUpdates && activeSessionId && !showRestart ? (
         <button type="button" className={styles.newUpdates} onClick={() => onJumpToBottom(activeSessionId, "agent")}>
           <span>Jump to latest</span>
           <ChevronDown aria-hidden="true" />

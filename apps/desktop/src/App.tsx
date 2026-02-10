@@ -119,6 +119,7 @@ export default function App() {
     updateRepoDefaults,
     updateAgentSettings,
     startSession,
+    restartAgentSession,
     registerTerminal,
     setActivePaneKind,
     renameBranch,
@@ -309,6 +310,18 @@ export default function App() {
     return shortcuts;
   }, [sessionHotkeyPage, visualSessions]);
 
+  const activeSession = useMemo(
+    () => visibleSessions.find((session) => session.id === activeSessionId) ?? null,
+    [activeSessionId, visibleSessions]
+  );
+
+  const canRestartActiveAgent = useMemo(() => {
+    if (activePaneKind !== "agent" || !activeSession) {
+      return false;
+    }
+    return activeSession.status === "stopped" || activeSession.status === "error";
+  }, [activePaneKind, activeSession]);
+
   const handleSelectPaneKind = useCallback((kind: PaneKind) => {
     setActivePaneKindState(kind);
     setActivePaneKind(kind);
@@ -396,6 +409,19 @@ export default function App() {
         stopPropagation: true,
         handler: () => handleSelectPaneKind("terminal"),
       }),
+      ...(canRestartActiveAgent && activeSession
+        ? [
+            defineHotkey({
+              id: "agent-restart",
+              combo: buildShortcutCombo(shortcutModifier, "KeyR"),
+              preventDefault: true,
+              stopPropagation: true,
+              handler: () => {
+                void restartAgentSession(activeSession.id);
+              },
+            }),
+          ]
+        : []),
       defineHotkey({
         id: "session-new-alt",
         combo: buildShortcutCombo(shortcutModifier, "KeyN"),
@@ -444,12 +470,15 @@ export default function App() {
     ],
     [
       shortcutModifier,
+      activeSession,
+      canRestartActiveAgent,
       cycleSessionHotkeyPage,
       handleSelectPaneKind,
       selectSessionByHotkeyIndex,
       handleOpenDialog,
       openSettings,
       renameActiveSession,
+      restartAgentSession,
       terminateActiveSession,
     ]
   );
@@ -704,6 +733,7 @@ export default function App() {
         onNotify={pushToast}
         shortcutModifier={shortcutModifier}
         showShortcutHints={showShortcutHints}
+        onRestartAgentSession={restartAgentSession}
       />
       <NewSessionDialog
         open={dialogOpen}
