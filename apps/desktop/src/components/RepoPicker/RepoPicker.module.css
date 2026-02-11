@@ -46,7 +46,7 @@
   transform: translateY(-50%) rotate(180deg);
 }
 
-.menu {
+.menuPanel {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -55,17 +55,38 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow);
-  padding: 6px;
+  padding: 8px;
   display: none;
-  max-height: 220px;
-  overflow: auto;
+  flex-direction: column;
+  gap: 8px;
   z-index: 10;
 }
 
-.open .menu {
+.open .menuPanel {
+  display: flex;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: inherit;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+}
+
+.menu {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 220px;
+  overflow: auto;
 }
 
 .item {
