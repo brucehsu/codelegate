@@ -81,8 +81,12 @@ export default function GitDiff({
   const [commitMessageInvalid, setCommitMessageInvalid] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const commitMenuRef = useRef<HTMLDivElement | null>(null);
+  const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const previousIsActiveRef = useRef(false);
+  const previousSessionIdRef = useRef<string | null>(null);
 
   const repoPath = session?.cwd ?? session?.repo.repoPath ?? "";
+  const activeSessionId = session?.id ?? null;
 
   const loadDiffs = useCallback(async () => {
     if (!repoPath) {
@@ -203,6 +207,29 @@ export default function GitDiff({
       window.removeEventListener("keydown", handleEscape);
     };
   }, [commitMenuOpen]);
+
+  useEffect(() => {
+    const becameActive = !previousIsActiveRef.current && isActive;
+    const switchedSessionInGit = isActive && previousSessionIdRef.current !== activeSessionId;
+    previousIsActiveRef.current = isActive;
+    previousSessionIdRef.current = activeSessionId;
+
+    if ((!becameActive && !switchedSessionInGit) || !repoPath || isCommitting) {
+      return;
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      const input = commitInputRef.current;
+      if (!input || input.disabled) {
+        return;
+      }
+      input.focus();
+      const cursor = input.value.length;
+      input.setSelectionRange(cursor, cursor);
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [activeSessionId, isActive, isCommitting, repoPath]);
 
   const handleRefresh = useCallback(() => {
     void Promise.all([loadDiffs(), onRefreshBranch ? onRefreshBranch() : Promise.resolve()]);
@@ -402,6 +429,7 @@ export default function GitDiff({
         </div>
         <div className={styles.commitBody}>
           <textarea
+            ref={commitInputRef}
             className={`${styles.commitInput} ${commitMessageInvalid ? styles.commitInputInvalid : ""}`}
             rows={3}
             placeholder="Write commit message"
