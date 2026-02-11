@@ -60,6 +60,8 @@ interface GitDiffPayload {
   untracked: Array<{ path: string; diff: string }>;
 }
 
+const COMMIT_MODE_OPTIONS: Array<"commit" | "amend"> = ["commit", "amend"];
+
 export default function GitDiff({
   session,
   isActive,
@@ -81,6 +83,9 @@ export default function GitDiff({
   const [commitMessageInvalid, setCommitMessageInvalid] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const commitMenuRef = useRef<HTMLDivElement | null>(null);
+  const commitMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const commitMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const commitMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
   const previousIsActiveRef = useRef(false);
   const previousSessionIdRef = useRef<string | null>(null);
@@ -418,6 +423,49 @@ export default function GitDiff({
     [isCommitting, onNotify, repoPath]
   );
 
+  const focusCommitMenuItem = useCallback((index: number) => {
+    const bounded = Math.max(0, Math.min(COMMIT_MODE_OPTIONS.length - 1, index));
+    requestAnimationFrame(() => {
+      commitMenuItemRefs.current[bounded]?.focus();
+    });
+  }, []);
+
+  const handleCommitMenuGroupKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (commitActionDisabled) {
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        const target =
+          event.target instanceof HTMLButtonElement ? event.target : null;
+        const activeItemIndex = target ? commitMenuItemRefs.current.findIndex((item) => item === target) : -1;
+        if (target && activeItemIndex < 0) {
+          commitMenuTriggerRef.current = target;
+        }
+        setCommitMenuOpen(true);
+        if (activeItemIndex >= 0) {
+          const nextIndex = (activeItemIndex + direction + COMMIT_MODE_OPTIONS.length) % COMMIT_MODE_OPTIONS.length;
+          focusCommitMenuItem(nextIndex);
+          return;
+        }
+        focusCommitMenuItem(direction > 0 ? 0 : COMMIT_MODE_OPTIONS.length - 1);
+        return;
+      }
+
+      if (event.key === "Escape" && commitMenuOpen) {
+        event.preventDefault();
+        setCommitMenuOpen(false);
+        requestAnimationFrame(() => {
+          (commitMenuTriggerRef.current ?? commitMenuButtonRef.current)?.focus();
+        });
+      }
+    },
+    [commitActionDisabled, commitMenuOpen, focusCommitMenuItem]
+  );
+
   return (
     <div className={styles.container}>
       <section className={styles.commitSection}>
@@ -461,6 +509,7 @@ export default function GitDiff({
             <div
               className={`${styles.commitButtonGroup} ${commitActionDisabled ? styles.commitButtonGroupDisabled : ""}`}
               ref={commitMenuRef}
+              onKeyDown={handleCommitMenuGroupKeyDown}
             >
               <Button
                 variant="primary"
@@ -472,10 +521,14 @@ export default function GitDiff({
               </Button>
               <button
                 type="button"
+                ref={commitMenuButtonRef}
                 className={styles.commitDropdownButton}
                 aria-label="Select commit mode"
                 aria-expanded={commitMenuOpen}
-                onClick={() => setCommitMenuOpen((prev) => !prev)}
+                onClick={(event) => {
+                  commitMenuTriggerRef.current = event.currentTarget;
+                  setCommitMenuOpen((prev) => !prev);
+                }}
                 disabled={commitActionDisabled}
               >
                 <ChevronDown size={15} aria-hidden="true" />
@@ -485,6 +538,9 @@ export default function GitDiff({
                   <button
                     type="button"
                     className={`${styles.commitMenuItem} ${!commitAmend ? styles.commitMenuItemActive : ""}`}
+                    ref={(element) => {
+                      commitMenuItemRefs.current[0] = element;
+                    }}
                     onClick={() => void handleSelectCommitMode("commit")}
                   >
                     Commit
@@ -492,6 +548,9 @@ export default function GitDiff({
                   <button
                     type="button"
                     className={`${styles.commitMenuItem} ${commitAmend ? styles.commitMenuItemActive : ""}`}
+                    ref={(element) => {
+                      commitMenuItemRefs.current[1] = element;
+                    }}
                     onClick={() => void handleSelectCommitMode("amend")}
                   >
                     Amend
