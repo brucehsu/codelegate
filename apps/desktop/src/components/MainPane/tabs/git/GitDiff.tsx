@@ -87,11 +87,20 @@ export default function GitDiff({
   const commitMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const commitMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const previousIsActiveRef = useRef(false);
-  const previousSessionIdRef = useRef<string | null>(null);
 
   const repoPath = session?.cwd ?? session?.repo.repoPath ?? "";
-  const activeSessionId = session?.id ?? null;
+
+  const focusCommitInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      const input = commitInputRef.current;
+      if (!input || input.disabled) {
+        return;
+      }
+      input.focus();
+      const cursor = input.value.length;
+      input.setSelectionRange(cursor, cursor);
+    });
+  }, []);
 
   const loadDiffs = useCallback(async () => {
     if (!repoPath) {
@@ -213,31 +222,12 @@ export default function GitDiff({
     };
   }, [commitMenuOpen]);
 
-  useEffect(() => {
-    const becameActive = !previousIsActiveRef.current && isActive;
-    const switchedSessionInGit = isActive && previousSessionIdRef.current !== activeSessionId;
-    previousIsActiveRef.current = isActive;
-    previousSessionIdRef.current = activeSessionId;
-
-    if ((!becameActive && !switchedSessionInGit) || !repoPath || isCommitting) {
-      return;
+  const handleRefresh = useCallback(async () => {
+    try {
+      await Promise.all([loadDiffs(), onRefreshBranch ? onRefreshBranch() : Promise.resolve()]);
+    } catch {
+      // loadDiffs already populates UI error state; keep shortcut flow stable.
     }
-
-    const rafId = requestAnimationFrame(() => {
-      const input = commitInputRef.current;
-      if (!input || input.disabled) {
-        return;
-      }
-      input.focus();
-      const cursor = input.value.length;
-      input.setSelectionRange(cursor, cursor);
-    });
-
-    return () => cancelAnimationFrame(rafId);
-  }, [activeSessionId, isActive, isCommitting, repoPath]);
-
-  const handleRefresh = useCallback(() => {
-    void Promise.all([loadDiffs(), onRefreshBranch ? onRefreshBranch() : Promise.resolve()]);
   }, [loadDiffs, onRefreshBranch]);
 
   const runBulkAction = useCallback(
@@ -330,13 +320,25 @@ export default function GitDiff({
   const gitHotkeys = useMemo(() => {
     return [
       defineHotkey({
+        id: "git-focus-commit-message",
+        combo: buildShortcutCombo(shortcutModifier, "KeyM"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: () => {
+          if (!repoPath || isCommitting) {
+            return;
+          }
+          focusCommitInput();
+        },
+      }),
+      defineHotkey({
         id: "git-refresh-status",
         combo: buildShortcutCombo(shortcutModifier, "KeyR"),
         preventDefault: true,
         stopPropagation: true,
         handler: () => {
           if (!refreshDisabled) {
-            handleRefresh();
+            void handleRefresh();
           }
         },
       }),
@@ -379,7 +381,9 @@ export default function GitDiff({
     ];
   }, [
     actionTarget,
+    focusCommitInput,
     handleRefresh,
+    isCommitting,
     isLoading,
     refreshDisabled,
     repoPath,
@@ -476,21 +480,28 @@ export default function GitDiff({
           </span>
         </div>
         <div className={styles.commitBody}>
-          <textarea
-            ref={commitInputRef}
-            className={`${styles.commitInput} ${commitMessageInvalid ? styles.commitInputInvalid : ""}`}
-            rows={3}
-            placeholder="Write commit message"
-            value={commitMessage}
-            onChange={(event) => {
-              setCommitMessage(event.target.value);
-              if (commitMessageInvalid) {
-                setCommitMessageInvalid(false);
-              }
-            }}
-            onKeyDown={handleCommitShortcut}
-            disabled={!repoPath || isCommitting}
-          />
+          <div className={styles.commitInputWrap}>
+            <textarea
+              ref={commitInputRef}
+              className={`${styles.commitInput} ${commitMessageInvalid ? styles.commitInputInvalid : ""}`}
+              rows={3}
+              placeholder="Write commit message"
+              value={commitMessage}
+              onChange={(event) => {
+                setCommitMessage(event.target.value);
+                if (commitMessageInvalid) {
+                  setCommitMessageInvalid(false);
+                }
+              }}
+              onKeyDown={handleCommitShortcut}
+              disabled={!repoPath || isCommitting}
+            />
+            {showShortcutHints ? (
+              <span className={`${styles.shortcutBadge} ${styles.commitInputShortcutBadge}`} aria-hidden="true">
+                M
+              </span>
+            ) : null}
+          </div>
           <div className={styles.commitActions}>
             <span className={styles.shortcutBadgeWrap}>
               <ActionButton
