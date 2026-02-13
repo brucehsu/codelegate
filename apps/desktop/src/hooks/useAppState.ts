@@ -53,6 +53,7 @@ interface TerminalRuntime extends TerminalRendererRuntime {
   activationRaf?: number;
   rendererAttachRaf?: number;
   webglPostInitTimer?: number;
+  notificationDisposables?: Array<{ dispose: () => void }>;
 }
 
 interface SessionRuntime {
@@ -120,6 +121,34 @@ function decodeBase64ToUint8(data: string) {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+function parseOsc777Notification(data: string) {
+  const trimmed = data.trim();
+  if (!trimmed.startsWith("notify;")) {
+    return null;
+  }
+  const payload = trimmed.slice("notify;".length);
+  if (!payload) {
+    return null;
+  }
+  const separatorIndex = payload.indexOf(";");
+  if (separatorIndex < 0) {
+    const message = payload.trim();
+    if (!message) {
+      return null;
+    }
+    return { title: "Codelegate", message };
+  }
+  const title = payload.slice(0, separatorIndex).trim();
+  const message = payload.slice(separatorIndex + 1).trim();
+  if (!title && !message) {
+    return null;
+  }
+  return {
+    title: title || "Codelegate",
+    message: message || title,
+  };
 }
 
 const defaultSettings = {
@@ -255,6 +284,8 @@ export function useAppState(
   const agentOutputtingRef = useRef(agentOutputting);
   const agentOutputtingTimersRef = useRef<Map<string, number>>(new Map());
   const agentOutputtingSuppressUntilRef = useRef<Map<string, number>>(new Map());
+  const notificationPermissionRequestRef = useRef<Promise<string> | null>(null);
+  const notificationPluginUnavailableRef = useRef(false);
   const fontRefreshRafRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     unreadOutputRef.current = unreadOutput;
@@ -838,6 +869,87 @@ export function useAppState(
     termOptions.fontWeightBold = "bold";
   }, []);
 
+  const ensureNotificationPermission = useCallback(async () => {
+    if (notificationPluginUnavailableRef.current) {
+      return "denied";
+    }
+
+    let granted: boolean | null = null;
+    try {
+      granted = await invoke<boolean | null>("plugin:notification|is_permission_granted");
+    } catch {
+      notificationPluginUnavailableRef.current = true;
+      return "denied";
+    }
+
+    if (granted === true) {
+      return "granted";
+    }
+    if (granted === false) {
+      return "denied";
+    }
+
+    if (!notificationPermissionRequestRef.current) {
+      notificationPermissionRequestRef.current = invoke<string>("plugin:notification|request_permission")
+        .catch(() => "denied")
+        .finally(() => {
+          notificationPermissionRequestRef.current = null;
+        });
+    }
+    return notificationPermissionRequestRef.current;
+  }, []);
+
+  const publishTerminalNotification = useCallback(
+    async (sessionId: string, title: string, message: string) => {
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage) {
+        return;
+      }
+
+      const permission = await ensureNotificationPermission();
+      if (permission !== "granted") {
+        return;
+      }
+
+      const session = sessionsRef.current.find((item) => item.id === sessionId);
+      const repo = session ? getRepoName(session.repo.repoPath) || session.repo.repoPath : "repo";
+      const branch = session?.branch?.trim() || "unknown";
+      const prefixedMessage = `[${repo} - ${branch}] ${trimmedMessage}`;
+
+      try {
+        await invoke("plugin:notification|notify", {
+          options: {
+            title: title || "Codelegate",
+            body: prefixedMessage,
+          },
+        });
+      } catch {
+        // Ignore notification publish failures to keep terminal output flow stable.
+      }
+    },
+    [ensureNotificationPermission]
+  );
+
+  const handleTerminalOscNotification = useCallback(
+    (sessionId: string, kind: PaneKind, oscId: number, data: string) => {
+      if (kind !== "agent" && kind !== "terminal") {
+        return;
+      }
+      if (oscId === 9) {
+        void publishTerminalNotification(sessionId, "Codelegate", data);
+        return;
+      }
+      if (oscId === 777) {
+        const parsed = parseOsc777Notification(data);
+        if (!parsed) {
+          return;
+        }
+        void publishTerminalNotification(sessionId, parsed.title, parsed.message);
+      }
+    },
+    [publishTerminalNotification]
+  );
+
   const attachTerminalHandlers = useCallback(
     (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
       const copyHotkey = defineHotkey({
@@ -847,6 +959,28 @@ export function useAppState(
         handler: () => copySelection(term),
       });
       const terminalHotkeys = [...globalHotkeys, copyHotkey];
+
+      runtime.notificationDisposables?.forEach((disposable) => disposable.dispose());
+      runtime.notificationDisposables = [];
+      const parserApi = (term as Terminal & {
+        parser?: {
+          registerOscHandler?: (ident: number, callback: (data: string) => boolean) => { dispose: () => void };
+        };
+      }).parser;
+      const osc9Disposable = parserApi?.registerOscHandler?.(9, (data) => {
+        handleTerminalOscNotification(sessionId, kind, 9, data);
+        return true;
+      });
+      const osc777Disposable = parserApi?.registerOscHandler?.(777, (data) => {
+        handleTerminalOscNotification(sessionId, kind, 777, data);
+        return true;
+      });
+      if (osc9Disposable) {
+        runtime.notificationDisposables.push(osc9Disposable);
+      }
+      if (osc777Disposable) {
+        runtime.notificationDisposables.push(osc777Disposable);
+      }
 
       term.onData((data) => {
         if (runtime.isFollowing === false) {
@@ -913,7 +1047,7 @@ export function useAppState(
         return !handled;
       });
     },
-    [copySelection, globalHotkeys, isMac, setFollowingState, suppressAgentOutputting]
+    [copySelection, globalHotkeys, handleTerminalOscNotification, isMac, setFollowingState, suppressAgentOutputting]
   );
 
   const createTerminal = useCallback(
@@ -1009,6 +1143,8 @@ export function useAppState(
   const disposeTerminalRuntime = useCallback(
     (runtime: TerminalRuntime) => {
       detachTerminalRuntime(runtime);
+      runtime.notificationDisposables?.forEach((disposable) => disposable.dispose());
+      runtime.notificationDisposables = undefined;
       if (runtime.term) {
         runtime.term.dispose();
       } else {
