@@ -57,9 +57,18 @@ jobs:
       - name: Build desktop app bundle
         run: pnpm --filter @codelegate/desktop tauri build
 
-      - name: Upload desktop bundle artifacts
+      - name: Upload Linux bundle artifacts
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-bundle-${{ runner.os }}
+          name: desktop-bundle-linux
           path: apps/desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+
+      - name: Upload macOS DMG artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-dmg-macos
+          path: apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
