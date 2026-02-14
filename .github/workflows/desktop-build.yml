@@ -57,12 +57,28 @@ jobs:
       - name: Build desktop app bundle
         run: pnpm --filter @codelegate/desktop tauri build
 
-      - name: Upload Linux bundle artifacts
+      - name: Upload Linux AppImage artifact
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-bundle-linux
-          path: apps/desktop/src-tauri/target/release/bundle/**
+          name: desktop-appimage-linux
+          path: apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload Linux DEB artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-deb-linux
+          path: apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      - name: Upload Linux RPM artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-rpm-linux
+          path: apps/desktop/src-tauri/target/release/bundle/rpm/*.rpm
           if-no-files-found: error
 
       - name: Upload macOS DMG artifact
