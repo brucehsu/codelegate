@@ -24,6 +24,8 @@ interface SidebarProps {
   searchRef?: React.RefObject<HTMLInputElement>;
   showShortcutHints?: boolean;
   shortcutModifierTokens: string[];
+  showSearchInput?: boolean;
+  showFooterActions?: boolean;
 }
 
 export default function Sidebar({
@@ -43,6 +45,8 @@ export default function Sidebar({
   searchRef,
   showShortcutHints = false,
   shortcutModifierTokens,
+  showSearchInput = true,
+  showFooterActions = true,
 }: SidebarProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -94,22 +98,24 @@ export default function Sidebar({
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.controls}>
-        <div className={styles.searchField}>
-          <input
-            className={styles.searchInput}
-            value={filter}
-            onChange={(event) => onFilterChange(event.target.value)}
-            placeholder="Search sessions"
-            ref={searchRef}
-          />
-          {showShortcutHints ? (
-            <span className={styles.searchShortcut} aria-hidden="true">
-              S
-            </span>
-          ) : null}
+      {showSearchInput ? (
+        <div className={styles.controls}>
+          <div className={styles.searchField}>
+            <input
+              className={styles.searchInput}
+              value={filter}
+              onChange={(event) => onFilterChange(event.target.value)}
+              placeholder="Search sessions"
+              ref={searchRef}
+            />
+            {showShortcutHints ? (
+              <span className={styles.searchShortcut} aria-hidden="true">
+                S
+              </span>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className={styles.sessionList}>
         {sessionGroups.map((group) => {
           const isOpen = !collapsedRepoGroups[group.key];
@@ -219,42 +225,44 @@ export default function Sidebar({
           );
         })}
       </div>
-      <div className={styles.actions}>
-        <div className={styles.actionButton}>
-          <IconButton
-            aria-label="New session"
-            variant="fab"
-            shape="circle"
-            size="lg"
-            iconSize={18}
-            onClick={onNewSession}
-          >
-            <Plus aria-hidden="true" />
-          </IconButton>
-          {showShortcutHints ? (
-            <span className={styles.actionShortcut} aria-hidden="true">
-              N
-            </span>
-          ) : null}
+      {showFooterActions ? (
+        <div className={styles.actions}>
+          <div className={styles.actionButton}>
+            <IconButton
+              aria-label="New session"
+              variant="fab"
+              shape="circle"
+              size="lg"
+              iconSize={18}
+              onClick={onNewSession}
+            >
+              <Plus aria-hidden="true" />
+            </IconButton>
+            {showShortcutHints ? (
+              <span className={styles.actionShortcut} aria-hidden="true">
+                N
+              </span>
+            ) : null}
+          </div>
+          <div className={styles.actionButton}>
+            <IconButton
+              aria-label="Settings"
+              variant="fab"
+              shape="circle"
+              size="lg"
+              iconSize={18}
+              onClick={onOpenSettings}
+            >
+              <Settings aria-hidden="true" />
+            </IconButton>
+            {showShortcutHints ? (
+              <span className={styles.actionShortcut} aria-hidden="true">
+                P
+              </span>
+            ) : null}
+          </div>
         </div>
-        <div className={styles.actionButton}>
-          <IconButton
-            aria-label="Settings"
-            variant="fab"
-            shape="circle"
-            size="lg"
-            iconSize={18}
-            onClick={onOpenSettings}
-          >
-            <Settings aria-hidden="true" />
-          </IconButton>
-          {showShortcutHints ? (
-            <span className={styles.actionShortcut} aria-hidden="true">
-              P
-            </span>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
     </aside>
   );
 }

@@ -267,6 +267,7 @@ export function useAppState(
   onConfirmClose?: (payload: CloseConfirmPayload) => Promise<CloseConfirmResult>
 ) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
+  const [hasSavedConfig, setHasSavedConfig] = useState<boolean | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -304,6 +305,7 @@ export function useAppState(
   const activePaneKindRef = useRef<PaneKind>("agent");
   const closeInProgressRef = useRef(false);
   const closePromptInProgressRef = useRef(false);
+  const pendingExitRequestRef = useRef(false);
   const restoreInProgressRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
@@ -522,10 +524,16 @@ export function useAppState(
   const saveConfig = useCallback((updater: (prev: AppConfig) => AppConfig) => {
     setConfig((prev) => {
       const next = updater(prev);
-      invoke("save_config", { config: next });
+      invoke("save_config", { config: next })
+        .then(() => {
+          setHasSavedConfig(true);
+        })
+        .catch((error) => {
+          notify({ message: `Failed to save config: ${String(error)}`, tone: "error" });
+        });
       return next;
     });
-  }, []);
+  }, [notify]);
 
   const updateSettings = useCallback(
     (updater: (settings: AppSettings) => AppSettings) => {
@@ -543,8 +551,11 @@ export function useAppState(
 
   useEffect(() => {
     let mounted = true;
-    invoke<AppConfig>("load_config")
-      .then((loaded) => {
+    Promise.all([
+      invoke<AppConfig>("load_config"),
+      invoke<boolean>("has_saved_config").catch(() => false),
+    ])
+      .then(([loaded, hasSaved]) => {
         if (!mounted) {
           return;
         }
@@ -566,10 +577,15 @@ export function useAppState(
           },
         } as AppConfig;
         setConfig(nextConfig);
+        setHasSavedConfig(hasSaved);
         applyTheme(nextConfig.settings.theme);
         setBatterySaverDataset(nextConfig.settings.batterySaver);
       })
       .catch(() => {
+        if (!mounted) {
+          return;
+        }
+        setHasSavedConfig(false);
         applyTheme(defaultSettings.theme);
         setBatterySaverDataset(false);
       })
@@ -580,6 +596,17 @@ export function useAppState(
       mounted = false;
     };
   }, [applyTheme, markConfigReady, setBatterySaverDataset]);
+
+  const persistConfig = useCallback(async () => {
+    try {
+      await invoke("save_config", { config: configRef.current });
+      setHasSavedConfig(true);
+      return true;
+    } catch (error) {
+      notify({ message: `Failed to save config: ${String(error)}`, tone: "error" });
+      return false;
+    }
+  }, [notify]);
 
   const updateRecentDirs = useCallback((path: string) => {
     const trimmed = path.trim();
@@ -1887,10 +1914,15 @@ export function useAppState(
     }
   }, [notify, onConfirmClose]);
 
+  const shouldInterceptClose = hasSavedConfig === true;
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
+        if (!shouldInterceptClose) {
+          return;
+        }
         event.preventDefault();
         await handleCloseRequest();
       })
@@ -1900,19 +1932,39 @@ export function useAppState(
     return () => {
       unlisten?.();
     };
-  }, [handleCloseRequest]);
+  }, [handleCloseRequest, shouldInterceptClose]);
 
   useEffect(() => {
     let unlistenExit: (() => void) | undefined;
     listen("app-exit-requested", () => {
-      handleCloseRequest();
+      if (hasSavedConfig === null) {
+        pendingExitRequestRef.current = true;
+        return;
+      }
+      if (shouldInterceptClose) {
+        void handleCloseRequest();
+      } else {
+        void invoke("exit_app");
+      }
     }).then((fn) => {
       unlistenExit = fn;
     });
     return () => {
       unlistenExit?.();
     };
-  }, [handleCloseRequest]);
+  }, [handleCloseRequest, hasSavedConfig, shouldInterceptClose]);
+
+  useEffect(() => {
+    if (!pendingExitRequestRef.current || hasSavedConfig === null) {
+      return;
+    }
+    pendingExitRequestRef.current = false;
+    if (shouldInterceptClose) {
+      void handleCloseRequest();
+    } else {
+      void invoke("exit_app");
+    }
+  }, [handleCloseRequest, hasSavedConfig, shouldInterceptClose]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1946,6 +1998,7 @@ export function useAppState(
 
   return {
     config,
+    hasSavedConfig,
     sessions,
     activeSessionId,
     filter,
@@ -1969,5 +2022,6 @@ export function useAppState(
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
+    persistConfig,
   };
 }

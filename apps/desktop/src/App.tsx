@@ -14,6 +14,7 @@ import NewSessionDialog from "./components/NewSessionDialog/NewSessionDialog";
 import SettingsDialog from "./components/SettingsDialog/SettingsDialog";
 import RenameDialog from "./components/RenameDialog/RenameDialog";
 import CloseDialog from "./components/CloseDialog/CloseDialog";
+import OnboardingDialog from "./components/OnboardingDialog/OnboardingDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
@@ -107,6 +108,7 @@ export default function App() {
 
   const {
     config,
+    hasSavedConfig,
     sessions,
     activeSessionId,
     filter,
@@ -129,6 +131,7 @@ export default function App() {
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
+    persistConfig,
   } = useAppState(pushToast, focusSearch, requestCloseConfirm);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -153,11 +156,28 @@ export default function App() {
   const [showShortcutHints, setShowShortcutHints] = useState(false);
   const [collapsedRepoGroups, setCollapsedRepoGroups] = useState<Record<string, boolean>>({});
   const [sessionHotkeyPage, setSessionHotkeyPage] = useState(0);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const shortcutModifier = config.settings.shortcutModifier;
   const shortcutModifierTokens = useMemo(
     () => getShortcutModifierTokens(shortcutModifier),
     [shortcutModifier]
   );
+  const showOnboarding = hasSavedConfig === false && !onboardingCompleted;
+
+  const handleCompleteOnboarding = useCallback(async () => {
+    const saved = await persistConfig();
+    if (saved) {
+      setOnboardingCompleted(true);
+    }
+    return saved;
+  }, [persistConfig]);
+
+  useEffect(() => {
+    if (hasSavedConfig) {
+      setOnboardingCompleted(true);
+    }
+  }, [hasSavedConfig]);
+
   const requestTerminalResize = useCallback(() => {
     if (terminalResizeRafRef.current !== null) {
       return;
@@ -638,6 +658,11 @@ export default function App() {
   const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent);
 
   useEffect(() => {
+    if (hasSavedConfig === null || showOnboarding) {
+      setShowShortcutHints(false);
+      setSessionHotkeyPage(0);
+      return;
+    }
     const handleKeyDown = (event: KeyboardEvent) => {
       const modifierActive = matchesShortcutModifierState(event, shortcutModifier);
       setShowShortcutHints(modifierActive);
@@ -668,7 +693,7 @@ export default function App() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [modifierHotkeys, shortcutModifier]);
+  }, [hasSavedConfig, modifierHotkeys, shortcutModifier, showOnboarding]);
 
   const handleSidebarResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -685,6 +710,23 @@ export default function App() {
     setIsResizingSidebar(true);
     event.preventDefault();
   };
+
+  if (hasSavedConfig === null) {
+    return (
+      <div className={styles.bootScreen}>
+        <p>Loading Codelegate...</p>
+      </div>
+    );
+  }
+
+  if (showOnboarding) {
+    return (
+      <>
+        <OnboardingDialog shortcutModifier={shortcutModifier} onFinish={handleCompleteOnboarding} />
+        <Toasts toasts={toasts} onDismiss={removeToast} />
+      </>
+    );
+  }
 
   return (
     <div

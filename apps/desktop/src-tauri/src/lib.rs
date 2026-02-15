@@ -561,6 +561,12 @@ fn load_config() -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
+fn has_saved_config() -> Result<bool, String> {
+  let file = config_file()?;
+  Ok(file.exists())
+}
+
+#[tauri::command]
 fn save_config(config: AppConfig) -> Result<(), String> {
   let file = config_file()?;
   if let Some(parent) = file.parent() {
@@ -764,6 +770,10 @@ fn previous_sessions_file() -> Result<PathBuf, String> {
   Ok(home.join(".codelegate").join("previous_sessions.json"))
 }
 
+fn should_override_close_flow() -> bool {
+  has_saved_config().unwrap_or(false) && load_config().is_ok()
+}
+
 #[cfg(target_os = "macos")]
 fn build_macos_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
   let quit = MenuItemBuilder::with_id("app-quit", "Quit Codelegate")
@@ -854,6 +864,7 @@ pub fn run() {
       commit_git_changes,
       get_last_commit_message,
       load_config,
+      has_saved_config,
       save_config,
       load_previous_sessions,
       save_previous_sessions,
@@ -869,7 +880,11 @@ pub fn run() {
     .menu(|app| build_macos_menu(app))
     .on_menu_event(|app, event| {
       if event.id() == "app-quit" {
-        let _ = app.emit("app-exit-requested", ());
+        if should_override_close_flow() {
+          let _ = app.emit("app-exit-requested", ());
+        } else {
+          app.exit(0);
+        }
       }
     })
     .enable_macos_default_menu(false);
@@ -884,15 +899,19 @@ pub fn run() {
     };
     match event {
       RunEvent::ExitRequested { api, .. } => {
-        api.prevent_exit();
-        emit_exit();
+        if should_override_close_flow() {
+          api.prevent_exit();
+          emit_exit();
+        }
       }
       RunEvent::WindowEvent {
         event: WindowEvent::CloseRequested { api, .. },
         ..
       } => {
-        api.prevent_close();
-        emit_exit();
+        if should_override_close_flow() {
+          api.prevent_close();
+          emit_exit();
+        }
       }
       _ => {}
     }
