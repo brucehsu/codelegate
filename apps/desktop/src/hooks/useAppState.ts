@@ -880,7 +880,6 @@ export function useAppState(
   const configureTerminalOptions = useCallback((term: Terminal) => {
     const termOptions = (term as Terminal & {
       options: {
-        modifyOtherKeys?: number;
         scrollOnOutput?: boolean;
         scrollOnUserInput?: boolean;
         minimumContrastRatio?: number;
@@ -888,7 +887,8 @@ export function useAppState(
         fontWeightBold?: string | number;
       };
     }).options;
-    termOptions.modifyOtherKeys = 2;
+    // Keep default key encoding to avoid IME/Caps Lock input being translated into
+    // unexpected control sequences (e.g. line-kill in shells).
     termOptions.scrollOnOutput = false;
     termOptions.scrollOnUserInput = false;
     termOptions.minimumContrastRatio = 1;
@@ -1024,6 +1024,18 @@ export function useAppState(
 
       term.attachCustomKeyEventHandler((event) => {
         if (event.type !== "keydown") {
+          return true;
+        }
+        // Let xterm's internal composition logic handle IME/CapsLock flows.
+        if (
+          event.isComposing ||
+          event.key === "Process" ||
+          event.key === "Dead" ||
+          event.code === "CapsLock" ||
+          event.keyCode === 229 ||
+          event.keyCode === 20 ||
+          event.getModifierState("CapsLock")
+        ) {
           return true;
         }
         if (
