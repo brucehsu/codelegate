@@ -151,6 +151,37 @@ function parseOsc777Notification(data: string) {
   };
 }
 
+function decodeBase64Text(data: string) {
+  const normalized = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (!normalized) {
+    return "";
+  }
+  const padding = normalized.length % 4;
+  const padded = padding === 0 ? normalized : normalized + "=".repeat(4 - padding);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function parseOsc52ClipboardData(data: string) {
+  const separatorIndex = data.indexOf(";");
+  if (separatorIndex < 0) {
+    return null;
+  }
+  const encoded = data.slice(separatorIndex + 1).trim();
+  if (!encoded || encoded === "?") {
+    return null;
+  }
+  try {
+    return decodeBase64Text(encoded);
+  } catch {
+    return null;
+  }
+}
+
 const defaultSettings = {
   theme: "dark" as const,
   recentDirs: [],
@@ -977,6 +1008,14 @@ export function useAppState(
     [publishTerminalNotification]
   );
 
+  const handleTerminalOscClipboard = useCallback((data: string) => {
+    const clipboardText = parseOsc52ClipboardData(data);
+    if (clipboardText === null) {
+      return;
+    }
+    navigator.clipboard.writeText(clipboardText).catch(() => {});
+  }, []);
+
   const attachTerminalHandlers = useCallback(
     (term: Terminal, runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
       const copyHotkey = defineHotkey({
@@ -1002,11 +1041,21 @@ export function useAppState(
         handleTerminalOscNotification(sessionId, kind, 777, data);
         return true;
       });
+      const osc52Disposable =
+        kind === "terminal"
+          ? parserApi?.registerOscHandler?.(52, (data) => {
+              handleTerminalOscClipboard(data);
+              return true;
+            })
+          : undefined;
       if (osc9Disposable) {
         runtime.notificationDisposables.push(osc9Disposable);
       }
       if (osc777Disposable) {
         runtime.notificationDisposables.push(osc777Disposable);
+      }
+      if (osc52Disposable) {
+        runtime.notificationDisposables.push(osc52Disposable);
       }
 
       term.onData((data) => {
@@ -1086,7 +1135,15 @@ export function useAppState(
         return !handled;
       });
     },
-    [copySelection, globalHotkeys, handleTerminalOscNotification, isMac, setFollowingState, suppressAgentOutputting]
+    [
+      copySelection,
+      globalHotkeys,
+      handleTerminalOscClipboard,
+      handleTerminalOscNotification,
+      isMac,
+      setFollowingState,
+      suppressAgentOutputting,
+    ]
   );
 
   const createTerminal = useCallback(
