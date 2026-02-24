@@ -1059,7 +1059,11 @@ export function useAppState(
       }
 
       term.onData((data) => {
-        if (runtime.isFollowing === false) {
+        // Some programs (e.g. zellij/tmux) enable terminal focus reporting.
+        // Switching back to this view can emit ESC[I / ESC[O, which should not
+        // force-follow and jump the viewport to bottom.
+        const isFocusReport = data === "\x1b[I" || data === "\x1b[O";
+        if (runtime.isFollowing === false && !isFocusReport) {
           setFollowingState(runtime, sessionId, kind, true);
           term.scrollToBottom();
         }
