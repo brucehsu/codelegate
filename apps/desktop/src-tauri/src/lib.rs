@@ -3,7 +3,7 @@ use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{atomic::{AtomicU32, Ordering}, Arc, Mutex};
 use tauri::{AppHandle, Emitter, RunEvent, State, WindowEvent};
 #[cfg(target_os = "macos")]
@@ -460,6 +460,117 @@ fn discard_all_changes(path: String) -> Result<(), String> {
   )
 }
 
+fn remove_session_worktree_blocking(
+  repo_path: String,
+  worktree_path: String,
+  branch: Option<String>,
+) -> Result<(), String> {
+  let root = resolve_repo_root(repo_path)?;
+  if !Path::new(&root).exists() {
+    return Err(format!("Path '{}' does not exist", root));
+  }
+
+  let trimmed_worktree = worktree_path.trim();
+  if trimmed_worktree.is_empty() {
+    return Err("Worktree path cannot be empty".to_string());
+  }
+
+  let worktree_root = worktrees_root_dir()?;
+  let worktree = PathBuf::from(trimmed_worktree);
+  if !worktree.is_absolute() {
+    return Err("Worktree path must be absolute".to_string());
+  }
+  let allowed = if worktree.exists() {
+    let canonical_worktree = worktree
+      .canonicalize()
+      .map_err(|error| format!("Failed to resolve worktree path: {error}"))?;
+    let canonical_root = worktree_root
+      .canonicalize()
+      .unwrap_or(worktree_root.clone());
+    canonical_worktree.starts_with(&canonical_root)
+  } else {
+    let canonical_root = worktree_root
+      .canonicalize()
+      .unwrap_or(worktree_root.clone());
+    let has_parent_dir = worktree
+      .components()
+      .any(|component| matches!(component, Component::ParentDir));
+    !has_parent_dir && worktree.starts_with(&canonical_root)
+  };
+  if !allowed {
+    return Err("Worktree path is outside managed Codelegate worktrees".to_string());
+  }
+
+  let worktree_path = Path::new(trimmed_worktree);
+  let worktree_exists_before = worktree_path.exists();
+
+  let remove_output = std::process::Command::new("git")
+    .arg("-C")
+    .arg(&root)
+    .arg("worktree")
+    .arg("remove")
+    .arg("--force")
+    .arg(trimmed_worktree)
+    .output()
+    .map_err(|error| format!("Failed to run git: {error}"))?;
+  if !remove_output.status.success() {
+    let stderr = String::from_utf8_lossy(&remove_output.stderr).trim().to_string();
+    let is_not_worktree = stderr.contains("is not a working tree");
+    let is_missing = stderr.contains("No such file or directory")
+      || stderr.contains("does not exist");
+    if is_not_worktree && worktree_exists_before {
+      return Err("Refusing to delete directory because target is not a registered git worktree".to_string());
+    }
+    let ignorable = is_not_worktree || is_missing;
+    if !ignorable {
+      return Err(if stderr.is_empty() {
+        "Failed to remove worktree".to_string()
+      } else {
+        stderr
+      });
+    }
+  }
+
+  if worktree_path.exists() {
+    std::fs::remove_dir_all(worktree_path)
+      .map_err(|error| format!("Failed to remove worktree directory: {error}"))?;
+  }
+
+  let branch_name = branch.unwrap_or_default().trim().to_string();
+  if !branch_name.is_empty() {
+    let branch_output = std::process::Command::new("git")
+      .arg("-C")
+      .arg(&root)
+      .arg("branch")
+      .arg("-D")
+      .arg(&branch_name)
+      .output()
+      .map_err(|error| format!("Failed to run git: {error}"))?;
+    if !branch_output.status.success() {
+      let stderr = String::from_utf8_lossy(&branch_output.stderr).trim().to_string();
+      let ignorable = stderr.contains("not found");
+      if !ignorable {
+        return Err(if stderr.is_empty() {
+          format!("Failed to delete branch '{}'", branch_name)
+        } else {
+          stderr
+        });
+      }
+    }
+  }
+
+  Ok(())
+}
+
+#[tauri::command]
+async fn remove_session_worktree(repo_path: String, worktree_path: String, branch: Option<String>) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    remove_session_worktree_blocking(repo_path, worktree_path, branch)
+  })
+  .await
+  .map_err(|error| format!("Failed to join worktree removal task: {error}"))?
+}
+
 #[tauri::command]
 fn commit_git_changes(path: String, message: String, amend: bool) -> Result<(), String> {
   let root = resolve_repo_root(path)?;
@@ -770,6 +881,13 @@ fn previous_sessions_file() -> Result<PathBuf, String> {
   Ok(home.join(".codelegate").join("previous_sessions.json"))
 }
 
+fn worktrees_root_dir() -> Result<PathBuf, String> {
+  let home = std::env::var_os("HOME")
+    .map(PathBuf::from)
+    .ok_or_else(|| "Unable to locate home directory".to_string())?;
+  Ok(home.join(".codelegate").join("worktrees"))
+}
+
 fn should_override_close_flow() -> bool {
   has_saved_config().unwrap_or(false) && load_config().is_ok()
 }
@@ -861,6 +979,7 @@ pub fn run() {
       stage_all_changes,
       unstage_all_changes,
       discard_all_changes,
+      remove_session_worktree,
       commit_git_changes,
       get_last_commit_message,
       load_config,

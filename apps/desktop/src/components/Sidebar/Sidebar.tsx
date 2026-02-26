@@ -1,5 +1,4 @@
 import { Bot, MoreHorizontal, Plus, Settings } from "lucide-react";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { Fragment, useEffect, useState } from "react";
 import type { SessionGroup } from "../../utils/session";
 import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
@@ -195,14 +194,7 @@ export default function Sidebar({
                           <button
                             type="button"
                             className={`${styles.menuItem} ${styles.menuItemWithShortcut} ${styles.menuItemDanger}`}
-                            onClick={async () => {
-                              const confirmed = await confirm(
-                                "Terminate this session? This will close the tab and stop ongoing shell sessions.",
-                                { title: "Codelegate", kind: "warning" }
-                              );
-                              if (!confirmed) {
-                                return;
-                              }
+                            onClick={() => {
                               setOpenMenuId(null);
                               onTerminateSession(session.id);
                             }}

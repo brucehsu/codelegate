@@ -6,7 +6,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { confirm, open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
 import MainPane from "./components/MainPane/MainPane";
@@ -14,11 +15,12 @@ import NewSessionDialog from "./components/NewSessionDialog/NewSessionDialog";
 import SettingsDialog from "./components/SettingsDialog/SettingsDialog";
 import RenameDialog from "./components/RenameDialog/RenameDialog";
 import CloseDialog from "./components/CloseDialog/CloseDialog";
+import TerminateSessionDialog from "./components/TerminateSessionDialog/TerminateSessionDialog";
 import OnboardingDialog from "./components/OnboardingDialog/OnboardingDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
-import type { AgentId, CloseConfirmPayload, CloseConfirmResult, EnvVar, RepoConfig, PaneKind } from "./types";
+import type { AgentId, CloseConfirmPayload, CloseConfirmResult, EnvVar, RepoConfig, PaneKind, Session } from "./types";
 import { getRepoName, groupSessionsByRepo, validateEnvVars } from "./utils/session";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "./utils/hotkeys";
 import {
@@ -29,6 +31,15 @@ import {
 import { agentCatalog } from "./constants";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
+
+function canDeleteWorktreeForSession(session: Session | null | undefined) {
+  if (!session?.repo.worktree?.enabled) {
+    return false;
+  }
+  const cwd = session.cwd?.trim();
+  const repoRoot = session.repo.repoPath.trim();
+  return Boolean(cwd && repoRoot && cwd !== repoRoot);
+}
 
 function buildModifierSessionSelectHotkeys(
   shortcutModifier: string,
@@ -72,6 +83,8 @@ export default function App() {
   const closeDialogResolveRef = useRef<((result: CloseConfirmResult) => void) | null>(null);
   const closeDialogPromiseRef = useRef<Promise<CloseConfirmResult> | null>(null);
   const previousActiveSessionIdRef = useRef<string | null>(null);
+  const [terminateDialogSessionId, setTerminateDialogSessionId] = useState<string | null>(null);
+  const [terminateDialogDeleteWorktree, setTerminateDialogDeleteWorktree] = useState(false);
 
   function focusSearch() {
     if (searchInputRef.current) {
@@ -334,6 +347,14 @@ export default function App() {
     () => visibleSessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, visibleSessions]
   );
+  const terminateDialogSession = useMemo(
+    () => sessions.find((session) => session.id === terminateDialogSessionId) ?? null,
+    [sessions, terminateDialogSessionId]
+  );
+  const canDeleteDialogWorktree = useMemo(
+    () => canDeleteWorktreeForSession(terminateDialogSession),
+    [terminateDialogSession]
+  );
 
   const canRestartActiveAgent = useMemo(() => {
     if (activePaneKind !== "agent" || !activeSession) {
@@ -361,19 +382,73 @@ export default function App() {
     openRename(activeSessionId);
   }, [activeSessionId, openRename]);
 
-  const terminateActiveSession = useCallback(async () => {
+  const openTerminateDialog = useCallback((sessionId: string) => {
+    setTerminateDialogSessionId(sessionId);
+    setTerminateDialogDeleteWorktree(false);
+  }, []);
+
+  const closeTerminateDialog = useCallback(() => {
+    setTerminateDialogSessionId(null);
+    setTerminateDialogDeleteWorktree(false);
+  }, []);
+
+  const confirmTerminateDialog = useCallback(async () => {
+    const session = sessions.find((item) => item.id === terminateDialogSessionId);
+    const targetSessionId = terminateDialogSessionId;
+    if (!session || !targetSessionId) {
+      closeTerminateDialog();
+      return;
+    }
+    const shouldDeleteWorktree = terminateDialogDeleteWorktree && canDeleteWorktreeForSession(session);
+    closeTerminateDialog();
+    try {
+      let cleanupWorktree:
+        | {
+            repoPath: string;
+            worktreePath: string;
+            branch?: string;
+          }
+        | undefined;
+      if (shouldDeleteWorktree) {
+        let branchName: string | undefined;
+        const branchPath = session.cwd?.trim();
+        if (branchPath) {
+          try {
+            const resolvedBranch = await invoke<string>("get_git_branch", { path: branchPath });
+            const trimmedBranch = resolvedBranch.trim();
+            if (trimmedBranch) {
+              branchName = trimmedBranch;
+            }
+          } catch (error) {
+            // Keep branch optional; backend cleanup will still remove worktree directory.
+            pushToast({ message: `Failed to resolve branch from git: ${String(error)}`, tone: "error" });
+          }
+        }
+        cleanupWorktree = {
+          repoPath: session.repo.repoPath,
+          worktreePath: session.cwd ?? "",
+          branch: branchName || undefined,
+        };
+      }
+      await terminateSession(targetSessionId, cleanupWorktree ? { cleanupWorktree } : undefined);
+    } catch (error) {
+      pushToast({ message: `Failed to terminate session: ${String(error)}`, tone: "error" });
+    }
+  }, [
+    closeTerminateDialog,
+    pushToast,
+    sessions,
+    terminateDialogDeleteWorktree,
+    terminateDialogSessionId,
+    terminateSession,
+  ]);
+
+  const terminateActiveSession = useCallback(() => {
     if (!activeSessionId) {
       return;
     }
-    const confirmed = await confirm(
-      "Terminate this session? This will close the tab and stop ongoing shell sessions.",
-      { title: "Codelegate", kind: "warning" }
-    );
-    if (!confirmed) {
-      return;
-    }
-    terminateSession(activeSessionId);
-  }, [activeSessionId, terminateSession]);
+    openTerminateDialog(activeSessionId);
+  }, [activeSessionId, openTerminateDialog]);
 
   const openSettings = useCallback(() => {
     setFontFamily(config.settings.terminalFontFamily);
@@ -749,7 +824,7 @@ export default function App() {
           onNewSession={handleOpenDialog}
           onOpenSettings={openSettings}
           onRenameSession={openRename}
-          onTerminateSession={terminateSession}
+          onTerminateSession={openTerminateDialog}
           agentOutputting={agentOutputting}
           searchRef={searchInputRef}
           showShortcutHints={showShortcutHints}
@@ -834,6 +909,17 @@ export default function App() {
         onRememberChange={setCloseDialogRemember}
         onClose={handleCloseConfirmCancel}
         onConfirm={handleCloseConfirmSubmit}
+      />
+      <TerminateSessionDialog
+        open={Boolean(terminateDialogSession)}
+        sessionLabel={terminateDialogSession?.branch?.trim() || getRepoName(terminateDialogSession?.repo.repoPath ?? "")}
+        canDeleteWorktree={canDeleteDialogWorktree}
+        deleteWorktree={terminateDialogDeleteWorktree}
+        onDeleteWorktreeChange={setTerminateDialogDeleteWorktree}
+        onClose={closeTerminateDialog}
+        onConfirm={() => {
+          void confirmTerminateDialog();
+        }}
       />
       <Toasts toasts={toasts} onDismiss={removeToast} />
     </div>

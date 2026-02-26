@@ -62,6 +62,12 @@ interface SessionRuntime {
   terminal: TerminalRuntime;
 }
 
+interface WorktreeCleanupOptions {
+  repoPath: string;
+  worktreePath: string;
+  branch?: string;
+}
+
 function forEachTerminalRuntime(
   runtimeMap: Map<string, SessionRuntime>,
   apply: (terminal: TerminalRuntime) => void
@@ -1485,7 +1491,12 @@ export function useAppState(
   );
 
   const terminateSession = useCallback(
-    async (sessionId: string) => {
+    async (
+      sessionId: string,
+      options: {
+        cleanupWorktree?: WorktreeCleanupOptions;
+      } = {}
+    ) => {
       const runtime = runtimeRef.current.get(sessionId);
       const ptyIds = new Set<number>();
 
@@ -1499,15 +1510,11 @@ export function useAppState(
       const closingActive = activeSessionRef.current === sessionId;
       const nextActiveId = closingActive ? getNextVisibleSessionId(sessionsRef.current, sessionId) : null;
 
-      if (ptyIds.size > 0) {
-        await Promise.all(
-          Array.from(ptyIds).map((ptyId) =>
-            invoke("kill_pty", { sessionId: ptyId }).catch((error) => {
-              notify({ message: `Failed to terminate session: ${String(error)}`, tone: "error" });
-            })
-          )
-        );
-      }
+      const killTasks = Array.from(ptyIds).map((ptyId) =>
+        invoke("kill_pty", { sessionId: ptyId }).catch((error) => {
+          notify({ message: `Failed to terminate session: ${String(error)}`, tone: "error" });
+        })
+      );
 
       ptyIds.forEach((ptyId) => {
         ptyToSessionRef.current.delete(ptyId);
@@ -1527,6 +1534,33 @@ export function useAppState(
 
       if (closingActive) {
         setActiveSessionId(nextActiveId);
+      }
+
+      if (options.cleanupWorktree) {
+        const { repoPath, worktreePath, branch } = options.cleanupWorktree;
+        const repoName = getRepoName(repoPath) || repoPath;
+        const branchName = branch?.trim() || "unknown";
+        notify({ message: `Deleting worktree [${repoName}] ${branchName}`, tone: "info" });
+        void (async () => {
+          if (killTasks.length > 0) {
+            await Promise.allSettled(killTasks);
+          }
+          try {
+            await invoke("remove_session_worktree", {
+              repoPath,
+              worktreePath,
+              branch: branch?.trim() || undefined,
+            });
+            notify({ message: `Deleted worktree [${repoName}] ${branchName}`, tone: "success" });
+          } catch (error) {
+            notify({
+              message: `Failed to delete worktree [${repoName}] ${branchName}: ${String(error)}`,
+              tone: "error",
+            });
+          }
+        })();
+      } else if (killTasks.length > 0) {
+        void Promise.allSettled(killTasks);
       }
     },
     [clearAgentOutputting, disposeSessionRuntime, notify, setActiveSessionId]
