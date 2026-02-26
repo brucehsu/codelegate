@@ -432,16 +432,28 @@
 }
 
 .diffGrid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0;
   font-family: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
   font-size: 0.82rem;
 }
 
-.diffRow {
+.diffColumn {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.diffColumnLeft {
+  border-right: 1px solid var(--border);
+}
+
+.diffColumnRow {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px minmax(0, 1fr);
+  grid-template-columns: 48px auto;
+  width: max-content;
+  min-width: 100%;
 }
 
 .diffCell {
@@ -462,6 +474,8 @@
   background: var(--surface-2);
   font-variant-numeric: tabular-nums;
   user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
 }
 
 .diffGutterAdd {
@@ -476,11 +490,11 @@
   color: #60a5fa;
 }
 
-.diffRow > :nth-child(4) {
+.diffColumnRow > :nth-child(2) {
   border-right: none;
 }
 
-.diffRow:last-child > * {
+.diffColumnRow:last-child > * {
   border-bottom: none;
 }
 
@@ -505,6 +519,12 @@
 .diffCode {
   display: block;
   white-space: pre;
+  user-select: text;
+}
+
+.diffGridSelectingLeft .diffColumnRight .diffCode,
+.diffGridSelectingRight .diffColumnLeft .diffCode {
+  user-select: none;
 }
 
 .diffCode :global(.token.comment),
