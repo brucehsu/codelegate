@@ -151,10 +151,12 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
               onPointerDownCapture={() => handleColumnPointerDown("left")}
             >
-              <div className={styles.diffColumnRow}>
-                <div className={styles.diffGutter} />
-                <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                  <code className={styles.diffCode}>Binary file changed</code>
+              <div className={styles.diffColumnBody}>
+                <div className={styles.diffColumnRow}>
+                  <div className={styles.diffGutter} />
+                  <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
+                    <code className={styles.diffCode}>Binary file changed</code>
+                  </div>
                 </div>
               </div>
             </div>
@@ -162,10 +164,12 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               className={`${styles.diffColumn} ${styles.diffColumnRight}`}
               onPointerDownCapture={() => handleColumnPointerDown("right")}
             >
-              <div className={styles.diffColumnRow}>
-                <div className={styles.diffGutter} />
-                <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                  <code className={styles.diffCode}>Binary file changed</code>
+              <div className={styles.diffColumnBody}>
+                <div className={styles.diffColumnRow}>
+                  <div className={styles.diffGutter} />
+                  <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
+                    <code className={styles.diffCode}>Binary file changed</code>
+                  </div>
                 </div>
               </div>
             </div>
@@ -176,10 +180,12 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
               onPointerDownCapture={() => handleColumnPointerDown("left")}
             >
-              <div className={styles.diffColumnRow}>
-                <div className={styles.diffGutter} />
-                <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                  <code className={styles.diffCode}>No textual diff available</code>
+              <div className={styles.diffColumnBody}>
+                <div className={styles.diffColumnRow}>
+                  <div className={styles.diffGutter} />
+                  <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
+                    <code className={styles.diffCode}>No textual diff available</code>
+                  </div>
                 </div>
               </div>
             </div>
@@ -187,10 +193,12 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               className={`${styles.diffColumn} ${styles.diffColumnRight}`}
               onPointerDownCapture={() => handleColumnPointerDown("right")}
             >
-              <div className={styles.diffColumnRow}>
-                <div className={styles.diffGutter} />
-                <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
-                  <code className={styles.diffCode}>No textual diff available</code>
+              <div className={styles.diffColumnBody}>
+                <div className={styles.diffColumnRow}>
+                  <div className={styles.diffGutter} />
+                  <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
+                    <code className={styles.diffCode}>No textual diff available</code>
+                  </div>
                 </div>
               </div>
             </div>
@@ -201,43 +209,47 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
               onPointerDownCapture={() => handleColumnPointerDown("left")}
             >
-              {file.rows.map((row, index) => {
-                const cellClass = `${styles.diffCell} ${getCellClass(row.left.type)}`;
-                const gutterClass = `${styles.diffGutter} ${getGutterClass(row.left.type)}`;
-                const isMeta = row.left.type === "meta" || row.right.type === "meta";
-                return (
-                  <div key={`${fileKey}-left-${index}`} className={styles.diffColumnRow}>
-                    <div className={gutterClass}>{row.leftLine !== null ? row.leftLine : ""}</div>
-                    <div className={cellClass}>
-                      <code
-                        className={styles.diffCode}
-                        dangerouslySetInnerHTML={getLineHtml(row.left.text, file.language, isMeta)}
-                      />
+              <div className={styles.diffColumnBody}>
+                {file.rows.map((row, index) => {
+                  const cellClass = `${styles.diffCell} ${getCellClass(row.left.type)}`;
+                  const gutterClass = `${styles.diffGutter} ${getGutterClass(row.left.type)}`;
+                  const isMeta = row.left.type === "meta" || row.right.type === "meta";
+                  return (
+                    <div key={`${fileKey}-left-${index}`} className={styles.diffColumnRow}>
+                      <div className={gutterClass}>{row.leftLine !== null ? row.leftLine : ""}</div>
+                      <div className={cellClass}>
+                        <code
+                          className={styles.diffCode}
+                          dangerouslySetInnerHTML={getLineHtml(row.left.text, file.language, isMeta)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
             <div
               className={`${styles.diffColumn} ${styles.diffColumnRight}`}
               onPointerDownCapture={() => handleColumnPointerDown("right")}
             >
-              {file.rows.map((row, index) => {
-                const cellClass = `${styles.diffCell} ${getCellClass(row.right.type)}`;
-                const gutterClass = `${styles.diffGutter} ${getGutterClass(row.right.type)}`;
-                const isMeta = row.left.type === "meta" || row.right.type === "meta";
-                return (
-                  <div key={`${fileKey}-right-${index}`} className={styles.diffColumnRow}>
-                    <div className={gutterClass}>{row.rightLine !== null ? row.rightLine : ""}</div>
-                    <div className={cellClass}>
-                      <code
-                        className={styles.diffCode}
-                        dangerouslySetInnerHTML={getLineHtml(row.right.text, file.language, isMeta)}
-                      />
+              <div className={styles.diffColumnBody}>
+                {file.rows.map((row, index) => {
+                  const cellClass = `${styles.diffCell} ${getCellClass(row.right.type)}`;
+                  const gutterClass = `${styles.diffGutter} ${getGutterClass(row.right.type)}`;
+                  const isMeta = row.left.type === "meta" || row.right.type === "meta";
+                  return (
+                    <div key={`${fileKey}-right-${index}`} className={styles.diffColumnRow}>
+                      <div className={gutterClass}>{row.rightLine !== null ? row.rightLine : ""}</div>
+                      <div className={cellClass}>
+                        <code
+                          className={styles.diffCode}
+                          dangerouslySetInnerHTML={getLineHtml(row.right.text, file.language, isMeta)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </>
         )}

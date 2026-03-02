@@ -445,6 +445,11 @@
   overflow-y: hidden;
 }
 
+.diffColumnBody {
+  width: max-content;
+  min-width: 100%;
+}
+
 .diffColumnLeft {
   border-right: 1px solid var(--border);
 }
@@ -452,8 +457,7 @@
 .diffColumnRow {
   display: grid;
   grid-template-columns: 48px auto;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
 }
 
 .diffCell {
