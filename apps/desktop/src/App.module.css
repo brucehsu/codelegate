@@ -2,8 +2,10 @@
   --sidebar-width: 360px;
   display: grid;
   grid-template-columns: clamp(320px, var(--sidebar-width), 80%) 1fr;
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   position: relative;
+  overflow: hidden;
 }
 
 .bootScreen {
@@ -19,7 +21,9 @@
   position: relative;
   min-width: 0;
   height: 100%;
+  min-height: 0;
   display: flex;
+  overflow: hidden;
 }
 
 .sidebarResizeHandle {
