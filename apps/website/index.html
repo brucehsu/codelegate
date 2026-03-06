@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- Hero -->
+    <!-- Hero + Product Viewer -->
     <section class="hero">
       <div class="hero-content fade-in-load">
         <img src="/logo.png" alt="Codelegate logo" class="hero-logo" />
@@ -22,10 +22,123 @@
           Full Keyboard Navigation, on Mac/Linux.
         </p>
 
-        <div class="screencast-placeholder hero-screencast">
-          <div class="screencast-inner">
-            <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            <span>Screencast coming soon</span>
+        <!-- Product Viewer -->
+        <div class="pv-container">
+          <!-- Left Nav -->
+          <nav class="pv-nav">
+            <div class="pv-nav-items">
+              <button class="pv-nav-item active" data-tour="overview" data-shortcut="O">
+                <span class="pv-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                </span>
+                <span class="pv-nav-label">Overview</span>
+                <span class="pv-nav-shortcut" aria-hidden="true">O</span>
+              </button>
+              <button class="pv-nav-item" data-tour="agents" data-shortcut="A">
+                <span class="pv-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                </span>
+                <span class="pv-nav-label">Agent Support</span>
+                <span class="pv-nav-shortcut" aria-hidden="true">A</span>
+              </button>
+              <button class="pv-nav-item" data-tour="worktree" data-shortcut="G">
+                <span class="pv-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>
+                </span>
+                <span class="pv-nav-label">Git Worktree</span>
+                <span class="pv-nav-shortcut" aria-hidden="true">G</span>
+              </button>
+              <button class="pv-nav-item" data-tour="keyboard" data-shortcut="K">
+                <span class="pv-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/></svg>
+                </span>
+                <span class="pv-nav-label">Keyboard Navigation</span>
+                <span class="pv-nav-shortcut" aria-hidden="true">K</span>
+              </button>
+              <button class="pv-nav-item" data-tour="tui" data-shortcut="T">
+                <span class="pv-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                </span>
+                <span class="pv-nav-label">All TUI Tools</span>
+                <span class="pv-nav-shortcut" aria-hidden="true">T</span>
+              </button>
+            </div>
+            <span class="pv-nav-hint">Ctrl+Shift for Navigation</span>
+          </nav>
+
+          <!-- Stage -->
+          <div class="pv-stage">
+            <!-- Overview -->
+            <div class="pv-tour active" data-tour-panel="overview">
+              <div class="pv-tour-media">
+                <div class="screencast-placeholder pv-screencast">
+                  <div class="screencast-inner">
+                    <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span>Screencast coming soon</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Agent Support -->
+            <div class="pv-tour" data-tour-panel="agents">
+              <div class="pv-tour-media">
+                <div class="screencast-placeholder pv-screencast">
+                  <div class="screencast-inner">
+                    <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="pv-tour-text">
+                <h2 class="pv-tour-headline">Supports Claude Code and Codex CLI</h2>
+                <p class="pv-tour-description">Run multiple agents side by side, each in its own workspace.<br />Dedicated terminal and built-in Git pane per session.<br />Pick up right where you left off with automatic session restore.</p>
+              </div>
+            </div>
+
+            <!-- Git Worktree -->
+            <div class="pv-tour" data-tour-panel="worktree">
+              <div class="pv-tour-media">
+                <div class="screencast-placeholder pv-screencast">
+                  <div class="screencast-inner">
+                    <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="pv-tour-text">
+                <h2 class="pv-tour-headline">Git Worktree Management</h2>
+                <p class="pv-tour-description">Let multiple agents work on the same repo at the same time.<br />Each session gets its own isolated worktree so nothing conflicts.</p>
+              </div>
+            </div>
+
+            <!-- Keyboard Navigation -->
+            <div class="pv-tour" data-tour-panel="keyboard">
+              <div class="pv-tour-media">
+                <div class="screencast-placeholder pv-screencast">
+                  <div class="screencast-inner">
+                    <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="pv-tour-text">
+                <h2 class="pv-tour-headline">Full Keyboard Navigation</h2>
+                <p class="pv-tour-description">Every action is a shortcut away.<br />Switch sessions, review diffs, commit, and manage branches.<br />Without ever reaching for the mouse.</p>
+              </div>
+            </div>
+
+            <!-- All TUI Tools -->
+            <div class="pv-tour" data-tour-panel="tui">
+              <div class="pv-tour-media">
+                <div class="screencast-placeholder pv-screencast">
+                  <div class="screencast-inner">
+                    <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="pv-tour-text">
+                <h2 class="pv-tour-headline">Use Whatever All TUI Tools You Like</h2>
+                <p class="pv-tour-description">Every session comes with a real terminal.<br />Dev server, lazygit, even zellij/tmux.<br />If it runs in your terminal, it runs here. No compromises.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -44,74 +157,6 @@
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
             GitHub
           </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- Feature 1: Agent Support -->
-    <section class="feature-section">
-      <div class="feature-layout fade-up">
-        <div class="feature-text">
-          <h2 class="feature-headline">Supports Claude Code<br />and Codex CLI</h2>
-          <p class="feature-description">Run multiple agents side by side, each in its own workspace with a dedicated terminal and built-in Git pane. Pick up right where you left off with automatic session restore.</p>
-        </div>
-        <div class="feature-media">
-          <div class="screencast-placeholder feature-screencast">
-            <div class="screencast-inner">
-              <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Feature 2: Git Worktree -->
-    <section class="feature-section">
-      <div class="feature-layout feature-layout--reversed fade-up">
-        <div class="feature-text">
-          <h2 class="feature-headline">Git Worktree<br />Management</h2>
-          <p class="feature-description">Let multiple agents work on the same repo at the same time. Each session gets its own isolated worktree so nothing conflicts.</p>
-        </div>
-        <div class="feature-media">
-          <div class="screencast-placeholder feature-screencast">
-            <div class="screencast-inner">
-              <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Feature 3: Keyboard Navigation -->
-    <section class="feature-section">
-      <div class="feature-layout fade-up">
-        <div class="feature-text">
-          <h2 class="feature-headline">Full Keyboard<br />Navigation</h2>
-          <p class="feature-description">Every action is a shortcut away. Switch sessions, review diffs, commit, and manage branches without ever reaching for the mouse.</p>
-        </div>
-        <div class="feature-media">
-          <div class="screencast-placeholder feature-screencast">
-            <div class="screencast-inner">
-              <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Feature 4: TUI Tools -->
-    <section class="feature-section">
-      <div class="feature-layout feature-layout--reversed fade-up">
-        <div class="feature-text">
-          <h2 class="feature-headline">Use Whatever TUI<br />Tools You Like</h2>
-          <p class="feature-description">Every session comes with a real terminal. Dev server, lazygit, even zellij/tmux - if it runs in your terminal, it runs here. No compromises.</p>
-        </div>
-        <div class="feature-media">
-          <div class="screencast-placeholder feature-screencast">
-            <div class="screencast-inner">
-              <svg class="play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            </div>
-          </div>
         </div>
       </div>
     </section>
