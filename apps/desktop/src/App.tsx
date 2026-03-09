@@ -152,7 +152,7 @@ export default function App() {
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("claude");
   const [repoPath, setRepoPath] = useState("");
   const [repoHint, setRepoHint] = useState("");
-  const [worktreeEnabled, setWorktreeEnabled] = useState(false);
+  const [worktreeEnabled, setWorktreeEnabled] = useState(true);
   const [envVars, setEnvVars] = useState<EnvVar[]>(emptyEnv);
   const [preCommands, setPreCommands] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -582,7 +582,7 @@ export default function App() {
     setSelectedAgent("claude");
     setRepoPath("");
     setRepoHint("");
-    setWorktreeEnabled(false);
+    setWorktreeEnabled(true);
     setEnvVars(emptyEnv);
     setPreCommands("");
   }
