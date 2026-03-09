@@ -470,15 +470,25 @@ export default function App() {
     setSessionHotkeyPage((prev) => (prev + 1) % hotkeyPageCount);
   }, [hotkeyPageCount]);
 
+  const handleSelectSession = useCallback(
+    (sessionId: string) => {
+      if (sessionId !== activeSessionId && filter) {
+        setFilter("");
+      }
+      setActiveSessionId(sessionId);
+    },
+    [activeSessionId, filter, setActiveSessionId, setFilter]
+  );
+
   const selectSessionByHotkeyIndex = useCallback(
     (index: number) => {
       const target = visualSessions[sessionHotkeyPage * 9 + index];
       if (!target) {
         return;
       }
-      setActiveSessionId(target.id);
+      handleSelectSession(target.id);
     },
-    [sessionHotkeyPage, setActiveSessionId, visualSessions]
+    [handleSelectSession, sessionHotkeyPage, visualSessions]
   );
 
   const modifierHotkeys = useMemo<HotkeyBinding[]>(
@@ -820,7 +830,7 @@ export default function App() {
           sessionShortcuts={sessionShortcuts}
           activeSessionId={activeSessionId}
           onFilterChange={setFilter}
-          onSelectSession={setActiveSessionId}
+          onSelectSession={handleSelectSession}
           onNewSession={handleOpenDialog}
           onOpenSettings={openSettings}
           onRenameSession={openRename}

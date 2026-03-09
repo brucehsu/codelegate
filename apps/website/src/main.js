@@ -30,6 +30,33 @@ navItems.forEach((btn) => {
   }
 });
 
+// Play video in panel, pause all others; restart from beginning
+function playVideoInPanel(panel) {
+  panels.forEach((p) => {
+    const v = p.querySelector("video");
+    if (v) v.pause();
+  });
+  const video = panel.querySelector("video");
+  if (video) {
+    video.currentTime = 0;
+    video.play();
+  }
+}
+
+// 2-second delay before looping: pause at end, then restart after 2s
+document.querySelectorAll(".pv-video").forEach((video) => {
+  video.loop = false; // we handle looping manually
+  video.addEventListener("ended", () => {
+    setTimeout(() => {
+      // Only restart if this panel is still active
+      if (video.closest(".pv-tour.active")) {
+        video.currentTime = 0;
+        video.play();
+      }
+    }, 2000);
+  });
+});
+
 function switchTour(key) {
   if (key === activeTour || isAnimating) return;
   isAnimating = true;
@@ -57,6 +84,7 @@ function switchTour(key) {
 
   // Activate new
   newPanel.classList.add("active");
+  playVideoInPanel(newPanel);
 
   requestAnimationFrame(() => {
     newPanel.style.opacity = "";
