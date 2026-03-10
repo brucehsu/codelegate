@@ -30,7 +30,7 @@ navItems.forEach((btn) => {
   }
 });
 
-// Play video in panel, pause all others; restart from beginning
+// Play video in panel, pause all others; lazy-load src on first access
 function playVideoInPanel(panel) {
   panels.forEach((p) => {
     const v = p.querySelector("video");
@@ -38,10 +38,27 @@ function playVideoInPanel(panel) {
   });
   const video = panel.querySelector("video");
   if (video) {
+    // Lazy-load: move data-src to src on first play
+    if (!video.src && video.dataset.src) {
+      video.src = video.dataset.src;
+    }
     video.currentTime = 0;
     video.play();
   }
 }
+
+// After overview finishes loading, prefetch the other videos in background
+const overviewVideo = panels.get("overview").querySelector("video");
+overviewVideo.addEventListener("canplaythrough", () => {
+  panels.forEach((panel, key) => {
+    if (key === "overview") return;
+    const v = panel.querySelector("video");
+    if (v && !v.src && v.dataset.src) {
+      v.preload = "auto";
+      v.src = v.dataset.src;
+    }
+  });
+}, { once: true });
 
 // 2-second delay before looping: pause at end, then restart after 2s
 document.querySelectorAll(".pv-video").forEach((video) => {
@@ -53,7 +70,7 @@ document.querySelectorAll(".pv-video").forEach((video) => {
         video.currentTime = 0;
         video.play();
       }
-    }, 2000);
+    }, 3000);
   });
 });
 

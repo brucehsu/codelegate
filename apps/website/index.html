@@ -10,6 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
+    <link rel="preload" href="/videos/overview.mp4" as="video" type="video/mp4" />
   </head>
   <body>
     <!-- Hero + Product Viewer -->
@@ -71,14 +72,14 @@
             <!-- Overview -->
             <div class="pv-tour active" data-tour-panel="overview">
               <div class="pv-tour-media">
-                <video class="pv-video" autoplay muted playsinline src="/videos/overview.mp4"></video>
+                <video class="pv-video" autoplay muted playsinline preload="auto" src="/videos/overview.mp4"></video>
               </div>
             </div>
 
             <!-- Agent Support -->
             <div class="pv-tour" data-tour-panel="agents">
               <div class="pv-tour-media">
-                <video class="pv-video" muted playsinline src="/videos/agents.mp4"></video>
+                <video class="pv-video" muted playsinline preload="none" data-src="/videos/agents.mp4"></video>
               </div>
               <div class="pv-tour-text">
                 <h2 class="pv-tour-headline">Supports Claude Code and Codex CLI</h2>
@@ -89,7 +90,7 @@
             <!-- Git Worktree -->
             <div class="pv-tour" data-tour-panel="worktree">
               <div class="pv-tour-media">
-                <video class="pv-video" muted playsinline src="/videos/gitworktree.mp4"></video>
+                <video class="pv-video" muted playsinline preload="none" data-src="/videos/gitworktree.mp4"></video>
               </div>
               <div class="pv-tour-text">
                 <h2 class="pv-tour-headline">Git Worktree Management</h2>
@@ -100,7 +101,7 @@
             <!-- Keyboard Navigation -->
             <div class="pv-tour" data-tour-panel="keyboard">
               <div class="pv-tour-media">
-                <video class="pv-video" muted playsinline src="/videos/keyboard.mp4"></video>
+                <video class="pv-video" muted playsinline preload="none" data-src="/videos/keyboard.mp4"></video>
               </div>
               <div class="pv-tour-text">
                 <h2 class="pv-tour-headline">Full Keyboard Navigation</h2>
@@ -111,7 +112,7 @@
             <!-- All TUI Tools -->
             <div class="pv-tour" data-tour-panel="tui">
               <div class="pv-tour-media">
-                <video class="pv-video" muted playsinline src="/videos/cli.mp4"></video>
+                <video class="pv-video" muted playsinline preload="none" data-src="/videos/cli.mp4"></video>
               </div>
               <div class="pv-tour-text">
                 <h2 class="pv-tour-headline">Use Whatever All TUI Tools You Like</h2>
