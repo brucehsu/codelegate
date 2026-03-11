@@ -25,6 +25,7 @@ export default function RepoPicker({
   const [activeIndex, setActiveIndex] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const worktreeToggleRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const openFocusModeRef = useRef<"select" | "preserve-end">("select");
   const menuId = useId();
@@ -129,6 +130,17 @@ export default function RepoPicker({
     return Math.max(0, Math.min(filteredDirs.length - 1, baseIndex + step));
   }
 
+  function commitSelection(dir: string, nextIndex?: number) {
+    onSelect(dir);
+    if (typeof nextIndex === "number") {
+      setActiveIndex(nextIndex);
+    }
+    setOpen(false);
+    requestAnimationFrame(() => {
+      worktreeToggleRef.current?.focus();
+    });
+  }
+
   function isTypeaheadKey(event: ReactKeyboardEvent<HTMLButtonElement>) {
     return event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
   }
@@ -204,8 +216,7 @@ export default function RepoPicker({
       if (activeIndex >= 0) {
         const dir = filteredDirs[activeIndex];
         if (dir) {
-          onSelect(dir);
-          setOpen(false);
+          commitSelection(dir, activeIndex);
         }
       }
       return;
@@ -269,11 +280,7 @@ export default function RepoPicker({
                   ref={(element) => {
                     optionRefs.current[index] = element;
                   }}
-                  onClick={() => {
-                    onSelect(dir);
-                    setActiveIndex(index);
-                    setOpen(false);
-                  }}
+                  onClick={() => commitSelection(dir, index)}
                 >
                   {dir}
                 </button>
@@ -287,6 +294,7 @@ export default function RepoPicker({
       </Button>
       <button
         type="button"
+        ref={worktreeToggleRef}
         className={`${styles.toggle} ${worktreeEnabled ? styles.toggleActive : ""}`}
         onClick={() => onToggleWorktree(!worktreeEnabled)}
         aria-pressed={worktreeEnabled}
