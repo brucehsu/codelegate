@@ -26,6 +26,7 @@ export default function RepoPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const openFocusModeRef = useRef<"select" | "preserve-end">("select");
   const menuId = useId();
   const filteredDirs = useMemo(() => {
     const needle = searchQuery.trim().toLowerCase();
@@ -69,8 +70,17 @@ export default function RepoPicker({
       return;
     }
     const rafId = requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
+      const input = searchInputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus();
+      if (openFocusModeRef.current === "preserve-end") {
+        const caret = input.value.length;
+        input.setSelectionRange(caret, caret);
+        return;
+      }
+      input.select();
     });
     return () => cancelAnimationFrame(rafId);
   }, [open]);
@@ -129,6 +139,7 @@ export default function RepoPicker({
     }
 
     event.preventDefault();
+    openFocusModeRef.current = "preserve-end";
     setOpen(true);
     if (event.key === " ") {
       return true;
@@ -145,6 +156,7 @@ export default function RepoPicker({
 
     if (event.key === "Backspace") {
       event.preventDefault();
+      openFocusModeRef.current = "preserve-end";
       setOpen(true);
       setSearchQuery((prev) => prev.slice(0, -1));
       return;
@@ -153,6 +165,7 @@ export default function RepoPicker({
     if ((event.key === "ArrowDown" || event.key === "ArrowUp") && filteredDirs.length > 0) {
       event.preventDefault();
       if (!open) {
+        openFocusModeRef.current = "select";
         setOpen(true);
         return;
       }
@@ -165,6 +178,7 @@ export default function RepoPicker({
 
     if ((event.key === "Enter" || event.key === " ") && !open) {
       event.preventDefault();
+      openFocusModeRef.current = "select";
       setOpen(true);
       return;
     }
@@ -211,7 +225,14 @@ export default function RepoPicker({
         <button
           type="button"
           className={`${styles.trigger} ${value ? "" : styles.placeholder}`}
-          onClick={() => setOpen((prev) => !prev)}
+          onClick={() =>
+            setOpen((prev) => {
+              if (!prev) {
+                openFocusModeRef.current = "select";
+              }
+              return !prev;
+            })
+          }
           onKeyDown={handleTriggerKeyDown}
           aria-haspopup="listbox"
           aria-expanded={open}
