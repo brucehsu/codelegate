@@ -153,6 +153,39 @@ pnpm build:desktop
 pnpm --filter @codelegate/desktop tauri build --no-bundle
 ```
 
+## Desktop Releases
+- Release workflow: `.github/workflows/release-desktop.yml`
+- Trigger: push a Git tag matching `v*` such as `v0.1.0`
+- Manual run: start the workflow from the Actions tab and provide `release_tag` with the same tag value, such as `v0.1.0`
+- The pushed tag must match `apps/desktop/src-tauri/Cargo.toml` `version`
+- The workflow builds the Tauri desktop app from `apps/desktop`, creates or updates the GitHub Release, uploads Linux and macOS artifacts, and enables GitHub-generated release notes
+- macOS bundles are signed and notarized in CI
+- Linux bundles are built on Ubuntu and published to the same GitHub Release
+
+Required GitHub Actions secrets:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` signing certificate exported from Keychain Access. |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` certificate. |
+| `KEYCHAIN_PASSWORD` | Password for the temporary macOS keychain created during CI signing. |
+| `APPLE_API_KEY` | App Store Connect API Key ID. |
+| `APPLE_API_ISSUER` | App Store Connect Issuer ID. |
+| `APPLE_API_KEY_P8_BASE64` | Base64-encoded contents of `AuthKey_<KEY_ID>.p8`. |
+
+Release steps:
+
+1. Update `apps/desktop/src-tauri/Cargo.toml` to the release version.
+2. Commit the version change and push it to the branch you want to release from.
+3. Create and push the matching tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+After the tag is pushed, GitHub Actions runs the desktop release workflow on GitHub-hosted macOS and Linux runners, builds Linux and macOS bundles, signs and notarizes the macOS artifacts with the configured Apple credentials, then publishes all generated assets to the GitHub Release page for that tag.
+
 ## Data Locations
 - Settings: `~/.codelegate/config.json`
   - Recent directories are stored under `settings.recentDirs`.

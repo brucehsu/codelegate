@@ -1,0 +1,188 @@
+name: Release Desktop
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build and publish, for example v0.1.0
+        required: true
+        type: string
+
+concurrency:
+  group: release-desktop-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-desktop:
+    name: Release Desktop (${{ matrix.bundle_name }})
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundle_name: Linux x64
+            platform: linux
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            bundle_name: Apple Silicon
+            platform: macos
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            bundle_name: Intel
+            platform: macos
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies for Tauri
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches desktop version
+        shell: bash
+        run: |
+          release_tag="$RELEASE_TAG"
+          app_version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' apps/desktop/src-tauri/Cargo.toml | head -n 1)"
+          tag_version="${release_tag#v}"
+
+          if [[ ! "$release_tag" =~ ^v[0-9] ]]; then
+            echo "Release tag must start with v and include a version number, got: $release_tag"
+            exit 1
+          fi
+
+          if [[ -z "$app_version" ]]; then
+            echo "Unable to determine desktop app version from apps/desktop/src-tauri/Cargo.toml"
+            exit 1
+          fi
+
+          if [[ "$app_version" != "$tag_version" ]]; then
+            echo "Release tag ${release_tag} does not match desktop app version ${app_version}"
+            exit 1
+          fi
+
+      - name: Reconstruct App Store Connect API key
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        shell: bash
+        run: |
+          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s' "$APPLE_API_KEY_P8_BASE64" | openssl base64 -d -A -out "$api_key_path"
+          chmod 600 "$api_key_path"
+          echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+
+      - name: Import Apple signing certificate
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          cert_path="$RUNNER_TEMP/apple-signing-cert.p12"
+          keychain_path="$RUNNER_TEMP/codelegate-release.keychain-db"
+
+          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A -out "$cert_path"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$cert_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+
+      - name: Build and publish macOS release
+        if: matrix.platform == 'macos'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Codelegate ${{ env.RELEASE_TAG }}
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          args: --target ${{ matrix.target }}
+
+      - name: Build and publish Linux release
+        if: matrix.platform == 'linux'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Codelegate ${{ env.RELEASE_TAG }}
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+
+      - name: Cleanup signing files
+        if: always() && matrix.platform == 'macos'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          rm -f "$RUNNER_TEMP/apple-signing-cert.p12"
+          security delete-keychain "$RUNNER_TEMP/codelegate-release.keychain-db" || true
