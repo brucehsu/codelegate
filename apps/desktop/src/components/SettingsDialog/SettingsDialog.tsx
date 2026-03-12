@@ -15,12 +15,10 @@ interface SettingsDialogProps {
   open: boolean;
   fontFamily: string;
   fontSize: number;
-  batterySaver: boolean;
   shortcutModifier: string;
   agentArgs: Record<string, string>;
   onChangeFontFamily: (value: string) => void;
   onChangeFontSize: (value: number) => void;
-  onToggleBatterySaver: (value: boolean) => void;
   onCommitShortcutModifier: (value: string) => void;
   onAgentArgsChange: (next: Record<string, string>) => void;
   onClose: () => void;
@@ -31,12 +29,10 @@ export default function SettingsDialog({
   open,
   fontFamily,
   fontSize,
-  batterySaver,
   shortcutModifier,
   agentArgs,
   onChangeFontFamily,
   onChangeFontSize,
-  onToggleBatterySaver,
   onCommitShortcutModifier,
   onAgentArgsChange,
   onClose,
@@ -242,21 +238,6 @@ export default function SettingsDialog({
             />
             <p className={styles.fieldHint}>Click and press modifiers. Enter to save, Esc to cancel.</p>
           </label>
-          <div className={styles.toggleRow}>
-            <div>
-              <span>Battery saver</span>
-              <p className={styles.toggleHint}>Disable animated background to save battery.</p>
-            </div>
-            <button
-              type="button"
-              className={`${styles.toggle} ${batterySaver ? styles.toggleActive : ""}`}
-              aria-pressed={batterySaver}
-              onClick={() => onToggleBatterySaver(!batterySaver)}
-            >
-              <span className={styles.toggleKnob} />
-            </button>
-          </div>
-
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.sectionTitle}>Agents</span>

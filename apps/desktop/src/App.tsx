@@ -129,7 +129,6 @@ export default function App() {
     setActiveSessionId,
     updateRecentDirs,
     updateTerminalSettings,
-    updateBatterySaver,
     updateShortcutModifier,
     updateRepoDefaults,
     updateAgentSettings,
@@ -158,7 +157,6 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [fontFamily, setFontFamily] = useState(config.settings.terminalFontFamily);
   const [fontSize, setFontSize] = useState(config.settings.terminalFontSize);
-  const [batterySaver, setBatterySaver] = useState(config.settings.batterySaver);
   const [agentArgs, setAgentArgs] = useState<Record<string, string>>(config.settings.agentArgs ?? {});
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
@@ -204,11 +202,9 @@ export default function App() {
   useEffect(() => {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
-    setBatterySaver(config.settings.batterySaver);
   }, [
     config.settings.terminalFontFamily,
     config.settings.terminalFontSize,
-    config.settings.batterySaver,
   ]);
 
   useEffect(() => {
@@ -453,11 +449,9 @@ export default function App() {
   const openSettings = useCallback(() => {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
-    setBatterySaver(config.settings.batterySaver);
     setAgentArgs(config.settings.agentArgs ?? {});
     setSettingsOpen(true);
   }, [
-    config.settings.batterySaver,
     config.settings.agentArgs,
     config.settings.terminalFontFamily,
     config.settings.terminalFontSize,
@@ -622,7 +616,6 @@ export default function App() {
       terminalFontFamily: fontFamily.trim() || config.settings.terminalFontFamily,
       terminalFontSize: Number.isNaN(fontSize) ? config.settings.terminalFontSize : fontSize,
     });
-    updateBatterySaver(batterySaver);
     updateAgentSettings(cleanedArgs);
     setAgentArgs(cleanedArgs);
     setSettingsOpen(false);
@@ -886,12 +879,10 @@ export default function App() {
         open={settingsOpen}
         fontFamily={fontFamily}
         fontSize={fontSize}
-        batterySaver={batterySaver}
         shortcutModifier={shortcutModifier}
         agentArgs={agentArgs}
         onChangeFontFamily={setFontFamily}
         onChangeFontSize={setFontSize}
-        onToggleBatterySaver={setBatterySaver}
         onCommitShortcutModifier={handleShortcutModifierCommit}
         onAgentArgsChange={setAgentArgs}
         onClose={closeSettings}

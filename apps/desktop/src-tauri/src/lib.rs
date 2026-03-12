@@ -126,8 +126,6 @@ struct AppSettings {
   terminal_font_size: u16,
   #[serde(default = "default_shortcut_modifier")]
   shortcut_modifier: String,
-  #[serde(default = "default_battery_saver", alias = "backgroundAnimation")]
-  battery_saver: bool,
   #[serde(default)]
   repo_defaults: HashMap<String, RepoDefaults>,
   #[serde(default)]
@@ -656,17 +654,7 @@ fn load_config() -> Result<AppConfig, String> {
 
   let raw = std::fs::read_to_string(&file)
     .map_err(|error| format!("Failed to read config: {error}"))?;
-  let mut value: serde_json::Value = serde_json::from_str(&raw)
-    .map_err(|error| format!("Failed to parse config: {error}"))?;
-  if let Some(settings) = value.get_mut("settings") {
-    let has_battery = settings.get("batterySaver").is_some();
-    if !has_battery {
-      if let Some(background) = settings.get("backgroundAnimation").and_then(|val| val.as_bool()) {
-        settings["batterySaver"] = serde_json::Value::Bool(!background);
-      }
-    }
-  }
-  let config: AppConfig = serde_json::from_value(value)
+  let config: AppConfig = serde_json::from_str(&raw)
     .map_err(|error| format!("Failed to parse config: {error}"))?;
   Ok(config)
 }
@@ -860,7 +848,6 @@ fn default_config() -> AppConfig {
       terminal_font_family: default_terminal_font_family(),
       terminal_font_size: default_terminal_font_size(),
       shortcut_modifier: default_shortcut_modifier(),
-      battery_saver: default_battery_saver(),
       repo_defaults: HashMap::new(),
       agent_args: HashMap::new(),
     },
@@ -951,10 +938,6 @@ fn default_terminal_font_family() -> String {
 
 fn default_terminal_font_size() -> u16 {
   13
-}
-
-fn default_battery_saver() -> bool {
-  false
 }
 
 fn default_shortcut_modifier() -> String {

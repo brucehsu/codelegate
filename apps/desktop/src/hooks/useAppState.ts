@@ -194,7 +194,6 @@ const defaultSettings = {
   terminalFontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
   terminalFontSize: 13,
   shortcutModifier: "Alt",
-  batterySaver: false,
   repoDefaults: {},
   agentArgs: {},
 };
@@ -549,10 +548,6 @@ export function useAppState(
     activeSessionRef.current = activeSessionId;
   }, [activeSessionId]);
 
-  const setBatterySaverDataset = useCallback((enabled: boolean) => {
-    document.body.dataset.batterySaver = enabled ? "on" : "off";
-  }, []);
-
   const markConfigReady = useCallback(() => {
     configReadyResolveRef.current?.();
     configReadyResolveRef.current = null;
@@ -616,7 +611,6 @@ export function useAppState(
         setConfig(nextConfig);
         setHasSavedConfig(hasSaved);
         applyTheme(nextConfig.settings.theme);
-        setBatterySaverDataset(nextConfig.settings.batterySaver);
       })
       .catch(() => {
         if (!mounted) {
@@ -624,7 +618,6 @@ export function useAppState(
         }
         setHasSavedConfig(false);
         applyTheme(defaultSettings.theme);
-        setBatterySaverDataset(false);
       })
       .finally(() => {
         markConfigReady();
@@ -632,7 +625,7 @@ export function useAppState(
     return () => {
       mounted = false;
     };
-  }, [applyTheme, markConfigReady, setBatterySaverDataset]);
+  }, [applyTheme, markConfigReady]);
 
   const persistConfig = useCallback(async () => {
     try {
@@ -758,14 +751,6 @@ export function useAppState(
     },
     [applyTerminalAppearanceToAll, toTerminalAppearance, updateSettings]
   );
-
-  const updateBatterySaver = useCallback((enabled: boolean) => {
-    updateSettings((settings) => ({
-      ...settings,
-      batterySaver: enabled,
-    }));
-    setBatterySaverDataset(enabled);
-  }, [setBatterySaverDataset, updateSettings]);
 
   const updateShortcutModifier = useCallback(
     (modifier: string) => {
@@ -2113,7 +2098,6 @@ export function useAppState(
     setActiveSessionId,
     updateRecentDirs,
     updateTerminalSettings,
-    updateBatterySaver,
     updateShortcutModifier,
     updateRepoDefaults,
     updateAgentSettings,

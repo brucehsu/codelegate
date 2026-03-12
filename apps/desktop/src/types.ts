@@ -29,7 +29,6 @@ export interface AppSettings {
   terminalFontFamily: string;
   terminalFontSize: number;
   shortcutModifier: string;
-  batterySaver: boolean;
   repoDefaults?: Record<string, RepoSessionDefaults>;
   agentArgs?: Record<string, string>;
 }
