@@ -144,14 +144,38 @@ jobs:
           security default-keychain -d user -s "$keychain_path"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
 
+      - name: Resolve Apple signing identity
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          keychain_path="$RUNNER_TEMP/codelegate-release.keychain-db"
+          cert_info="$(security find-identity -v -p codesigning "$keychain_path" | grep "Developer ID Application" | head -n 1)"
+
+          if [[ -z "$cert_info" ]]; then
+            echo "No Developer ID Application signing identity found in temporary keychain"
+            security find-identity -v -p codesigning "$keychain_path" || true
+            exit 1
+          fi
+
+          signing_identity="$(echo "$cert_info" | awk -F'"' '{print $2}')"
+
+          if [[ -z "$signing_identity" ]]; then
+            echo "Unable to extract signing identity from keychain entry"
+            echo "$cert_info"
+            exit 1
+          fi
+
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
       - name: Build and publish macOS release
         if: matrix.platform == 'macos'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@action-v0.6.0
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
@@ -165,7 +189,7 @@ jobs:
 
       - name: Build and publish Linux release
         if: matrix.platform == 'linux'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@action-v0.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
