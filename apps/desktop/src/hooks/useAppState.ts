@@ -50,6 +50,7 @@ interface TerminalRuntime extends TerminalRendererRuntime {
   scrollDisposable?: { dispose: () => void };
   viewportEl?: HTMLDivElement | null;
   viewportHandler?: (() => void) | null;
+  viewportRestoreRaf?: number;
   activationRaf?: number;
   rendererAttachRaf?: number;
   webglPostInitTimer?: number;
@@ -305,7 +306,7 @@ export function useAppState(
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [hasSavedConfig, setHasSavedConfig] = useState<boolean | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [unreadOutput, setUnreadOutput] = useState<Record<string, boolean>>({});
   const [agentOutputting, setAgentOutputting] = useState<Record<string, boolean>>({});
@@ -492,6 +493,9 @@ export function useAppState(
   const setFollowingState = useCallback(
     (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, isFollowing: boolean) => {
       runtime.isFollowing = isFollowing;
+      if (isFollowing) {
+        runtime.savedViewportY = undefined;
+      }
       setUnreadFor(sessionId, kind, !isFollowing);
     },
     [setUnreadFor]
@@ -507,6 +511,65 @@ export function useAppState(
       setFollowingState(runtime, sessionId, kind, distanceFromBottom <= 1);
     },
     [setFollowingState]
+  );
+
+  const snapshotRuntimeViewport = useCallback((runtime: TerminalRuntime) => {
+    const viewportY = runtime.term?.buffer.active.viewportY;
+    if (runtime.isFollowing === false && viewportY !== undefined) {
+      runtime.savedViewportY = viewportY;
+      return;
+    }
+    runtime.savedViewportY = undefined;
+  }, []);
+
+  const snapshotActiveRuntimeViewport = useCallback(() => {
+    const sessionId = activeSessionRef.current;
+    const kind = activePaneKindRef.current;
+    if (!sessionId) {
+      return;
+    }
+    const runtime = runtimeRef.current.get(sessionId)?.[kind];
+    if (!runtime?.term) {
+      return;
+    }
+    updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
+    snapshotRuntimeViewport(runtime);
+  }, [snapshotRuntimeViewport, updateFollowState]);
+
+  const restoreRuntimeViewport = useCallback(
+    (runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
+      if (!runtime.term || runtime.isFollowing !== false || runtime.savedViewportY === undefined) {
+        return;
+      }
+      if (runtime.viewportRestoreRaf !== undefined) {
+        window.cancelAnimationFrame(runtime.viewportRestoreRaf);
+      }
+      const retryRestore = () => {
+        runtime.viewportRestoreRaf = undefined;
+        const term = runtime.term;
+        const savedViewportY = runtime.savedViewportY;
+        if (!term || savedViewportY === undefined || runtime.isFollowing !== false) {
+          return;
+        }
+        if (!isRuntimeVisible(runtime)) {
+          runtime.viewportRestoreRaf = window.requestAnimationFrame(retryRestore);
+          return;
+        }
+        term.write("", () => {
+          if (!runtime.term || runtime.savedViewportY !== savedViewportY || runtime.isFollowing !== false) {
+            return;
+          }
+          if (!isRuntimeVisible(runtime)) {
+            return;
+          }
+          runtime.term.scrollToLine(savedViewportY);
+          runtime.savedViewportY = undefined;
+          updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
+        });
+      };
+      runtime.viewportRestoreRaf = window.requestAnimationFrame(retryRestore);
+    },
+    [updateFollowState]
   );
 
   const focusSession = useCallback((sessionId: string, kind: PaneKind) => {
@@ -547,6 +610,16 @@ export function useAppState(
   useEffect(() => {
     activeSessionRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  const setActiveSessionId = useCallback(
+    (nextSessionId: string | null) => {
+      if (activeSessionRef.current !== nextSessionId) {
+        snapshotActiveRuntimeViewport();
+      }
+      setActiveSessionIdState(nextSessionId);
+    },
+    [snapshotActiveRuntimeViewport]
+  );
 
   const markConfigReady = useCallback(() => {
     configReadyResolveRef.current?.();
@@ -720,6 +793,20 @@ export function useAppState(
       });
     },
     [applyTerminalAppearanceToRuntime, toTerminalAppearance]
+  );
+
+  const activateVisibleRuntime = useCallback(
+    (
+      runtime: TerminalRuntime,
+      sessionId: string,
+      kind: PaneKind,
+      options?: { focus?: boolean; clearSelection?: boolean }
+    ) => {
+      activateRuntime(runtime, options);
+      scheduleTerminalFit(runtime, true);
+      restoreRuntimeViewport(runtime, sessionId, kind);
+    },
+    [activateRuntime, restoreRuntimeViewport, scheduleTerminalFit]
   );
 
   const refreshTerminalRenderersAfterFontLoad = useCallback(() => {
@@ -1200,6 +1287,10 @@ export function useAppState(
         window.cancelAnimationFrame(runtime.activationRaf);
         runtime.activationRaf = undefined;
       }
+      if (runtime.viewportRestoreRaf !== undefined) {
+        window.cancelAnimationFrame(runtime.viewportRestoreRaf);
+        runtime.viewportRestoreRaf = undefined;
+      }
       runtime.container = null;
       runtime.lastFit = undefined;
       if (runtime.resizeObserver) {
@@ -1223,12 +1314,12 @@ export function useAppState(
 
   const detachTerminalRuntime = useCallback(
     (runtime: TerminalRuntime, preserveViewport = false) => {
-      if (preserveViewport && runtime.term) {
-        runtime.savedViewportY = runtime.term.buffer.active.viewportY;
+      if (preserveViewport) {
+        snapshotRuntimeViewport(runtime);
       }
       cleanupTerminalRuntimeAttachment(runtime);
     },
-    [cleanupTerminalRuntimeAttachment]
+    [cleanupTerminalRuntimeAttachment, snapshotRuntimeViewport]
   );
 
   const disposeTerminalRuntime = useCallback(
@@ -1248,6 +1339,7 @@ export function useAppState(
       runtime.starting = false;
       runtime.isFollowing = undefined;
       runtime.savedViewportY = undefined;
+      runtime.viewportRestoreRaf = undefined;
       runtime.activationRaf = undefined;
     },
     [detachTerminalRuntime]
@@ -1264,6 +1356,9 @@ export function useAppState(
 
   const setActivePaneKind = useCallback(
     (kind: PaneKind) => {
+      if (activePaneKindRef.current !== kind) {
+        snapshotActiveRuntimeViewport();
+      }
       activePaneKindRef.current = kind;
       const sessionId = activeSessionRef.current;
       if (!sessionId) {
@@ -1271,15 +1366,14 @@ export function useAppState(
       }
       const runtime = runtimeRef.current.get(sessionId)?.[kind];
       if (runtime?.term) {
-        activateRuntime(runtime, { focus: true, clearSelection: true });
-        scheduleTerminalFit(runtime);
+        activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: true });
         return;
       }
       if (!focusSession(sessionId, kind)) {
         pendingFocusRef.current = { sessionId, kind };
       }
     },
-    [activateRuntime, focusSession, scheduleTerminalFit]
+    [activateVisibleRuntime, focusSession, snapshotActiveRuntimeViewport]
   );
 
   const jumpToBottom = useCallback(
@@ -1290,7 +1384,7 @@ export function useAppState(
       }
       setFollowingState(runtime, sessionId, kind, true);
       runtime.term.scrollToBottom();
-      scheduleTerminalFit(runtime);
+      scheduleTerminalFit(runtime, true);
     },
     [scheduleTerminalFit, setFollowingState]
   );
@@ -1342,10 +1436,6 @@ export function useAppState(
           viewport.addEventListener("scroll", handler, { passive: true });
           handler();
         }
-        if (runtime.savedViewportY !== undefined && runtime.isFollowing === false) {
-          term.scrollToLine(runtime.savedViewportY);
-        }
-        runtime.savedViewportY = undefined;
         updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
 
         const isActiveRuntime = activeSessionRef.current === sessionId && activePaneKindRef.current === kind;
@@ -1358,7 +1448,7 @@ export function useAppState(
           pendingFocusRef.current = null;
         }
         if (isActiveRuntime) {
-          activateRuntime(runtime, { focus: true, clearSelection: true });
+          activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: true });
         } else {
           activateRuntime(runtime, { focus: false, clearSelection: false });
         }
@@ -1407,6 +1497,7 @@ export function useAppState(
       updateFollowState,
       notify,
       activateRuntime,
+      activateVisibleRuntime,
     ]
   );
 
@@ -1925,14 +2016,13 @@ export function useAppState(
     const kind = activePaneKindRef.current;
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (runtime?.term) {
-      activateRuntime(runtime, { focus: true, clearSelection: true });
-      scheduleTerminalFit(runtime);
+      activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: true });
       return;
     }
     if (!focusSession(sessionId, kind)) {
       pendingFocusRef.current = { sessionId, kind };
     }
-  }, [activeSessionId, activateRuntime, focusSession, scheduleTerminalFit]);
+  }, [activeSessionId, activateVisibleRuntime, focusSession]);
 
   const handleCloseRequest = useCallback(async () => {
     if (closeInProgressRef.current || closePromptInProgressRef.current) {
