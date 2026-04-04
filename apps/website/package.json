@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "gray-matter": "^4.0.3",
+    "marked": "^17.0.5",
     "vite": "^5.4.0"
   }
 }

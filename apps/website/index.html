@@ -12,15 +12,23 @@
     <link rel="stylesheet" href="/src/style.css" />
     <link rel="preload" href="/videos/overview.mp4" as="video" type="video/mp4" />
   </head>
-  <body>
+  <body data-lang="en">
+    <!-- Language Toggle -->
+    <div class="lang-toggle-fixed">
+      <div class="blog-lang-toggle">
+        <button class="blog-lang-btn" data-lang="en">EN</button>
+        <button class="blog-lang-btn" data-lang="zh-tw">中文</button>
+      </div>
+    </div>
+
     <!-- Hero + Product Viewer -->
     <section class="hero">
       <div class="hero-content fade-in-load">
         <img src="/logo.png" alt="Codelegate logo" class="hero-logo" />
         <h1 class="hero-title">Codelegate</h1>
         <p class="hero-subtitle">
-          Multiple Agents, Same Repo.<br />
-          Full Keyboard Navigation, on Mac/Linux.
+          <span data-lang="en">Multiple Agents, Same Repo.<br />Full Keyboard Navigation, on Mac/Linux.</span>
+          <span data-lang="zh-tw">多 Agent 共用同一個 Repo。<br />完整鍵盤導航，支援 Mac/Linux。</span>
         </p>
 
         <!-- Product Viewer -->
@@ -32,46 +40,46 @@
                 <span class="pv-nav-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                 </span>
-                <span class="pv-nav-label">Overview</span>
+                <span class="pv-nav-label"><span data-lang="en">Overview</span><span data-lang="zh-tw">總覽</span></span>
                 <span class="pv-nav-shortcut" aria-hidden="true">O</span>
               </button>
               <button class="pv-nav-item" data-tour="agents" data-shortcut="A">
                 <span class="pv-nav-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 </span>
-                <span class="pv-nav-label">Agent Support</span>
+                <span class="pv-nav-label"><span data-lang="en">Agent Support</span><span data-lang="zh-tw">Agent 支援</span></span>
                 <span class="pv-nav-shortcut" aria-hidden="true">A</span>
               </button>
               <button class="pv-nav-item" data-tour="worktree" data-shortcut="G">
                 <span class="pv-nav-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M6 9v12"/></svg>
                 </span>
-                <span class="pv-nav-label">Git Worktree</span>
+                <span class="pv-nav-label"><span data-lang="en">Git Worktree</span><span data-lang="zh-tw">Git Worktree</span></span>
                 <span class="pv-nav-shortcut" aria-hidden="true">G</span>
               </button>
               <button class="pv-nav-item" data-tour="keyboard" data-shortcut="K">
                 <span class="pv-nav-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/></svg>
                 </span>
-                <span class="pv-nav-label">Keyboard Navigation</span>
+                <span class="pv-nav-label"><span data-lang="en">Keyboard Navigation</span><span data-lang="zh-tw">鍵盤導航</span></span>
                 <span class="pv-nav-shortcut" aria-hidden="true">K</span>
               </button>
               <button class="pv-nav-item" data-tour="tui" data-shortcut="T">
                 <span class="pv-nav-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                 </span>
-                <span class="pv-nav-label">All TUI Tools</span>
+                <span class="pv-nav-label"><span data-lang="en">All TUI Tools</span><span data-lang="zh-tw">所有 TUI 工具</span></span>
                 <span class="pv-nav-shortcut" aria-hidden="true">T</span>
               </button>
               <button class="pv-nav-item" data-tour="notifications" data-shortcut="N">
                 <span class="pv-nav-icon">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 </span>
-                <span class="pv-nav-label">Notifications</span>
+                <span class="pv-nav-label"><span data-lang="en">Notifications</span><span data-lang="zh-tw">通知</span></span>
                 <span class="pv-nav-shortcut" aria-hidden="true">N</span>
               </button>
             </div>
-            <span class="pv-nav-hint">Ctrl+Shift for Navigation</span>
+            <span class="pv-nav-hint"><span data-lang="en">Ctrl+Shift for Navigation</span><span data-lang="zh-tw">Ctrl+Shift 導航</span></span>
           </nav>
 
           <!-- Stage -->
@@ -89,8 +97,8 @@
                 <video class="pv-video" muted playsinline preload="none" data-src="/videos/agents.mp4"></video>
               </div>
               <div class="pv-tour-text">
-                <h2 class="pv-tour-headline">Supports Claude Code and Codex CLI</h2>
-                <p class="pv-tour-description">Run multiple agents side by side, each in its own workspace.<br />Dedicated terminal and built-in Git pane per session.<br />Pick up right where you left off with automatic session restore.</p>
+                <h2 class="pv-tour-headline"><span data-lang="en">Supports Claude Code and Codex CLI</span><span data-lang="zh-tw">支援 Claude Code 與 Codex CLI</span></h2>
+                <p class="pv-tour-description"><span data-lang="en">Run multiple agents side by side, each in its own workspace.<br />Dedicated terminal and built-in Git pane per session.<br />Pick up right where you left off with automatic session restore.</span><span data-lang="zh-tw">多個 Agent 並行運作，各自擁有獨立工作區。<br />每個 session 配有專屬終端機與內建 Git 面板。<br />自動 session 還原，從上次離開的地方繼續。</span></p>
               </div>
             </div>
 
@@ -100,8 +108,8 @@
                 <video class="pv-video" muted playsinline preload="none" data-src="/videos/gitworktree.mp4"></video>
               </div>
               <div class="pv-tour-text">
-                <h2 class="pv-tour-headline">Git Worktree Management</h2>
-                <p class="pv-tour-description">Let multiple agents work on the same repo at the same time.<br />Each session gets its own isolated worktree so nothing conflicts.</p>
+                <h2 class="pv-tour-headline"><span data-lang="en">Git Worktree Management</span><span data-lang="zh-tw">Git Worktree 管理</span></h2>
+                <p class="pv-tour-description"><span data-lang="en">Let multiple agents work on the same repo at the same time.<br />Each session gets its own isolated worktree so nothing conflicts.</span><span data-lang="zh-tw">讓多個 Agent 同時在同一個 repo 上工作。<br />每個 session 擁有獨立的 worktree，互不衝突。</span></p>
               </div>
             </div>
 
@@ -111,8 +119,8 @@
                 <video class="pv-video" muted playsinline preload="none" data-src="/videos/keyboard.mp4"></video>
               </div>
               <div class="pv-tour-text">
-                <h2 class="pv-tour-headline">Full Keyboard Navigation</h2>
-                <p class="pv-tour-description">Every action is a shortcut away.<br />Switch sessions, review diffs, commit, and manage branches.<br />Without ever reaching for the mouse.</p>
+                <h2 class="pv-tour-headline"><span data-lang="en">Full Keyboard Navigation</span><span data-lang="zh-tw">完整鍵盤導航</span></h2>
+                <p class="pv-tour-description"><span data-lang="en">Every action is a shortcut away.<br />Switch sessions, review diffs, commit, and manage branches.<br />Without ever reaching for the mouse.</span><span data-lang="zh-tw">每個操作都有快捷鍵。<br />切換 session、審查 diff、commit、管理分支。<br />完全不需要碰滑鼠。</span></p>
               </div>
             </div>
 
@@ -122,8 +130,8 @@
                 <video class="pv-video" muted playsinline preload="none" data-src="/videos/cli.mp4"></video>
               </div>
               <div class="pv-tour-text">
-                <h2 class="pv-tour-headline">Use Whatever All TUI Tools You Like</h2>
-                <p class="pv-tour-description">Every session comes with a real terminal.<br />Dev server, lazygit, even zellij/tmux.<br />If it runs in your terminal, it runs here. No compromises.</p>
+                <h2 class="pv-tour-headline"><span data-lang="en">Use Whatever All TUI Tools You Like</span><span data-lang="zh-tw">使用任何你喜歡的 TUI 工具</span></h2>
+                <p class="pv-tour-description"><span data-lang="en">Every session comes with a real terminal.<br />Dev server, lazygit, even zellij/tmux.<br />If it runs in your terminal, it runs here. No compromises.</span><span data-lang="zh-tw">每個 session 都配備真正的終端機。<br />Dev server、lazygit、甚至 zellij/tmux。<br />只要能在終端機跑的，這裡都能跑。毫不妥協。</span></p>
               </div>
             </div>
 
@@ -133,8 +141,8 @@
                 <video class="pv-video" muted playsinline preload="none" data-src="/videos/notification.mp4"></video>
               </div>
               <div class="pv-tour-text">
-                <h2 class="pv-tour-headline">Live Agent Status and Notifications</h2>
-                <p class="pv-tour-description">Animated status indicators on every session tab so you always know what each agent is doing.<br />CLI notifications piped to your system tray when agents need attention.<br />No more switching tabs to check progress.</p>
+                <h2 class="pv-tour-headline"><span data-lang="en">Live Agent Status and Notifications</span><span data-lang="zh-tw">即時 Agent 狀態與通知</span></h2>
+                <p class="pv-tour-description"><span data-lang="en">Animated status indicators on every session tab so you always know what each agent is doing.<br />CLI notifications piped to your system tray when agents need attention.<br />No more switching tabs to check progress.</span><span data-lang="zh-tw">每個 session 標籤上的動態狀態指示，讓你隨時掌握每個 Agent 的動態。<br />CLI 通知推送至系統匣，Agent 需要注意時立即提醒。<br />不再需要切換標籤查看進度。</span></p>
               </div>
             </div>
           </div>
@@ -143,7 +151,7 @@
         <div class="hero-buttons">
           <a href="https://github.com/brucehsu/codelegate/releases" target="_blank" rel="noopener" class="btn btn-primary">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 0 1 4 10 14.5 14.5 0 0 1-4 10 14.5 14.5 0 0 1-4-10A14.5 14.5 0 0 1 12 2z"/></svg>
-            Download
+            <span data-lang="en">Download</span><span data-lang="zh-tw">下載</span>
             <span class="btn-badge">
               <!-- Apple logo -->
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
@@ -159,9 +167,27 @@
       </div>
     </section>
 
+    <!-- Blog Carousel -->
+    <section class="blog-section fade-up">
+      <div class="blog-header">
+        <h2 class="blog-title"><span data-lang="en">Latest</span><span data-lang="zh-tw">最新</span></h2>
+        <div class="blog-nav-arrows">
+          <button class="blog-arrow blog-arrow-prev" aria-label="Scroll left" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button class="blog-arrow blog-arrow-next" aria-label="Scroll right">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
+          </button>
+        </div>
+      </div>
+      <div class="blog-carousel" role="list">
+        <!-- Cards rendered by JS from virtual:blog-data -->
+      </div>
+    </section>
+
     <!-- Footer -->
     <footer class="footer">
-      <p>&copy; 2026 Codelegate. Open source on <a href="https://github.com/brucehsu/codelegate" target="_blank" rel="noopener">GitHub</a>.</p>
+      <p><span data-lang="en">&copy; 2026 Codelegate. Open source on <a href="https://github.com/brucehsu/codelegate" target="_blank" rel="noopener">GitHub</a>.</span><span data-lang="zh-tw">&copy; 2026 Codelegate。開源於 <a href="https://github.com/brucehsu/codelegate" target="_blank" rel="noopener">GitHub</a>。</span></p>
     </footer>
 
     <script type="module" src="/src/main.js"></script>

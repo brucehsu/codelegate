@@ -1,3 +1,31 @@
+// ── Language toggle ──
+const STORAGE_KEY = "codelegate-blog-lang";
+const DEFAULT_LANG = "en";
+
+function getStoredLang() {
+  return localStorage.getItem(STORAGE_KEY) || DEFAULT_LANG;
+}
+
+function setLang(lang) {
+  document.body.dataset.lang = lang;
+  localStorage.setItem(STORAGE_KEY, lang);
+  document.querySelectorAll(".blog-lang-btn[data-lang]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.lang === lang);
+  });
+  // Notify carousel to re-render
+  window.dispatchEvent(new CustomEvent("lang-change", { detail: lang }));
+}
+
+// Init language from storage
+setLang(getStoredLang());
+
+// Bind all toggle buttons on the page
+document.querySelectorAll(".blog-lang-btn[data-lang]").forEach((btn) => {
+  btn.addEventListener("click", () => setLang(btn.dataset.lang));
+});
+
+import "./blog-carousel.js";
+
 // Scroll fade-in
 const observer = new IntersectionObserver(
   (entries) => {

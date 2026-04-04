@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{title}} - Codelegate</title>
+    <meta name="description" content="{{summary}}" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <article class="blog-post">
+      <nav class="blog-post-top">
+        <a href="/" class="blog-back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          Back
+        </a>
+        {{lang-toggle}}
+      </nav>
+      <div class="blog-post-body">
+        {{content-blocks}}
+      </div>
+      <hr class="blog-post-divider" />
+      <nav class="blog-post-nav">
+        {{prev}}
+        {{next}}
+      </nav>
+    </article>
+
+    <script>
+      (function () {
+        var STORAGE_KEY = "codelegate-blog-lang";
+        var DEFAULT = "en";
+
+        var saved = localStorage.getItem(STORAGE_KEY) || DEFAULT;
+        var blocks = document.querySelectorAll(".blog-post-content[data-lang]");
+        var buttons = document.querySelectorAll(".blog-lang-btn[data-lang]");
+        var arrows = document.querySelectorAll(".blog-nav-arrow[data-title-" + DEFAULT + "]");
+
+        function setLang(lang) {
+          // Show matching content, hide others
+          blocks.forEach(function (b) {
+            b.style.display = b.dataset.lang === lang ? "" : "none";
+          });
+          // Update active button
+          buttons.forEach(function (btn) {
+            btn.classList.toggle("active", btn.dataset.lang === lang);
+          });
+          // Update nav arrow tooltips
+          arrows.forEach(function (arrow) {
+            var title = arrow.getAttribute("data-title-" + lang) || arrow.getAttribute("data-title-" + DEFAULT);
+            if (title) arrow.setAttribute("data-title", title);
+          });
+          localStorage.setItem(STORAGE_KEY, lang);
+        }
+
+        // Init
+        setLang(saved);
+
+        // Bind clicks
+        buttons.forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            setLang(btn.dataset.lang);
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
