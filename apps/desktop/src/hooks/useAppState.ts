@@ -52,8 +52,6 @@ interface TerminalRuntime extends TerminalRendererRuntime {
   viewportHandler?: (() => void) | null;
   viewportRestoreRaf?: number;
   activationRaf?: number;
-  rendererAttachRaf?: number;
-  webglPostInitTimer?: number;
   notificationDisposables?: Array<{ dispose: () => void }>;
 }
 
@@ -733,40 +731,26 @@ export function useAppState(
 
   const {
     applyTerminalAppearance,
-    clearPendingRendererAttach,
-    ensureWebglRenderer,
-    loadTerminalFonts,
     refreshTerminalRows,
-    refreshWebglRenderer,
   } = useTerminalRenderer();
 
   const applyTerminalAppearanceToRuntime = useCallback(
-    (runtime: TerminalRuntime, appearance: TerminalAppearance, ensureRenderer = true) => {
+    (runtime: TerminalRuntime, appearance: TerminalAppearance) => {
       if (!runtime.term) {
         return;
       }
       applyTerminalAppearance(runtime, appearance);
-      if (ensureRenderer) {
-        ensureWebglRenderer(runtime, appearance);
-      }
-      if (runtime.webgl) {
-        refreshWebglRenderer(runtime);
-      } else {
-        refreshTerminalRows(runtime.term);
-      }
+      refreshTerminalRows(runtime.term);
       scheduleTerminalFit(runtime, true);
     },
-    [applyTerminalAppearance, ensureWebglRenderer, refreshTerminalRows, refreshWebglRenderer, scheduleTerminalFit]
+    [applyTerminalAppearance, refreshTerminalRows, scheduleTerminalFit]
   );
 
-  const applyTerminalAppearanceToAll = useCallback(
-    (appearance: TerminalAppearance, ensureRenderer = true) => {
-      forEachTerminalRuntime(runtimeRef.current, (runtime) => {
-        applyTerminalAppearanceToRuntime(runtime, appearance, ensureRenderer);
-      });
-    },
-    [applyTerminalAppearanceToRuntime]
-  );
+  const applyTerminalAppearanceToAll = useCallback((appearance: TerminalAppearance) => {
+    forEachTerminalRuntime(runtimeRef.current, (runtime) => {
+      applyTerminalAppearanceToRuntime(runtime, appearance);
+    });
+  }, [applyTerminalAppearanceToRuntime]);
 
   const activateRuntime = useCallback(
     (runtime: TerminalRuntime, options?: { focus?: boolean; clearSelection?: boolean }) => {
@@ -783,7 +767,7 @@ export function useAppState(
           return;
         }
         const appearance = toTerminalAppearance(configRef.current.settings);
-        applyTerminalAppearanceToRuntime(runtime, appearance, true);
+        applyTerminalAppearanceToRuntime(runtime, appearance);
         if (options?.clearSelection !== false) {
           runtime.term.clearSelection();
         }
@@ -808,10 +792,6 @@ export function useAppState(
     },
     [activateRuntime, restoreRuntimeViewport, scheduleTerminalFit]
   );
-
-  const refreshTerminalRenderersAfterFontLoad = useCallback(() => {
-    applyTerminalAppearanceToAll(toTerminalAppearance(configRef.current.settings));
-  }, [applyTerminalAppearanceToAll, toTerminalAppearance]);
 
   const terminalAppearance = useMemo(
     () =>
@@ -897,23 +877,11 @@ export function useAppState(
   }, [applyTerminalAppearanceToAll, terminalAppearance]);
 
   useEffect(() => {
-    let cancelled = false;
-    loadTerminalFonts(terminalAppearance).then(() => {
-      if (cancelled) {
-        return;
-      }
-      applyTerminalAppearanceToAll(terminalAppearance);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [applyTerminalAppearanceToAll, loadTerminalFonts, terminalAppearance]);
-
-  useEffect(() => {
     const fontSet = document.fonts;
     if (!fontSet || typeof fontSet.addEventListener !== "function") {
       return;
     }
+
     let cancelled = false;
     const scheduleRefresh = () => {
       if (cancelled || fontRefreshRafRef.current !== undefined) {
@@ -924,13 +892,13 @@ export function useAppState(
         if (cancelled) {
           return;
         }
-        refreshTerminalRenderersAfterFontLoad();
+        applyTerminalAppearanceToAll(terminalAppearance);
       });
     };
-    void fontSet.ready.then(() => {
-      scheduleRefresh();
-    });
+
+    void fontSet.ready.then(scheduleRefresh);
     fontSet.addEventListener("loadingdone", scheduleRefresh);
+
     return () => {
       cancelled = true;
       fontSet.removeEventListener("loadingdone", scheduleRefresh);
@@ -939,7 +907,7 @@ export function useAppState(
         fontRefreshRafRef.current = undefined;
       }
     };
-  }, [refreshTerminalRenderersAfterFontLoad]);
+  }, [applyTerminalAppearanceToAll, terminalAppearance]);
 
   const cycleSession = useCallback(() => {
     const list = sessionsRef.current;
@@ -1251,13 +1219,13 @@ export function useAppState(
       runtime.term = term;
       runtime.fit = fit;
       applyTerminalAppearance(runtime, terminalAppearance);
-      ensureWebglRenderer(runtime, terminalAppearance);
+      refreshTerminalRows(term);
     },
     [
       applyTerminalAppearance,
       attachTerminalHandlers,
       configureTerminalOptions,
-      ensureWebglRenderer,
+      refreshTerminalRows,
       terminalAppearance,
     ]
   );
@@ -1282,7 +1250,6 @@ export function useAppState(
 
   const cleanupTerminalRuntimeAttachment = useCallback(
     (runtime: TerminalRuntime) => {
-      clearPendingRendererAttach(runtime);
       if (runtime.activationRaf !== undefined) {
         window.cancelAnimationFrame(runtime.activationRaf);
         runtime.activationRaf = undefined;
@@ -1309,7 +1276,7 @@ export function useAppState(
         runtime.resizeRaf = undefined;
       }
     },
-    [clearPendingRendererAttach]
+    []
   );
 
   const detachTerminalRuntime = useCallback(
@@ -1327,12 +1294,7 @@ export function useAppState(
       detachTerminalRuntime(runtime);
       runtime.notificationDisposables?.forEach((disposable) => disposable.dispose());
       runtime.notificationDisposables = undefined;
-      if (runtime.term) {
-        runtime.term.dispose();
-      } else {
-        runtime.webgl?.dispose();
-      }
-      runtime.webgl = undefined;
+      runtime.term?.dispose();
       runtime.term = undefined;
       runtime.fit = undefined;
       runtime.ptyId = undefined;
@@ -1668,8 +1630,6 @@ export function useAppState(
       }
 
       const envMap = ensureTermEnv(envListToMap(repo.env));
-      const currentSettings = configRef.current.settings;
-      await loadTerminalFonts(toTerminalAppearance(currentSettings));
 
       const initCommands: string[] = [...initialCommands, `cd ${escapeShellArg(sessionCwd)}`];
       const preCommands = repo.preCommands.trim();
@@ -1718,7 +1678,7 @@ export function useAppState(
       });
       return true;
     },
-    [ensureTerminalRuntime, loadTerminalFonts, notify, registerPty, toTerminalAppearance, updateSession]
+    [ensureTerminalRuntime, notify, registerPty, updateSession]
   );
 
   const restartAgentSession = useCallback(
