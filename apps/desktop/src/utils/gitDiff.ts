@@ -1,4 +1,6 @@
 export type DiffLineType = "context" | "add" | "del" | "empty" | "meta";
+export type GitDiffSection = "staged" | "unstaged";
+export type GitFileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked";
 
 export interface DiffCell {
   text: string;
@@ -22,8 +24,37 @@ export interface FileDiff {
   language: string;
   isBinary: boolean;
   isUntracked: boolean;
-  status: "modified" | "added" | "deleted" | "renamed" | "untracked";
+  status: GitFileStatus;
 }
+
+export interface GitChangeSummary {
+  path: string;
+  oldPath?: string;
+  newPath?: string;
+  additions: number;
+  deletions: number;
+  changedLineCount: number;
+  isBinary: boolean;
+  isUntracked: boolean;
+  status: GitFileStatus;
+}
+
+export interface GitChangeSummaryPayload {
+  staged: GitChangeSummary[];
+  unstaged: GitChangeSummary[];
+}
+
+export interface GitFileDiffPayload extends GitChangeSummary {
+  rows: DiffRow[];
+}
+
+const plainTextExtensions = new Set([
+  "txt",
+  "csv",
+  "tsv",
+  "log",
+  "sql",
+]);
 
 const extensionToLanguage: Record<string, string> = {
   ts: "typescript",
@@ -51,167 +82,14 @@ export function getLanguageFromPath(path: string) {
   return extensionToLanguage[ext] ?? "text";
 }
 
-export function parseGitDiff(diffText: string, options?: { isUntracked?: boolean }): FileDiff[] {
-  const files: FileDiff[] = [];
-  const lines = diffText.split(/\r?\n/);
-  let current: FileDiff | null = null;
-  let leftCursor: number | null = null;
-  let rightCursor: number | null = null;
-
-  for (const line of lines) {
-    if (line.startsWith("diff --git ")) {
-      if (current) {
-        if (current.isUntracked) {
-          current.status = "untracked";
-        }
-        files.push(current);
-      }
-      const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-      const path = match?.[2] ?? line.split(" ").slice(-1)[0]?.replace(/^b\//, "") ?? "unknown";
-      current = {
-        path,
-        oldPath: undefined,
-        newPath: undefined,
-        rows: [],
-        additions: 0,
-        deletions: 0,
-        language: getLanguageFromPath(path),
-        isBinary: false,
-        isUntracked: options?.isUntracked ?? false,
-        status: options?.isUntracked ? "untracked" : "modified",
-      };
-      leftCursor = null;
-      rightCursor = null;
-      continue;
-    }
-
-    if (!current) {
-      continue;
-    }
-
-    if (line.startsWith("Binary files ") || line.startsWith("GIT binary patch")) {
-      current.isBinary = true;
-      continue;
-    }
-
-    if (line.startsWith("index ") || line.startsWith("similarity index")) {
-      continue;
-    }
-
-    if (line.startsWith("new file mode")) {
-      if (!current.isUntracked) {
-        current.status = "added";
-      }
-      continue;
-    }
-
-    if (line.startsWith("deleted file mode")) {
-      if (!current.isUntracked) {
-        current.status = "deleted";
-      }
-      continue;
-    }
-
-    if (line.startsWith("rename from ")) {
-      const oldPath = line.replace("rename from ", "").trim();
-      current.oldPath = oldPath;
-      continue;
-    }
-
-    if (line.startsWith("rename to ")) {
-      const newPath = line.replace("rename to ", "").trim();
-      current.newPath = newPath;
-      current.path = newPath || current.path;
-      if (!current.isUntracked) {
-        current.status = "renamed";
-      }
-      continue;
-    }
-
-    if (line.startsWith("---") || line.startsWith("+++")) {
-      if (line.startsWith("--- /dev/null") && !current.isUntracked) {
-        current.status = "added";
-      }
-      if (line.startsWith("+++ /dev/null") && !current.isUntracked) {
-        current.status = "deleted";
-      }
-      continue;
-    }
-
-    if (line.startsWith("@@")) {
-      const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-      if (match) {
-        leftCursor = Number(match[1]);
-        rightCursor = Number(match[2]);
-      }
-      current.rows.push({
-        left: { text: line, type: "meta" },
-        right: { text: line, type: "meta" },
-        leftLine: null,
-        rightLine: null,
-      });
-      continue;
-    }
-
-    if (line.startsWith("\\ No newline")) {
-      continue;
-    }
-
-    if (line.startsWith("+")) {
-      current.additions += 1;
-      const lineNumber = rightCursor;
-      if (rightCursor !== null) {
-        rightCursor += 1;
-      }
-      current.rows.push({
-        left: { text: "", type: "empty" },
-        right: { text: line.slice(1), type: "add" },
-        leftLine: null,
-        rightLine: lineNumber,
-      });
-      continue;
-    }
-
-    if (line.startsWith("-")) {
-      current.deletions += 1;
-      const lineNumber = leftCursor;
-      if (leftCursor !== null) {
-        leftCursor += 1;
-      }
-      current.rows.push({
-        left: { text: line.slice(1), type: "del" },
-        right: { text: "", type: "empty" },
-        leftLine: lineNumber,
-        rightLine: null,
-      });
-      continue;
-    }
-
-    if (line.startsWith(" ")) {
-      const text = line.slice(1);
-      const leftLine = leftCursor;
-      const rightLine = rightCursor;
-      if (leftCursor !== null) {
-        leftCursor += 1;
-      }
-      if (rightCursor !== null) {
-        rightCursor += 1;
-      }
-      current.rows.push({
-        left: { text, type: "context" },
-        right: { text, type: "context" },
-        leftLine,
-        rightLine,
-      });
-    }
+export function shouldHighlightDiff(path: string, changedLineCount: number) {
+  const name = path.split("/").pop() ?? path;
+  const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() ?? "" : "";
+  if (changedLineCount > 100) {
+    return false;
   }
-
-  if (current) {
-    if (current.isUntracked) {
-      current.status = "untracked";
-    }
-    files.push(current);
+  if (plainTextExtensions.has(ext)) {
+    return false;
   }
-
-  return files;
+  return getLanguageFromPath(path) !== "text";
 }

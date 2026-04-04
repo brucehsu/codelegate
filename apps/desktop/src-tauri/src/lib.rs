@@ -11,6 +11,8 @@ use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 #[cfg(target_os = "macos")]
 use tauri::Runtime;
 
+mod git;
+
 struct AppState {
   next_id: AtomicU32,
   sessions: Arc<Mutex<HashMap<u32, PtySession>>>,
@@ -40,19 +42,6 @@ struct PtyOutput {
 #[derive(Debug, Serialize, Clone)]
 struct PtyExit {
   session_id: u32,
-}
-
-#[derive(Debug, Serialize)]
-struct GitDiffFile {
-  path: String,
-  diff: String,
-}
-
-#[derive(Debug, Serialize)]
-struct GitDiffPayload {
-  staged: String,
-  unstaged: String,
-  untracked: Vec<GitDiffFile>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -271,191 +260,43 @@ fn rename_git_branch(path: String, name: String) -> Result<String, String> {
   }
 }
 
-fn run_git_diff(args: &[&str]) -> Result<String, String> {
-  let output = std::process::Command::new("git")
-    .args(args)
-    .output()
-    .map_err(|error| format!("Failed to run git: {error}"))?;
-
-  let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-  let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-  if !output.status.success() && stdout.is_empty() && !stderr.is_empty() {
-    return Err(stderr);
-  }
-  Ok(stdout)
-}
-
-fn run_git_command(args: &[&str], fallback_error: &str) -> Result<(), String> {
-  let output = std::process::Command::new("git")
-    .args(args)
-    .output()
-    .map_err(|error| format!("Failed to run git: {error}"))?;
-
-  if output.status.success() {
-    return Ok(());
-  }
-
-  let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-  let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-  Err(if !stderr.is_empty() {
-    stderr
-  } else if !stdout.is_empty() {
-    stdout
-  } else {
-    fallback_error.to_string()
-  })
-}
-
-fn has_git_head(root: &str) -> Result<bool, String> {
-  let output = std::process::Command::new("git")
-    .arg("-C")
-    .arg(root)
-    .arg("rev-parse")
-    .arg("--verify")
-    .arg("HEAD")
-    .output()
-    .map_err(|error| format!("Failed to run git: {error}"))?;
-  Ok(output.status.success())
-}
-
-fn get_untracked_files(root: &str) -> Result<Vec<String>, String> {
-  let output = std::process::Command::new("git")
-    .arg("-C")
-    .arg(root)
-    .arg("status")
-    .arg("--porcelain=v1")
-    .arg("--untracked-files=all")
-    .arg("-z")
-    .output()
-    .map_err(|error| format!("Failed to run git: {error}"))?;
-
-  if !output.status.success() {
-    let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    return Err(if err.is_empty() { "Failed to get git status".to_string() } else { err });
-  }
-
-  let mut files = Vec::new();
-  for entry in output.stdout.split(|b| *b == 0) {
-    if entry.is_empty() {
-      continue;
-    }
-    if entry.starts_with(b"?? ") {
-      let path_bytes = &entry[3..];
-      let path = String::from_utf8_lossy(path_bytes).to_string();
-      if !path.is_empty() {
-        if Path::new(root).join(&path).is_dir() {
-          continue;
-        }
-        files.push(path);
-      }
-    }
-  }
-  Ok(files)
+#[tauri::command]
+async fn get_git_change_summary(path: String) -> Result<git::GitChangeSummaryPayload, String> {
+  tauri::async_runtime::spawn_blocking(move || git::get_git_change_summary(path))
+    .await
+    .map_err(|error| format!("Failed to join git summary task: {error}"))?
 }
 
 #[tauri::command]
-fn get_git_diff(path: String) -> Result<GitDiffPayload, String> {
-  let root = resolve_repo_root(path.clone())?;
-  if !Path::new(&root).exists() {
-    return Err(format!("Path '{}' does not exist", root));
-  }
-
-  let unstaged = run_git_diff(&[
-    "-C",
-    &root,
-    "diff",
-    "--no-color",
-    "--no-ext-diff",
-    "--unified=3",
-  ])?;
-
-  let staged = run_git_diff(&[
-    "-C",
-    &root,
-    "diff",
-    "--staged",
-    "--no-color",
-    "--no-ext-diff",
-    "--unified=3",
-  ])?;
-
-  let mut untracked = Vec::new();
-  for file in get_untracked_files(&root)? {
-    let file_diff = run_git_diff(&[
-      "-C",
-      &root,
-      "diff",
-      "--no-color",
-      "--no-ext-diff",
-      "--unified=3",
-      "--no-index",
-      "--",
-      "/dev/null",
-      &file,
-    ])?;
-    untracked.push(GitDiffFile { path: file, diff: file_diff });
-  }
-
-  Ok(GitDiffPayload {
-    staged,
-    unstaged,
-    untracked,
-  })
+async fn get_git_file_diff(
+  path: String,
+  section: git::GitDiffSection,
+  file_path: String,
+) -> Result<git::GitFileDiffPayload, String> {
+  tauri::async_runtime::spawn_blocking(move || git::get_git_file_diff(path, section, file_path))
+    .await
+    .map_err(|error| format!("Failed to join git diff task: {error}"))?
 }
 
 #[tauri::command]
-fn stage_all_changes(path: String) -> Result<(), String> {
-  let root = resolve_repo_root(path)?;
-  if !Path::new(&root).exists() {
-    return Err(format!("Path '{}' does not exist", root));
-  }
-  run_git_command(&["-C", &root, "add", "--all"], "Failed to stage changes")
+async fn stage_all_changes(path: String) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || git::stage_all_changes(path))
+    .await
+    .map_err(|error| format!("Failed to join stage task: {error}"))?
 }
 
 #[tauri::command]
-fn unstage_all_changes(path: String) -> Result<(), String> {
-  let root = resolve_repo_root(path)?;
-  if !Path::new(&root).exists() {
-    return Err(format!("Path '{}' does not exist", root));
-  }
-
-  if has_git_head(&root)? {
-    run_git_command(
-      &["-C", &root, "restore", "--staged", "--", "."],
-      "Failed to unstage changes",
-    )
-  } else {
-    run_git_command(
-      &["-C", &root, "rm", "--cached", "-r", "--ignore-unmatch", "--", "."],
-      "Failed to unstage changes",
-    )
-  }
+async fn unstage_all_changes(path: String) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || git::unstage_all_changes(path))
+    .await
+    .map_err(|error| format!("Failed to join unstage task: {error}"))?
 }
 
 #[tauri::command]
-fn discard_all_changes(path: String) -> Result<(), String> {
-  let root = resolve_repo_root(path)?;
-  if !Path::new(&root).exists() {
-    return Err(format!("Path '{}' does not exist", root));
-  }
-
-  let restore_result = run_git_command(
-    &["-C", &root, "restore", "--worktree", "--", "."],
-    "Failed to discard unstaged changes",
-  );
-  if let Err(message) = restore_result {
-    let ignore_pathspec_error =
-      message.contains("did not match any file(s) known to git")
-      || message.contains("pathspec '.'");
-    if !ignore_pathspec_error {
-      return Err(message);
-    }
-  }
-
-  run_git_command(
-    &["-C", &root, "clean", "-fd", "--", "."],
-    "Failed to discard untracked changes",
-  )
+async fn discard_all_changes(path: String) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || git::discard_all_changes(path))
+    .await
+    .map_err(|error| format!("Failed to join discard task: {error}"))?
 }
 
 fn remove_session_worktree_blocking(
@@ -570,79 +411,17 @@ async fn remove_session_worktree(repo_path: String, worktree_path: String, branc
 }
 
 #[tauri::command]
-fn commit_git_changes(path: String, message: String, amend: bool) -> Result<(), String> {
-  let root = resolve_repo_root(path)?;
-  if !Path::new(&root).exists() {
-    return Err(format!("Path '{}' does not exist", root));
-  }
-
-  let trimmed = message.trim();
-  if trimmed.is_empty() {
-    return Err("Commit message cannot be empty".to_string());
-  }
-
-  let mut command = std::process::Command::new("git");
-  command
-    .arg("-C")
-    .arg(&root)
-    .arg("commit")
-    .arg("-m")
-    .arg(trimmed);
-  if amend {
-    command.arg("--amend");
-  }
-
-  let output = command
-    .output()
-    .map_err(|error| format!("Failed to run git: {error}"))?;
-
-  if output.status.success() {
-    return Ok(());
-  }
-
-  let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-  let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-  Err(if !stderr.is_empty() {
-    stderr
-  } else if !stdout.is_empty() {
-    stdout
-  } else {
-    "Failed to commit changes".to_string()
-  })
+async fn commit_git_changes(path: String, message: String, amend: bool) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || git::commit_git_changes(path, message, amend))
+    .await
+    .map_err(|error| format!("Failed to join commit task: {error}"))?
 }
 
 #[tauri::command]
-fn get_last_commit_message(path: String) -> Result<String, String> {
-  let root = resolve_repo_root(path)?;
-  if !Path::new(&root).exists() {
-    return Err(format!("Path '{}' does not exist", root));
-  }
-
-  let output = std::process::Command::new("git")
-    .arg("-C")
-    .arg(&root)
-    .arg("log")
-    .arg("-1")
-    .arg("--pretty=%B")
-    .output()
-    .map_err(|error| format!("Failed to run git: {error}"))?;
-
-  if !output.status.success() {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    return Err(if stderr.is_empty() {
-      "Unable to read previous commit message".to_string()
-    } else {
-      stderr
-    });
-  }
-
-  let message = String::from_utf8_lossy(&output.stdout)
-    .trim_end_matches(['\r', '\n'])
-    .to_string();
-  if message.is_empty() {
-    return Err("Previous commit message is empty".to_string());
-  }
-  Ok(message)
+async fn get_last_commit_message(path: String) -> Result<String, String> {
+  tauri::async_runtime::spawn_blocking(move || git::get_last_commit_message(path))
+    .await
+    .map_err(|error| format!("Failed to join commit message task: {error}"))?
 }
 
 #[tauri::command]
@@ -958,7 +737,8 @@ pub fn run() {
       resolve_repo_root,
       get_git_branch,
       rename_git_branch,
-      get_git_diff,
+      get_git_change_summary,
+      get_git_file_diff,
       stage_all_changes,
       unstage_all_changes,
       discard_all_changes,

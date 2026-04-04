@@ -477,6 +477,7 @@
   color: var(--muted);
   background: var(--surface-2);
   font-variant-numeric: tabular-nums;
+  line-height: 1.5;
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
@@ -523,6 +524,8 @@
 .diffCode {
   display: block;
   white-space: pre;
+  line-height: 1.5;
+  min-height: 1.5em;
   user-select: text;
 }
 

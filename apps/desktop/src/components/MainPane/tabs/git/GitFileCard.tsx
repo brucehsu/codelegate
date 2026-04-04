@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-clike";
@@ -15,14 +15,28 @@ import "prismjs/components/prism-toml";
 import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/components/prism-yaml";
-import type { DiffLineType, FileDiff } from "../../../../utils/gitDiff";
+import {
+  getLanguageFromPath,
+  shouldHighlightDiff,
+  type DiffLineType,
+  type FileDiff,
+  type GitChangeSummary,
+  type GitFileDiffPayload,
+} from "../../../../utils/gitDiff";
 import CollapsibleSection from "../../../ui/CollapsibleSection/CollapsibleSection";
 import styles from "./GitDiff.module.css";
 
+export interface GitFileCardDetailState {
+  status: "idle" | "loading" | "ready" | "error";
+  data?: GitFileDiffPayload;
+  error?: string;
+}
+
 interface GitFileCardProps {
-  file: FileDiff;
+  summary: GitChangeSummary;
   fileKey: string;
   isOpen: boolean;
+  detailState?: GitFileCardDetailState;
   onToggle: () => void;
 }
 
@@ -79,14 +93,33 @@ function getGutterClass(type: DiffLineType) {
   }
 }
 
-function getFileLabel(file: FileDiff) {
+function getFileLabel(file: Pick<FileDiff, "path" | "oldPath" | "newPath" | "status">) {
   if (file.status === "renamed" && file.oldPath && file.newPath) {
     return `${file.oldPath} → ${file.newPath}`;
   }
   return file.path;
 }
 
-export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFileCardProps) {
+function buildFileDiff(detail?: GitFileDiffPayload): FileDiff | null {
+  if (!detail) {
+    return null;
+  }
+
+  return {
+    path: detail.path,
+    oldPath: detail.oldPath,
+    newPath: detail.newPath,
+    rows: detail.rows,
+    additions: detail.additions,
+    deletions: detail.deletions,
+    language: getLanguageFromPath(detail.path),
+    isBinary: detail.isBinary,
+    isUntracked: detail.isUntracked,
+    status: detail.status,
+  };
+}
+
+export default function GitFileCard({ summary, fileKey, isOpen, detailState, onToggle }: GitFileCardProps) {
   const [selectionColumn, setSelectionColumn] = useState<"left" | "right" | null>(null);
 
   const clearSelectionColumn = useCallback(() => {
@@ -117,35 +150,51 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
     .filter(Boolean)
     .join(" ");
 
+  const file = useMemo(() => buildFileDiff(detailState?.data), [detailState?.data]);
+  const shouldHighlight = useMemo(
+    () => shouldHighlightDiff(summary.path, summary.changedLineCount),
+    [summary.changedLineCount, summary.path]
+  );
+  const displayFile = file ?? {
+    path: summary.path,
+    oldPath: summary.oldPath,
+    newPath: summary.newPath,
+    status: summary.status,
+  };
+
   return (
     <div className={styles.diffFile}>
       <CollapsibleSection
         className={styles.diffFileSection}
         title={
           <>
-            <span className={styles.diffFileName}>{getFileLabel(file)}</span>
-            {file.isUntracked ? <span className={styles.diffBadge}>untracked</span> : null}
-            {!file.isUntracked && file.status === "deleted" ? (
+            <span className={styles.diffFileName}>{getFileLabel(displayFile)}</span>
+            {summary.isUntracked ? <span className={styles.diffBadge}>untracked</span> : null}
+            {!summary.isUntracked && summary.status === "deleted" ? (
               <span className={`${styles.diffBadge} ${styles.diffBadgeDeleted}`}>deleted</span>
             ) : null}
-            {!file.isUntracked && file.status === "renamed" ? (
+            {!summary.isUntracked && summary.status === "renamed" ? (
               <span className={`${styles.diffBadge} ${styles.diffBadgeRenamed}`}>renamed</span>
             ) : null}
             <span className={styles.diffFileStats}>
-              <span className={styles.diffStatAdd}>+{file.additions}</span>
-              <span className={styles.diffStatDel}>-{file.deletions}</span>
+              <span className={styles.diffStatAdd}>+{summary.additions}</span>
+              <span className={styles.diffStatDel}>-{summary.deletions}</span>
             </span>
           </>
         }
         isOpen={isOpen}
         onToggle={onToggle}
-        headerClassName={`${styles.diffFileHeader} ${file.isUntracked ? styles.diffFileHeaderUntracked : ""}`}
+        headerClassName={`${styles.diffFileHeader} ${summary.isUntracked ? styles.diffFileHeaderUntracked : ""}`}
         toggleClassName={styles.diffFileToggle}
         titleClassName={styles.diffFileTitle}
         chevronClassName={styles.diffFileIcon}
         bodyClassName={diffGridClass}
       >
-        {file.isBinary ? (
+        {detailState?.status === "loading" ? (
+          <div className={styles.state}>Loading diff…</div>
+        ) : detailState?.status === "error" ? (
+          <div className={`${styles.state} ${styles.stateError}`}>{detailState.error ?? "Unable to load diff."}</div>
+        ) : file?.isBinary ? (
           <>
             <div
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
@@ -174,7 +223,7 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               </div>
             </div>
           </>
-        ) : file.rows.length === 0 ? (
+        ) : file && file.rows.length === 0 ? (
           <>
             <div
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
@@ -203,7 +252,7 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               </div>
             </div>
           </>
-        ) : (
+        ) : file ? (
           <>
             <div
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
@@ -213,14 +262,15 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
                 {file.rows.map((row, index) => {
                   const cellClass = `${styles.diffCell} ${getCellClass(row.left.type)}`;
                   const gutterClass = `${styles.diffGutter} ${getGutterClass(row.left.type)}`;
-                  const isMeta = row.left.type === "meta" || row.right.type === "meta";
+                  const usePlainText =
+                    row.left.type === "meta" || row.right.type === "meta" || !shouldHighlight;
                   return (
                     <div key={`${fileKey}-left-${index}`} className={styles.diffColumnRow}>
                       <div className={gutterClass}>{row.leftLine !== null ? row.leftLine : ""}</div>
                       <div className={cellClass}>
                         <code
                           className={styles.diffCode}
-                          dangerouslySetInnerHTML={getLineHtml(row.left.text, file.language, isMeta)}
+                          dangerouslySetInnerHTML={getLineHtml(row.left.text, file.language, usePlainText)}
                         />
                       </div>
                     </div>
@@ -236,14 +286,15 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
                 {file.rows.map((row, index) => {
                   const cellClass = `${styles.diffCell} ${getCellClass(row.right.type)}`;
                   const gutterClass = `${styles.diffGutter} ${getGutterClass(row.right.type)}`;
-                  const isMeta = row.left.type === "meta" || row.right.type === "meta";
+                  const usePlainText =
+                    row.left.type === "meta" || row.right.type === "meta" || !shouldHighlight;
                   return (
                     <div key={`${fileKey}-right-${index}`} className={styles.diffColumnRow}>
                       <div className={gutterClass}>{row.rightLine !== null ? row.rightLine : ""}</div>
                       <div className={cellClass}>
                         <code
                           className={styles.diffCode}
-                          dangerouslySetInnerHTML={getLineHtml(row.right.text, file.language, isMeta)}
+                          dangerouslySetInnerHTML={getLineHtml(row.right.text, file.language, usePlainText)}
                         />
                       </div>
                     </div>
@@ -252,6 +303,8 @@ export default function GitFileCard({ file, fileKey, isOpen, onToggle }: GitFile
               </div>
             </div>
           </>
+        ) : (
+          <div className={styles.state}>Diff will load when expanded.</div>
         )}
       </CollapsibleSection>
     </div>

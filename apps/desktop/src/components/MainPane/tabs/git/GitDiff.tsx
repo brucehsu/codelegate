@@ -5,11 +5,16 @@ import { ChevronDown, RefreshCw } from "lucide-react";
 import Button from "../../../ui/Button/Button";
 import ActionButton from "../../../ui/ActionButton/ActionButton";
 import type { Session, ToastInput } from "../../../../types";
-import { getLanguageFromPath, parseGitDiff, type FileDiff } from "../../../../utils/gitDiff";
+import {
+  type GitChangeSummary,
+  type GitChangeSummaryPayload,
+  type GitDiffSection,
+  type GitFileDiffPayload,
+} from "../../../../utils/gitDiff";
 import { defineHotkey, runHotkeys } from "../../../../utils/hotkeys";
 import { buildShortcutCombo } from "../../../../utils/shortcutModifier";
 import GitDiffsHeader from "./GitDiffsHeader";
-import GitFileCard from "./GitFileCard";
+import GitFileCard, { type GitFileCardDetailState } from "./GitFileCard";
 import styles from "./GitDiff.module.css";
 
 const nonTextInputTypes = new Set([
@@ -24,6 +29,10 @@ const nonTextInputTypes = new Set([
   "reset",
   "submit",
 ]);
+
+const EMPTY_SUMMARY: GitChangeSummaryPayload = { staged: [], unstaged: [] };
+const AUTO_OPEN_LIMIT = 10;
+const LARGE_DIFF_THRESHOLD = 100;
 
 function isTextInputElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -45,6 +54,31 @@ function isTextInputElement(target: EventTarget | null) {
   return true;
 }
 
+function buildInitialFileOpenMap(summary: GitChangeSummaryPayload) {
+  const next: Record<string, boolean> = {};
+  const sections: Array<{ key: GitDiffSection; files: GitChangeSummary[] }> = [
+    { key: "staged", files: summary.staged },
+    { key: "unstaged", files: summary.unstaged },
+  ];
+
+  for (const section of sections) {
+    let autoOpened = 0;
+    for (const file of section.files) {
+      const key = `${section.key}:${file.path}`;
+      const shouldAutoOpen =
+        autoOpened < AUTO_OPEN_LIMIT &&
+        file.changedLineCount <= LARGE_DIFF_THRESHOLD &&
+        !file.isBinary;
+      next[key] = shouldAutoOpen;
+      if (shouldAutoOpen) {
+        autoOpened += 1;
+      }
+    }
+  }
+
+  return next;
+}
+
 interface GitDiffProps {
   session?: Session | null;
   isActive: boolean;
@@ -52,12 +86,6 @@ interface GitDiffProps {
   shortcutModifier: string;
   showShortcutHints?: boolean;
   onRefreshBranch?: () => Promise<void>;
-}
-
-interface GitDiffPayload {
-  staged: string;
-  unstaged: string;
-  untracked: Array<{ path: string; diff: string }>;
 }
 
 const COMMIT_MODE_OPTIONS: Array<"commit" | "amend"> = ["commit", "amend"];
@@ -70,7 +98,8 @@ export default function GitDiff({
   showShortcutHints = false,
   onRefreshBranch,
 }: GitDiffProps) {
-  const [payload, setPayload] = useState<GitDiffPayload | null>(null);
+  const [summary, setSummary] = useState<GitChangeSummaryPayload>(EMPTY_SUMMARY);
+  const [detailMap, setDetailMap] = useState<Record<string, GitFileCardDetailState>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [actionTarget, setActionTarget] = useState<"stageAll" | "unstageAll" | "discardAll" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,8 +116,15 @@ export default function GitDiff({
   const commitMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const commitMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const detailMapRef = useRef<Record<string, GitFileCardDetailState>>({});
+  const summaryVersionRef = useRef(0);
+  const detailRequestTokensRef = useRef<Record<string, number>>({});
 
   const repoPath = session?.cwd ?? session?.repo.repoPath ?? "";
+
+  useEffect(() => {
+    detailMapRef.current = detailMap;
+  }, [detailMap]);
 
   const focusCommitInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -102,92 +138,140 @@ export default function GitDiff({
     });
   }, []);
 
-  const loadDiffs = useCallback(async () => {
+  const loadSummary = useCallback(async () => {
     if (!repoPath) {
-      setPayload(null);
+      summaryVersionRef.current += 1;
+      detailRequestTokensRef.current = {};
+      setSummary(EMPTY_SUMMARY);
+      setDetailMap({});
+      setFileOpenMap({});
       setError(null);
       return;
     }
+
+    const requestVersion = summaryVersionRef.current + 1;
+    summaryVersionRef.current = requestVersion;
+    detailRequestTokensRef.current = {};
     setIsLoading(true);
     setError(null);
+
     try {
-      const output = await invoke<GitDiffPayload>("get_git_diff", { path: repoPath });
-      setPayload(output ?? { staged: "", unstaged: "", untracked: [] });
+      const output = await invoke<GitChangeSummaryPayload>("get_git_change_summary", { path: repoPath });
+      if (summaryVersionRef.current !== requestVersion) {
+        return;
+      }
+      const nextSummary = output ?? EMPTY_SUMMARY;
+      setSummary(nextSummary);
+      setDetailMap({});
+      setFileOpenMap(buildInitialFileOpenMap(nextSummary));
     } catch (err) {
-      setPayload(null);
+      if (summaryVersionRef.current !== requestVersion) {
+        return;
+      }
+      setSummary(EMPTY_SUMMARY);
+      setDetailMap({});
+      setFileOpenMap({});
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsLoading(false);
+      if (summaryVersionRef.current === requestVersion) {
+        setIsLoading(false);
+      }
     }
   }, [repoPath]);
+
+  const fetchFileDetail = useCallback(
+    async (section: GitDiffSection, filePath: string) => {
+      if (!repoPath) {
+        return;
+      }
+      const fileKey = `${section}:${filePath}`;
+      const currentStatus = detailMapRef.current[fileKey]?.status;
+      if (currentStatus === "loading" || currentStatus === "ready") {
+        return;
+      }
+
+      const requestVersion = summaryVersionRef.current;
+      const token = (detailRequestTokensRef.current[fileKey] ?? 0) + 1;
+      detailRequestTokensRef.current[fileKey] = token;
+      setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "loading" } }));
+
+      try {
+        const detail = await invoke<GitFileDiffPayload>("get_git_file_diff", {
+          path: repoPath,
+          section,
+          filePath,
+        });
+        if (
+          summaryVersionRef.current !== requestVersion ||
+          detailRequestTokensRef.current[fileKey] !== token
+        ) {
+          return;
+        }
+        setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "ready", data: detail } }));
+      } catch (err) {
+        if (
+          summaryVersionRef.current !== requestVersion ||
+          detailRequestTokensRef.current[fileKey] !== token
+        ) {
+          return;
+        }
+        setDetailMap((prev) => ({
+          ...prev,
+          [fileKey]: {
+            status: "error",
+            error: err instanceof Error ? err.message : String(err),
+          },
+        }));
+      }
+    },
+    [repoPath]
+  );
 
   useEffect(() => {
     if (!isActive) {
       return;
     }
-    void loadDiffs();
-  }, [isActive, loadDiffs]);
+    void loadSummary();
+  }, [isActive, loadSummary]);
 
-  const stagedFiles = useMemo(() => parseGitDiff(payload?.staged ?? ""), [payload]);
-  const unstagedTrackedFiles = useMemo(() => parseGitDiff(payload?.unstaged ?? ""), [payload]);
-  const untrackedFiles = useMemo<FileDiff[]>(
-    () =>
-      (payload?.untracked ?? []).flatMap<FileDiff>((entry) => {
-        const parsed = parseGitDiff(entry.diff, { isUntracked: true });
-        if (parsed.length === 0) {
-          return [
-            {
-              path: entry.path,
-              rows: [],
-              additions: 0,
-              deletions: 0,
-              language: getLanguageFromPath(entry.path),
-              isBinary: false,
-              isUntracked: true,
-              status: "untracked",
-            },
-          ];
-        }
-        return parsed.map((file) => ({
-          ...file,
-          path: entry.path,
-          language: getLanguageFromPath(entry.path),
-          isUntracked: true,
-          status: "untracked",
-        }));
-      }),
-    [payload]
-  );
-
-  const unstagedFiles = useMemo(
-    () => [...unstagedTrackedFiles, ...untrackedFiles],
-    [unstagedTrackedFiles, untrackedFiles]
-  );
-
-  const sections = useMemo<{ key: "staged" | "unstaged"; title: string; files: FileDiff[] }[]>(
+  const sections = useMemo<{ key: GitDiffSection; title: string; files: GitChangeSummary[] }[]>(
     () => [
-      { key: "staged", title: "Staged Diffs", files: stagedFiles },
-      { key: "unstaged", title: "Unstaged Diffs", files: unstagedFiles },
+      {
+        key: "staged",
+        title: "Staged Diffs",
+        files: summary.staged,
+      },
+      {
+        key: "unstaged",
+        title: "Unstaged Diffs",
+        files: summary.unstaged,
+      },
     ],
-    [stagedFiles, unstagedFiles]
+    [summary]
   );
-  const hasStagedChanges = stagedFiles.length > 0;
-  const trimmedCommitMessage = commitMessage.trim();
+  const hasStagedChanges = summary.staged.length > 0;
   const commitAmend = commitMode === "amend";
   const commitActionDisabled = !repoPath || isLoading || isCommitting;
   const refreshDisabled = !repoPath || isLoading;
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   useEffect(() => {
-    const next: Record<string, boolean> = {};
+    if (!isActive) {
+      return;
+    }
     for (const section of sections) {
+      const sectionIsOpen = section.key === "staged" ? stagedOpen : unstagedOpen;
+      if (!sectionIsOpen) {
+        continue;
+      }
       for (const file of section.files) {
-        const key = `${section.key}:${file.path}`;
-        next[key] = file.isUntracked || file.status === "deleted" ? false : true;
+        const fileKey = `${section.key}:${file.path}`;
+        if (fileOpenMap[fileKey]) {
+          void fetchFileDetail(section.key, file.path);
+        }
       }
     }
-    setFileOpenMap(next);
-  }, [sections]);
+  }, [fetchFileDetail, fileOpenMap, isActive, sections, stagedOpen, unstagedOpen]);
 
   useEffect(() => {
     setCommitMessage("");
@@ -224,11 +308,11 @@ export default function GitDiff({
 
   const handleRefresh = useCallback(async () => {
     try {
-      await Promise.all([loadDiffs(), onRefreshBranch ? onRefreshBranch() : Promise.resolve()]);
+      await Promise.all([loadSummary(), onRefreshBranch ? onRefreshBranch() : Promise.resolve()]);
     } catch {
-      // loadDiffs already populates UI error state; keep shortcut flow stable.
+      // loadSummary already populates UI error state; keep shortcut flow stable.
     }
-  }, [loadDiffs, onRefreshBranch]);
+  }, [loadSummary, onRefreshBranch]);
 
   const runBulkAction = useCallback(
     async (target: "stageAll" | "unstageAll" | "discardAll") => {
@@ -254,14 +338,14 @@ export default function GitDiff({
         } else {
           await invoke("discard_all_changes", { path: repoPath });
         }
-        await loadDiffs();
+        await loadSummary();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setActionTarget((current) => (current === target ? null : current));
       }
     },
-    [loadDiffs, repoPath]
+    [loadSummary, repoPath]
   );
 
   const handleCommit = useCallback(async () => {
@@ -289,13 +373,13 @@ export default function GitDiff({
       });
       setCommitMessage("");
       onNotify({ tone: "success", message: commitAmend ? "Amended." : "Committed." });
-      await loadDiffs();
+      await loadSummary();
     } catch (err) {
       onNotify({ tone: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
       setIsCommitting(false);
     }
-  }, [commitAmend, commitMessage, hasStagedChanges, loadDiffs, onNotify, repoPath]);
+  }, [commitAmend, commitMessage, hasStagedChanges, loadSummary, onNotify, repoPath]);
 
   const handleCommitShortcut = useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -348,7 +432,7 @@ export default function GitDiff({
         preventDefault: true,
         stopPropagation: true,
         handler: () => {
-          if (!repoPath || isLoading || actionTarget !== null || unstagedFiles.length === 0) {
+          if (!repoPath || isLoading || actionTarget !== null || summary.unstaged.length === 0) {
             return;
           }
           void runBulkAction("discardAll");
@@ -360,7 +444,7 @@ export default function GitDiff({
         preventDefault: true,
         stopPropagation: true,
         handler: () => {
-          if (!repoPath || isLoading || actionTarget !== null || stagedFiles.length === 0) {
+          if (!repoPath || isLoading || actionTarget !== null || summary.staged.length === 0) {
             return;
           }
           void runBulkAction("unstageAll");
@@ -372,7 +456,7 @@ export default function GitDiff({
         preventDefault: true,
         stopPropagation: true,
         handler: () => {
-          if (!repoPath || isLoading || actionTarget !== null || unstagedFiles.length === 0) {
+          if (!repoPath || isLoading || actionTarget !== null || summary.unstaged.length === 0) {
             return;
           }
           void runBulkAction("stageAll");
@@ -389,8 +473,8 @@ export default function GitDiff({
     repoPath,
     runBulkAction,
     shortcutModifier,
-    stagedFiles.length,
-    unstagedFiles.length,
+    summary.staged.length,
+    summary.unstaged.length,
   ]);
 
   useEffect(() => {
@@ -443,8 +527,7 @@ export default function GitDiff({
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const direction = event.key === "ArrowDown" ? 1 : -1;
-        const target =
-          event.target instanceof HTMLButtonElement ? event.target : null;
+        const target = event.target instanceof HTMLButtonElement ? event.target : null;
         const activeItemIndex = target ? commitMenuItemRefs.current.findIndex((item) => item === target) : -1;
         if (target && activeItemIndex < 0) {
           commitMenuTriggerRef.current = target;
@@ -470,13 +553,18 @@ export default function GitDiff({
     [commitActionDisabled, commitMenuOpen, focusCommitMenuItem]
   );
 
+  const toggleFile = useCallback((section: GitDiffSection, filePath: string) => {
+    const fileKey = `${section}:${filePath}`;
+    setFileOpenMap((prev) => ({ ...prev, [fileKey]: !(prev[fileKey] ?? false) }));
+  }, []);
+
   return (
     <div className={styles.container}>
       <section className={styles.commitSection}>
         <div className={styles.commitHeader}>
           <h3 className={styles.commitTitle}>Commit</h3>
           <span className={styles.commitMeta}>
-            {stagedFiles.length} staged {stagedFiles.length === 1 ? "file" : "files"}
+            {summary.staged.length} staged {summary.staged.length === 1 ? "file" : "files"}
           </span>
         </div>
         <div className={styles.commitBody}>
@@ -610,6 +698,7 @@ export default function GitDiff({
                   showShortcutHint: showShortcutHints,
                 },
               ];
+
         return (
           <div key={section.key} className={styles.diffSection}>
             <GitDiffsHeader
@@ -630,21 +719,19 @@ export default function GitDiff({
 
                 {!isLoading && !error ? (
                   <div className={styles.diffList}>
-                    {section.files.length === 0 ? (
+                    {!hasFiles ? (
                       <div className={styles.state}>No changes.</div>
                     ) : (
                       section.files.map((file) => {
                         const fileKey = `${section.key}:${file.path}`;
-                        const isFileOpen = fileOpenMap[fileKey] ?? true;
                         return (
                           <GitFileCard
                             key={fileKey}
                             fileKey={fileKey}
-                            file={file}
-                            isOpen={isFileOpen}
-                            onToggle={() =>
-                              setFileOpenMap((prev) => ({ ...prev, [fileKey]: !(prev[fileKey] ?? true) }))
-                            }
+                            summary={file}
+                            detailState={detailMap[fileKey]}
+                            isOpen={fileOpenMap[fileKey] ?? false}
+                            onToggle={() => toggleFile(section.key, file.path)}
                           />
                         );
                       })
