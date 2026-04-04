@@ -581,7 +581,6 @@ export function useAppState(
       if (!isRuntimeVisible(runtime)) {
         return false;
       }
-      runtime.term.clearSelection();
       requestAnimationFrame(() => {
         runtime.term?.focus();
       });
@@ -768,7 +767,7 @@ export function useAppState(
         }
         const appearance = toTerminalAppearance(configRef.current.settings);
         applyTerminalAppearanceToRuntime(runtime, appearance);
-        if (options?.clearSelection !== false) {
+        if (options?.clearSelection) {
           runtime.term.clearSelection();
         }
         if (options?.focus) {
@@ -1328,7 +1327,7 @@ export function useAppState(
       }
       const runtime = runtimeRef.current.get(sessionId)?.[kind];
       if (runtime?.term) {
-        activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: true });
+        activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: false });
         return;
       }
       if (!focusSession(sessionId, kind)) {
@@ -1410,7 +1409,7 @@ export function useAppState(
           pendingFocusRef.current = null;
         }
         if (isActiveRuntime) {
-          activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: true });
+          activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: false });
         } else {
           activateRuntime(runtime, { focus: false, clearSelection: false });
         }
@@ -1976,7 +1975,7 @@ export function useAppState(
     const kind = activePaneKindRef.current;
     const runtime = runtimeRef.current.get(sessionId)?.[kind];
     if (runtime?.term) {
-      activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: true });
+      activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: false });
       return;
     }
     if (!focusSession(sessionId, kind)) {
