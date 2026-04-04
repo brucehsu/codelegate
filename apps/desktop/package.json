@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@codelegate/shared": "workspace:*",
+    "@tanstack/react-virtual": "^3.13.23",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@xterm/addon-fit": "^0.11.0",

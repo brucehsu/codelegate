@@ -53,8 +53,9 @@ const plainTextExtensions = new Set([
   "csv",
   "tsv",
   "log",
-  "sql",
 ]);
+
+const SYNTAX_HIGHLIGHT_THRESHOLD = 5000;
 
 const extensionToLanguage: Record<string, string> = {
   ts: "typescript",
@@ -85,7 +86,7 @@ export function getLanguageFromPath(path: string) {
 export function shouldHighlightDiff(path: string, changedLineCount: number) {
   const name = path.split("/").pop() ?? path;
   const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() ?? "" : "";
-  if (changedLineCount > 100) {
+  if (changedLineCount > SYNTAX_HIGHLIGHT_THRESHOLD) {
     return false;
   }
   if (plainTextExtensions.has(ext)) {

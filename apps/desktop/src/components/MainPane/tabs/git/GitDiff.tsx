@@ -32,7 +32,7 @@ const nonTextInputTypes = new Set([
 
 const EMPTY_SUMMARY: GitChangeSummaryPayload = { staged: [], unstaged: [] };
 const AUTO_OPEN_LIMIT = 10;
-const LARGE_DIFF_THRESHOLD = 100;
+const LARGE_DIFF_THRESHOLD = 250;
 
 function isTextInputElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {

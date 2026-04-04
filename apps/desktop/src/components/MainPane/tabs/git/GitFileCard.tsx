@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { flushSync } from "react-dom";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-clike";
@@ -41,6 +43,9 @@ interface GitFileCardProps {
 }
 
 const emptyCell = { __html: "&nbsp;" };
+const DIFF_ROW_HEIGHT = 30;
+const DIFF_ROW_OVERSCAN = 12;
+const DIFF_VIRTUALIZE_THRESHOLD = 120;
 
 function escapeHtml(value: string) {
   return value
@@ -121,6 +126,9 @@ function buildFileDiff(detail?: GitFileDiffPayload): FileDiff | null {
 
 export default function GitFileCard({ summary, fileKey, isOpen, detailState, onToggle }: GitFileCardProps) {
   const [selectionColumn, setSelectionColumn] = useState<"left" | "right" | null>(null);
+  const [selectionFullRender, setSelectionFullRender] = useState(false);
+  const virtualViewportRef = useRef<HTMLDivElement | null>(null);
+  const lineHtmlCacheRef = useRef<Map<string, { __html: string }>>(new Map());
 
   const clearSelectionColumn = useCallback(() => {
     setSelectionColumn(null);
@@ -138,29 +146,91 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
     };
   }, [clearSelectionColumn, selectionColumn]);
 
+  useEffect(() => {
+    lineHtmlCacheRef.current.clear();
+  }, [detailState?.data?.path, detailState?.data?.rows, summary.path, summary.changedLineCount]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectionFullRender(false);
+    }
+  }, [isOpen, detailState?.data?.path, detailState?.data?.rows]);
+
   const handleColumnPointerDown = useCallback((column: "left" | "right") => {
     setSelectionColumn(column);
   }, []);
 
-  const diffGridClass = [
-    styles.diffGrid,
-    selectionColumn === "left" ? styles.diffGridSelectingLeft : "",
-    selectionColumn === "right" ? styles.diffGridSelectingRight : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const enableSelectionFullRender = useCallback(() => {
+    flushSync(() => {
+      setSelectionFullRender(true);
+    });
+  }, []);
+
+  const selectionClass =
+    selectionColumn === "left"
+      ? styles.diffGridSelectingLeft
+      : selectionColumn === "right"
+        ? styles.diffGridSelectingRight
+        : "";
 
   const file = useMemo(() => buildFileDiff(detailState?.data), [detailState?.data]);
   const shouldHighlight = useMemo(
     () => shouldHighlightDiff(summary.path, summary.changedLineCount),
     [summary.changedLineCount, summary.path]
   );
+  const shouldVirtualize = Boolean(
+    file && !file.isBinary && file.rows.length > DIFF_VIRTUALIZE_THRESHOLD && !selectionFullRender
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: file?.rows.length ?? 0,
+    getScrollElement: () => virtualViewportRef.current,
+    estimateSize: () => DIFF_ROW_HEIGHT,
+    overscan: DIFF_ROW_OVERSCAN,
+  });
+  const virtualRows = shouldVirtualize ? rowVirtualizer.getVirtualItems() : [];
   const displayFile = file ?? {
     path: summary.path,
     oldPath: summary.oldPath,
     newPath: summary.newPath,
     status: summary.status,
   };
+
+  const renderColumnRow = useCallback(
+    (
+      row: FileDiff["rows"][number],
+      index: number,
+      side: "left" | "right",
+      style?: CSSProperties
+    ) => {
+      const isLeft = side === "left";
+      const cell = isLeft ? row.left : row.right;
+      const lineNumber = isLeft ? row.leftLine : row.rightLine;
+      const usePlainText = row.left.type === "meta" || row.right.type === "meta" || !shouldHighlight;
+      const cellClass = `${styles.diffCell} ${getCellClass(cell.type)}`;
+      const gutterClass = `${styles.diffGutter} ${getGutterClass(cell.type)}`;
+      const cacheKey = `${file?.language ?? "text"}:${usePlainText ? "plain" : "highlight"}:${cell.text}`;
+      let lineHtml = lineHtmlCacheRef.current.get(cacheKey);
+      if (!lineHtml) {
+        lineHtml = getLineHtml(cell.text, file?.language ?? "text", usePlainText);
+        lineHtmlCacheRef.current.set(cacheKey, lineHtml);
+      }
+
+      return (
+        <div key={`${fileKey}-${side}-${index}`} className={styles.diffColumnRow} style={style}>
+          <div className={gutterClass} onPointerDownCapture={() => handleColumnPointerDown(side)}>
+            {lineNumber !== null ? lineNumber : ""}
+          </div>
+          <div className={cellClass} onPointerDownCapture={() => handleColumnPointerDown(side)}>
+            <code
+              className={`${styles.diffCode} ${isLeft ? styles.diffCodeLeft : styles.diffCodeRight}`}
+              dangerouslySetInnerHTML={lineHtml}
+            />
+          </div>
+        </div>
+      );
+    },
+    [file?.language, fileKey, handleColumnPointerDown, shouldHighlight]
+  );
 
   return (
     <div className={styles.diffFile}>
@@ -188,14 +258,14 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
         toggleClassName={styles.diffFileToggle}
         titleClassName={styles.diffFileTitle}
         chevronClassName={styles.diffFileIcon}
-        bodyClassName={diffGridClass}
+        bodyClassName={styles.diffBody}
       >
         {detailState?.status === "loading" ? (
           <div className={styles.state}>Loading diff…</div>
         ) : detailState?.status === "error" ? (
           <div className={`${styles.state} ${styles.stateError}`}>{detailState.error ?? "Unable to load diff."}</div>
         ) : file?.isBinary ? (
-          <>
+          <div className={[styles.diffGrid, selectionClass].filter(Boolean).join(" ")}>
             <div
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
               onPointerDownCapture={() => handleColumnPointerDown("left")}
@@ -222,9 +292,9 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
                 </div>
               </div>
             </div>
-          </>
+          </div>
         ) : file && file.rows.length === 0 ? (
-          <>
+          <div className={[styles.diffGrid, selectionClass].filter(Boolean).join(" ")}>
             <div
               className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
               onPointerDownCapture={() => handleColumnPointerDown("left")}
@@ -251,58 +321,73 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
                 </div>
               </div>
             </div>
-          </>
+          </div>
         ) : file ? (
-          <>
-            <div
-              className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
-              onPointerDownCapture={() => handleColumnPointerDown("left")}
-            >
-              <div className={styles.diffColumnBody}>
-                {file.rows.map((row, index) => {
-                  const cellClass = `${styles.diffCell} ${getCellClass(row.left.type)}`;
-                  const gutterClass = `${styles.diffGutter} ${getGutterClass(row.left.type)}`;
-                  const usePlainText =
-                    row.left.type === "meta" || row.right.type === "meta" || !shouldHighlight;
-                  return (
-                    <div key={`${fileKey}-left-${index}`} className={styles.diffColumnRow}>
-                      <div className={gutterClass}>{row.leftLine !== null ? row.leftLine : ""}</div>
-                      <div className={cellClass}>
-                        <code
-                          className={styles.diffCode}
-                          dangerouslySetInnerHTML={getLineHtml(row.left.text, file.language, usePlainText)}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+          <div
+            ref={shouldVirtualize ? virtualViewportRef : undefined}
+            tabIndex={0}
+            className={[styles.diffRowsSurface, selectionClass].filter(Boolean).join(" ")}
+            onPointerDownCapture={() => {
+              if (shouldVirtualize) {
+                enableSelectionFullRender();
+              }
+            }}
+            onKeyDownCapture={(event) => {
+              if (shouldVirtualize && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+                enableSelectionFullRender();
+              }
+            }}
+          >
+            {shouldVirtualize ? (
+              <div className={styles.diffGrid}>
+                <div className={`${styles.diffColumn} ${styles.diffColumnLeft}`}>
+                  <div
+                    className={styles.diffVirtualInner}
+                    style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+                  >
+                    {virtualRows.map((virtualRow) =>
+                      renderColumnRow(file.rows[virtualRow.index], virtualRow.index, "left", {
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      })
+                    )}
+                  </div>
+                </div>
+                <div className={`${styles.diffColumn} ${styles.diffColumnRight}`}>
+                  <div
+                    className={styles.diffVirtualInner}
+                    style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+                  >
+                    {virtualRows.map((virtualRow) =>
+                      renderColumnRow(file.rows[virtualRow.index], virtualRow.index, "right", {
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div
-              className={`${styles.diffColumn} ${styles.diffColumnRight}`}
-              onPointerDownCapture={() => handleColumnPointerDown("right")}
-            >
-              <div className={styles.diffColumnBody}>
-                {file.rows.map((row, index) => {
-                  const cellClass = `${styles.diffCell} ${getCellClass(row.right.type)}`;
-                  const gutterClass = `${styles.diffGutter} ${getGutterClass(row.right.type)}`;
-                  const usePlainText =
-                    row.left.type === "meta" || row.right.type === "meta" || !shouldHighlight;
-                  return (
-                    <div key={`${fileKey}-right-${index}`} className={styles.diffColumnRow}>
-                      <div className={gutterClass}>{row.rightLine !== null ? row.rightLine : ""}</div>
-                      <div className={cellClass}>
-                        <code
-                          className={styles.diffCode}
-                          dangerouslySetInnerHTML={getLineHtml(row.right.text, file.language, usePlainText)}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+            ) : (
+              <div className={styles.diffGrid}>
+                <div className={`${styles.diffColumn} ${styles.diffColumnLeft}`}>
+                  <div className={styles.diffColumnBody}>
+                    {file.rows.map((row, index) => renderColumnRow(row, index, "left"))}
+                  </div>
+                </div>
+                <div className={`${styles.diffColumn} ${styles.diffColumnRight}`}>
+                  <div className={styles.diffColumnBody}>
+                    {file.rows.map((row, index) => renderColumnRow(row, index, "right"))}
+                  </div>
+                </div>
               </div>
-            </div>
-          </>
+            )}
+          </div>
         ) : (
           <div className={styles.state}>Diff will load when expanded.</div>
         )}

@@ -435,8 +435,28 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0;
+}
+
+.diffBody {
+  padding: 0;
+}
+
+.diffGrid,
+.diffRowsSurface {
   font-family: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
   font-size: 0.82rem;
+}
+
+.diffRowsSurface {
+  min-width: 0;
+  overflow: auto;
+  max-height: min(62vh, 640px);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+}
+
+.diffRowsSurface:focus {
+  outline: none;
 }
 
 .diffColumn {
@@ -456,13 +476,24 @@
 
 .diffColumnRow {
   display: grid;
-  grid-template-columns: 48px auto;
+  grid-template-columns: 72px auto;
   width: 100%;
+}
+
+.diffRowsList {
+  min-width: 0;
+}
+
+.diffVirtualInner {
+  position: relative;
+  min-width: 100%;
 }
 
 .diffCell {
   padding: 4px 8px;
   background: var(--surface);
+  min-height: 30px;
+  box-sizing: border-box;
 }
 
 .diffGutter,
@@ -478,9 +509,11 @@
   background: var(--surface-2);
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
+  min-height: 30px;
+  box-sizing: border-box;
   user-select: none;
   -webkit-user-select: none;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .diffGutterAdd {
@@ -500,6 +533,11 @@
 }
 
 .diffColumnRow:last-child > * {
+  border-bottom: none;
+}
+
+.diffRowsList > :last-child > *,
+.diffVirtualInner > :last-child > * {
   border-bottom: none;
 }
 
@@ -529,8 +567,8 @@
   user-select: text;
 }
 
-.diffGridSelectingLeft .diffColumnRight .diffCode,
-.diffGridSelectingRight .diffColumnLeft .diffCode {
+.diffGridSelectingLeft .diffCodeRight,
+.diffGridSelectingRight .diffCodeLeft {
   user-select: none;
 }
 
