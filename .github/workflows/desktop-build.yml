@@ -57,6 +57,27 @@ jobs:
       - name: Build desktop app bundle
         run: pnpm --filter @codelegate/desktop tauri build
 
+      - name: Verify macOS bundle does not link Homebrew libraries
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          binary_path="$(find apps/desktop/src-tauri/target -path '*/bundle/macos/Codelegate.app/Contents/MacOS/codelegate-desktop' -print -quit)"
+
+          if [[ -z "$binary_path" ]]; then
+            echo "Unable to locate built macOS app binary"
+            exit 1
+          fi
+
+          echo "Inspecting $binary_path"
+          otool -L "$binary_path"
+
+          if otool -L "$binary_path" | grep -q '/opt/homebrew/'; then
+            echo "macOS bundle links against Homebrew libraries, which breaks signed distribution builds."
+            exit 1
+          fi
+
       - name: Upload Linux AppImage artifact
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4

@@ -167,6 +167,32 @@ jobs:
 
           echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
 
+      - name: Verify macOS binary does not link Homebrew libraries
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo build \
+            --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --release \
+            --target "${{ matrix.target }}"
+
+          binary_path="apps/desktop/src-tauri/target/${{ matrix.target }}/release/codelegate-desktop"
+
+          if [[ ! -f "$binary_path" ]]; then
+            echo "Unable to locate built macOS binary at $binary_path"
+            exit 1
+          fi
+
+          echo "Inspecting $binary_path"
+          otool -L "$binary_path"
+
+          if otool -L "$binary_path" | grep -q '/opt/homebrew/'; then
+            echo "macOS binary links against Homebrew libraries, which breaks signed distribution builds."
+            exit 1
+          fi
+
       - name: Build and publish macOS release
         if: matrix.platform == 'macos'
         uses: tauri-apps/tauri-action@action-v0.6.0
