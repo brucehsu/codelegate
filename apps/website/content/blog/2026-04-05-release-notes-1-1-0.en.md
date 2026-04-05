@@ -9,6 +9,8 @@ tag: Release
 
 After a few weeks of dogfooding Codelegate at work every day, a couple of terminal paper cuts surfaced - and while mitigating a database incident I hit a much bigger problem: the Git subsystem ground to a halt on the large changeset involved. This release is primarily about fixing that by rebuilding the Git subsystem from the ground up.
 
+[Download Codelegate v1.1.0 here](https://github.com/brucehsu/codelegate/releases/tag/v1.1.0)
+
 ## Git Subsystem Rewrite
 
 The previous implementation shelled out to `git` and tried to read and render **every** diff upfront. With a large number of changed files or a single massive diff, that meant runaway memory and CPU usage - often enough to freeze the whole app.
