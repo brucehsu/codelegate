@@ -28,6 +28,7 @@ function createMockSession(
       preCommands: "",
     },
     branch,
+    lastActivePaneKind: "agent",
     status: "running",
   };
 }

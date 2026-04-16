@@ -161,7 +161,6 @@ export default function App() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [activePaneKind, setActivePaneKindState] = useState<PaneKind>("agent");
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [showShortcutHints, setShowShortcutHints] = useState(false);
@@ -343,6 +342,7 @@ export default function App() {
     () => visibleSessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, visibleSessions]
   );
+  const activePaneKind = activeSession?.lastActivePaneKind ?? "agent";
   const terminateDialogSession = useMemo(
     () => sessions.find((session) => session.id === terminateDialogSessionId) ?? null,
     [sessions, terminateDialogSessionId]
@@ -360,7 +360,6 @@ export default function App() {
   }, [activePaneKind, activeSession]);
 
   const handleSelectPaneKind = useCallback((kind: PaneKind) => {
-    setActivePaneKindState(kind);
     setActivePaneKind(kind);
   }, [setActivePaneKind]);
 
@@ -711,9 +710,6 @@ export default function App() {
       pushToast({ message: envError, tone: "error" });
       return;
     }
-
-    setActivePaneKindState("agent");
-    setActivePaneKind("agent");
 
     const repoConfig: RepoConfig = {
       repoPath: trimmedPath,

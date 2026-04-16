@@ -613,6 +613,10 @@ export function useAppState(
       if (activeSessionRef.current !== nextSessionId) {
         snapshotActiveRuntimeViewport();
       }
+      const nextSession = nextSessionId
+        ? sessionsRef.current.find((session) => session.id === nextSessionId)
+        : null;
+      activePaneKindRef.current = nextSession?.lastActivePaneKind ?? "agent";
       setActiveSessionIdState(nextSessionId);
     },
     [snapshotActiveRuntimeViewport]
@@ -1322,6 +1326,15 @@ export function useAppState(
       }
       activePaneKindRef.current = kind;
       const sessionId = activeSessionRef.current;
+      if (sessionId) {
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.id === sessionId && session.lastActivePaneKind !== kind
+              ? { ...session, lastActivePaneKind: kind }
+              : session
+          )
+        );
+      }
       if (!sessionId) {
         return;
       }
@@ -1737,13 +1750,14 @@ export function useAppState(
         id: sessionId,
         repo,
         cwd: repo.repoPath,
+        lastActivePaneKind: "agent",
         status: "stopped",
       };
 
       setSessions((prev) => [...prev, session]);
       if (shouldActivate) {
         setActiveSessionId(sessionId);
-        pendingFocusRef.current = { sessionId, kind: activePaneKindRef.current };
+        pendingFocusRef.current = { sessionId, kind: "agent" };
       }
 
       const repoRoot = repo.repoPath;
