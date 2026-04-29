@@ -20,7 +20,16 @@ import OnboardingDialog from "./components/OnboardingDialog/OnboardingDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
 import Toasts from "./components/Toasts/Toasts";
-import type { AgentId, CloseConfirmPayload, CloseConfirmResult, EnvVar, RepoConfig, PaneKind, Session } from "./types";
+import type {
+  AgentAvailability,
+  AgentId,
+  CloseConfirmPayload,
+  CloseConfirmResult,
+  EnvVar,
+  PaneKind,
+  RepoConfig,
+  Session,
+} from "./types";
 import { getRepoName, groupSessionsByRepo, validateEnvVars } from "./utils/session";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "./utils/hotkeys";
 import {
@@ -31,6 +40,10 @@ import {
 import { agentCatalog } from "./constants";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
+
+function firstAvailableAgent(availability: AgentAvailability) {
+  return agentCatalog.find((agent) => availability[agent.id] !== false)?.id ?? "claude";
+}
 
 function canDeleteWorktreeForSession(session: Session | null | undefined) {
   if (!session?.repo.worktree?.enabled) {
@@ -149,6 +162,7 @@ export default function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogRecentDirs, setDialogRecentDirs] = useState<string[]>(config.settings.recentDirs);
   const [selectedAgent, setSelectedAgent] = useState<AgentId>("claude");
+  const [agentAvailability, setAgentAvailability] = useState<AgentAvailability>({});
   const [repoPath, setRepoPath] = useState("");
   const [repoHint, setRepoHint] = useState("");
   const [worktreeEnabled, setWorktreeEnabled] = useState(true);
@@ -172,7 +186,36 @@ export default function App() {
     () => getShortcutModifierTokens(shortcutModifier),
     [shortcutModifier]
   );
+  const selectedAgentAvailable = agentAvailability[selectedAgent] !== false;
   const showOnboarding = hasSavedConfig === false && !onboardingCompleted;
+
+  useEffect(() => {
+    let cancelled = false;
+    const checks = agentCatalog.map((agent) => ({
+      agent: agent.id,
+      commands: agent.commands,
+    }));
+
+    invoke<Record<string, boolean>>("check_agent_commands", { checks })
+      .then((result) => {
+        if (!cancelled) {
+          setAgentAvailability(result as AgentAvailability);
+        }
+      })
+      .catch((error) => {
+        pushToast({ message: `Failed to check agent CLIs: ${String(error)}`, tone: "error" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pushToast]);
+
+  useEffect(() => {
+    if (agentAvailability[selectedAgent] === false) {
+      setSelectedAgent(firstAvailableAgent(agentAvailability));
+    }
+  }, [agentAvailability, selectedAgent]);
 
   const handleCompleteOnboarding = useCallback(async () => {
     const saved = await persistConfig();
@@ -582,7 +625,7 @@ export default function App() {
   );
 
   function resetForm() {
-    setSelectedAgent("claude");
+    setSelectedAgent(firstAvailableAgent(agentAvailability));
     setRepoPath("");
     setRepoHint("");
     setWorktreeEnabled(true);
@@ -729,7 +772,7 @@ export default function App() {
     await startSession(repoConfig);
   };
 
-  const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent);
+  const startEnabled = repoPath.trim().length > 0 && Boolean(selectedAgent) && selectedAgentAvailable;
 
   useEffect(() => {
     if (hasSavedConfig === null || showOnboarding) {
@@ -854,6 +897,7 @@ export default function App() {
       <NewSessionDialog
         open={dialogOpen}
         selectedAgent={selectedAgent}
+        agentAvailability={agentAvailability}
         onSelectAgent={setSelectedAgent}
         repoPath={repoPath}
         recentDirs={dialogRecentDirs}
@@ -877,6 +921,7 @@ export default function App() {
         fontSize={fontSize}
         shortcutModifier={shortcutModifier}
         agentArgs={agentArgs}
+        agentAvailability={agentAvailability}
         onChangeFontFamily={setFontFamily}
         onChangeFontSize={setFontSize}
         onCommitShortcutModifier={handleShortcutModifierCommit}

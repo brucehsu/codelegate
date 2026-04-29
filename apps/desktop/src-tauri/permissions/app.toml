@@ -3,6 +3,7 @@ identifier = "default"
 description = "Default permissions for app commands"
 commands.allow = [
   "get_default_shell",
+  "check_agent_commands",
   "get_home_dir",
   "path_exists",
   "exit_app",
@@ -34,6 +35,7 @@ identifier = "all"
 description = "Allow all app commands for the desktop app"
 commands.allow = [
   "get_default_shell",
+  "check_agent_commands",
   "get_home_dir",
   "path_exists",
   "exit_app",

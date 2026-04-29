@@ -182,6 +182,16 @@
   color: #ffffff;
 }
 
+.agentIconDroid {
+  color: #ffffff;
+}
+
 .agentLabel {
   font-weight: 600;
+}
+
+.agentWarning {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--danger);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
+import type { AgentAvailability } from "../../types";
 import IconButton from "../ui/IconButton/IconButton";
 import Button from "../ui/Button/Button";
 import {
@@ -8,7 +9,7 @@ import {
   normalizeShortcutModifier,
 } from "../../utils/shortcutModifier";
 import { agentCatalog } from "../../constants";
-import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
+import { ClaudeIconIcon, FactoryIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import styles from "./SettingsDialog.module.css";
 
 interface SettingsDialogProps {
@@ -17,6 +18,7 @@ interface SettingsDialogProps {
   fontSize: number;
   shortcutModifier: string;
   agentArgs: Record<string, string>;
+  agentAvailability: AgentAvailability;
   onChangeFontFamily: (value: string) => void;
   onChangeFontSize: (value: number) => void;
   onCommitShortcutModifier: (value: string) => void;
@@ -31,6 +33,7 @@ export default function SettingsDialog({
   fontSize,
   shortcutModifier,
   agentArgs,
+  agentAvailability,
   onChangeFontFamily,
   onChangeFontSize,
   onCommitShortcutModifier,
@@ -48,11 +51,13 @@ export default function SettingsDialog({
   const iconById: Record<string, JSX.Element> = {
     claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
     codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
+    droid: <FactoryIconIcon />,
   };
 
   const iconClassById: Record<string, string> = {
     claude: styles.agentIconClaude,
     codex: styles.agentIconCodex,
+    droid: styles.agentIconDroid,
   };
 
   const handleSubmitShortcut = (event: React.KeyboardEvent) => {
@@ -252,6 +257,7 @@ export default function SettingsDialog({
                       </span>
                       <span className={styles.agentLabel}>{agent.label}</span>
                     </div>
+                    {agentAvailability[agent.id] === false ? <span className={styles.agentWarning}>Not Found</span> : null}
                   </div>
                   <input
                     className={styles.input}

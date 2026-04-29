@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::{atomic::{AtomicU32, Ordering}, Arc, Mutex};
 use tauri::{AppHandle, Emitter, RunEvent, State, WindowEvent};
 #[cfg(target_os = "macos")]
@@ -121,6 +122,13 @@ struct AppSettings {
   agent_args: HashMap<String, String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentCommandCheck {
+  agent: String,
+  commands: Vec<String>,
+}
+
 #[tauri::command]
 fn get_default_shell() -> Result<String, String> {
   if let Ok(shell) = std::env::var("SHELL") {
@@ -138,6 +146,60 @@ fn get_default_shell() -> Result<String, String> {
   }
 
   Err("Unable to determine default shell".to_string())
+}
+
+fn shell_args_for_command(shell: &str, command: &str) -> Vec<String> {
+  let name = Path::new(shell)
+    .file_name()
+    .and_then(|value| value.to_str())
+    .unwrap_or("")
+    .to_ascii_lowercase();
+
+  if name.contains("bash") || name.contains("zsh") || name.contains("fish") {
+    return vec!["-l".to_string(), "-i".to_string(), "-c".to_string(), command.to_string()];
+  }
+
+  vec!["-c".to_string(), command.to_string()]
+}
+
+fn is_safe_command_name(command: &str) -> bool {
+  !command.is_empty()
+    && command
+      .chars()
+      .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+}
+
+fn command_exists_in_shell(shell: &str, command: &str) -> bool {
+  if !is_safe_command_name(command) {
+    return false;
+  }
+
+  let script = format!("command -v {command} >/dev/null 2>&1");
+  let args = shell_args_for_command(shell, &script);
+  Command::new(shell)
+    .args(args)
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .status()
+    .map(|status| status.success())
+    .unwrap_or(false)
+}
+
+#[tauri::command]
+fn check_agent_commands(checks: Vec<AgentCommandCheck>) -> Result<HashMap<String, bool>, String> {
+  let shell = get_default_shell()?;
+  let mut result = HashMap::new();
+
+  for check in checks {
+    let available = check
+      .commands
+      .iter()
+      .any(|command| command_exists_in_shell(&shell, command.trim()));
+    result.insert(check.agent, available);
+  }
+
+  Ok(result)
 }
 
 #[tauri::command]
@@ -731,6 +793,7 @@ pub fn run() {
     .manage(AppState::default())
     .invoke_handler(tauri::generate_handler![
       get_default_shell,
+      check_agent_commands,
       get_home_dir,
       path_exists,
       exit_app,

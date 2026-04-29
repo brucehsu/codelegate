@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import appLogo from "../../assets/logo.png";
-import type { PaneKind, Session } from "../../types";
+import type { AgentId, PaneKind, Session } from "../../types";
 import type { SessionGroup } from "../../utils/session";
 import Button from "../ui/Button/Button";
 import Sidebar from "../Sidebar/Sidebar";
@@ -16,7 +16,7 @@ interface OnboardingDialogProps {
 function createMockSession(
   id: string,
   repoPath: string,
-  agent: "claude" | "codex",
+  agent: AgentId,
   branch: string
 ): Session {
   return {

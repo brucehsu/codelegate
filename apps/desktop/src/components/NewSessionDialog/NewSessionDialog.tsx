@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
-import type { AgentId, EnvVar } from "../../types";
+import type { AgentAvailability, AgentId, EnvVar } from "../../types";
 import AgentPicker from "../AgentPicker/AgentPicker";
 import RepoPicker from "../RepoPicker/RepoPicker";
 import EnvList from "../EnvList/EnvList";
@@ -11,6 +11,7 @@ import styles from "./NewSessionDialog.module.css";
 interface NewSessionDialogProps {
   open: boolean;
   selectedAgent: AgentId;
+  agentAvailability: AgentAvailability;
   onSelectAgent: (agent: AgentId) => void;
   repoPath: string;
   recentDirs: string[];
@@ -32,6 +33,7 @@ interface NewSessionDialogProps {
 export default function NewSessionDialog({
   open,
   selectedAgent,
+  agentAvailability,
   onSelectAgent,
   repoPath,
   recentDirs,
@@ -130,7 +132,7 @@ export default function NewSessionDialog({
         <div className={styles.grid}>
           <div className={styles.fieldFull}>
             <span>Agent CLI</span>
-            <AgentPicker selected={selectedAgent} onSelect={onSelectAgent} />
+            <AgentPicker selected={selectedAgent} availability={agentAvailability} onSelect={onSelectAgent} />
           </div>
 
           <label className={styles.fieldFull}>

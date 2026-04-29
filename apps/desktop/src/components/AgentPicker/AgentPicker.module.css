@@ -1,6 +1,6 @@
 .picker {
-  display: grid;
-  grid-template-columns: repeat(2, 128px);
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: flex-start;
 }
@@ -27,6 +27,12 @@
   box-shadow: var(--shadow);
 }
 
+.cardDisabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
 .logo {
   width: 96px;
   height: 96px;
@@ -49,6 +55,10 @@
 
 .claude {
   color: #f59e0b;
+}
+
+.droid {
+  color: #ffffff;
 }
 
 .label {

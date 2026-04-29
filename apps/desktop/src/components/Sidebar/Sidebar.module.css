@@ -327,6 +327,10 @@
   color: #ffffff;
 }
 
+.agentDroid {
+  color: #ffffff;
+}
+
 .agentDefault {
   color: var(--accent);
 }

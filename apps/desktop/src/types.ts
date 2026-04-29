@@ -1,4 +1,5 @@
-export type AgentId = "claude" | "codex";
+export type AgentId = "claude" | "codex" | "droid";
+export type AgentAvailability = Partial<Record<AgentId, boolean>>;
 export type PaneKind = "agent" | "git" | "terminal";
 
 export interface EnvVar {
