@@ -5,7 +5,7 @@ use git2::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,6 +35,7 @@ pub struct GitChangeSummary {
   pub deletions: usize,
   pub changed_line_count: usize,
   pub is_binary: bool,
+  pub is_directory: bool,
   pub is_untracked: bool,
   pub status: GitFileStatus,
 }
@@ -56,6 +57,7 @@ pub struct GitFileDiffPayload {
   pub deletions: usize,
   pub changed_line_count: usize,
   pub is_binary: bool,
+  pub is_directory: bool,
   pub is_untracked: bool,
   pub status: GitFileStatus,
   pub rows: Vec<GitDiffRow>,
@@ -142,6 +144,7 @@ pub fn get_git_file_diff(
     deletions: summary.deletions,
     changed_line_count: summary.changed_line_count,
     is_binary,
+    is_directory: summary.is_directory,
     is_untracked: summary.is_untracked,
     status: parsed.as_ref().map(|file| file.status).unwrap_or(summary.status),
     rows: parsed.map(|file| file.rows).unwrap_or_default(),
@@ -414,12 +417,14 @@ fn build_summary(
   let is_untracked =
     section == GitDiffSection::Unstaged && delta.status() != Delta::Renamed && untracked_paths.contains(&path);
   let mut is_binary = delta.flags().contains(git2::DiffFlags::BINARY);
+  let mut is_directory = false;
   let changed_line_count = if is_untracked && additions == 0 && deletions == 0 {
-    let (line_count, detected_binary) = summarize_untracked_file(repo, &path)?;
-    is_binary = is_binary || detected_binary;
-    additions = line_count;
+    let summary = summarize_untracked_entry(repo, &path)?;
+    is_directory = summary.is_directory;
+    is_binary = is_binary || summary.is_binary;
+    additions = summary.line_count;
     deletions = 0;
-    line_count
+    summary.line_count
   } else {
     additions + deletions
   };
@@ -432,6 +437,7 @@ fn build_summary(
     deletions,
     changed_line_count,
     is_binary,
+    is_directory,
     is_untracked,
     status: map_delta_status(delta.status(), is_untracked),
   })
@@ -690,13 +696,40 @@ fn get_untracked_paths(repo: &Repository) -> Result<HashSet<String>, String> {
   Ok(paths)
 }
 
-fn summarize_untracked_file(repo: &Repository, path: &str) -> Result<(usize, bool), String> {
-  let contents = read_worktree_file(repo, path)?;
-  summarize_untracked_contents(&contents)
+struct UntrackedEntrySummary {
+  line_count: usize,
+  is_binary: bool,
+  is_directory: bool,
+}
+
+fn summarize_untracked_entry(repo: &Repository, path: &str) -> Result<UntrackedEntrySummary, String> {
+  let full_path = worktree_full_path(repo, path)?;
+  let metadata = fs::metadata(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
+  if metadata.is_dir() {
+    return Ok(UntrackedEntrySummary {
+      line_count: 0,
+      is_binary: false,
+      is_directory: true,
+    });
+  }
+
+  let contents = fs::read(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
+  let (line_count, is_binary) = summarize_untracked_contents(&contents)?;
+  Ok(UntrackedEntrySummary {
+    line_count,
+    is_binary,
+    is_directory: false,
+  })
 }
 
 fn render_untracked_diff(repo: &Repository, path: &str) -> Result<String, String> {
-  let contents = read_worktree_file(repo, path)?;
+  let full_path = worktree_full_path(repo, path)?;
+  let metadata = fs::metadata(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
+  if metadata.is_dir() {
+    return Ok(String::new());
+  }
+
+  let contents = fs::read(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
   let (line_count, is_binary) = summarize_untracked_contents(&contents)?;
   if is_binary {
     return Ok(String::new());
@@ -727,12 +760,11 @@ fn render_untracked_diff(repo: &Repository, path: &str) -> Result<String, String
   Ok(diff)
 }
 
-fn read_worktree_file(repo: &Repository, path: &str) -> Result<Vec<u8>, String> {
+fn worktree_full_path(repo: &Repository, path: &str) -> Result<PathBuf, String> {
   let workdir = repo
     .workdir()
     .ok_or_else(|| "Repository does not have a worktree".to_string())?;
-  let full_path = workdir.join(path);
-  fs::read(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))
+  Ok(workdir.join(path))
 }
 
 fn summarize_untracked_contents(contents: &[u8]) -> Result<(usize, bool), String> {
@@ -880,6 +912,25 @@ mod tests {
     assert!(detail.rows.iter().any(|row| row.left.line_type == GitDiffLineType::Meta));
     assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "alpha"));
     assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "beta"));
+  }
+
+  #[test]
+  fn untracked_directory_helpers_do_not_attempt_file_read() {
+    let (repo, path) = make_temp_repo("untracked-directory");
+    let workdir = repo.workdir().expect("workdir");
+    let directory = workdir.join(".claude").join("worktrees").join("crazy-burnell");
+    fs::create_dir_all(&directory).expect("create directory");
+    fs::write(directory.join("notes.txt"), "alpha\n").expect("write nested file");
+
+    let summary = summarize_untracked_entry(&repo, ".claude/worktrees/crazy-burnell/").expect("summary");
+    assert!(summary.is_directory);
+    assert!(!summary.is_binary);
+    assert_eq!(summary.line_count, 0);
+
+    let diff = render_untracked_diff(&repo, ".claude/worktrees/crazy-burnell/").expect("diff");
+    assert!(diff.is_empty());
+
+    let _ = path;
   }
 
   #[test]

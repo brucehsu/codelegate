@@ -119,6 +119,7 @@ function buildFileDiff(detail?: GitFileDiffPayload): FileDiff | null {
     deletions: detail.deletions,
     language: getLanguageFromPath(detail.path),
     isBinary: detail.isBinary,
+    isDirectory: detail.isDirectory,
     isUntracked: detail.isUntracked,
     status: detail.status,
   };
@@ -240,6 +241,7 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
           <>
             <span className={styles.diffFileName}>{getFileLabel(displayFile)}</span>
             {summary.isUntracked ? <span className={styles.diffBadge}>untracked</span> : null}
+            {summary.isDirectory ? <span className={styles.diffBadge}>directory</span> : null}
             {!summary.isUntracked && summary.status === "deleted" ? (
               <span className={`${styles.diffBadge} ${styles.diffBadgeDeleted}`}>deleted</span>
             ) : null}
@@ -264,6 +266,35 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
           <div className={styles.state}>Loading diff…</div>
         ) : detailState?.status === "error" ? (
           <div className={`${styles.state} ${styles.stateError}`}>{detailState.error ?? "Unable to load diff."}</div>
+        ) : file?.isDirectory ? (
+          <div className={[styles.diffGrid, selectionClass].filter(Boolean).join(" ")}>
+            <div
+              className={`${styles.diffColumn} ${styles.diffColumnLeft}`}
+              onPointerDownCapture={() => handleColumnPointerDown("left")}
+            >
+              <div className={styles.diffColumnBody}>
+                <div className={styles.diffColumnRow}>
+                  <div className={styles.diffGutter} />
+                  <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
+                    <code className={styles.diffCode}>Directory preview is not available</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              className={`${styles.diffColumn} ${styles.diffColumnRight}`}
+              onPointerDownCapture={() => handleColumnPointerDown("right")}
+            >
+              <div className={styles.diffColumnBody}>
+                <div className={styles.diffColumnRow}>
+                  <div className={styles.diffGutter} />
+                  <div className={`${styles.diffCell} ${styles.diffCellMeta}`}>
+                    <code className={styles.diffCode}>Directory preview is not available</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : file?.isBinary ? (
           <div className={[styles.diffGrid, selectionClass].filter(Boolean).join(" ")}>
             <div

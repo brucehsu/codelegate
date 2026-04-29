@@ -68,7 +68,8 @@ function buildInitialFileOpenMap(summary: GitChangeSummaryPayload) {
       const shouldAutoOpen =
         autoOpened < AUTO_OPEN_LIMIT &&
         file.changedLineCount <= LARGE_DIFF_THRESHOLD &&
-        !file.isBinary;
+        !file.isBinary &&
+        !file.isDirectory;
       next[key] = shouldAutoOpen;
       if (shouldAutoOpen) {
         autoOpened += 1;

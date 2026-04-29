@@ -23,6 +23,7 @@ export interface FileDiff {
   deletions: number;
   language: string;
   isBinary: boolean;
+  isDirectory: boolean;
   isUntracked: boolean;
   status: GitFileStatus;
 }
@@ -35,6 +36,7 @@ export interface GitChangeSummary {
   deletions: number;
   changedLineCount: number;
   isBinary: boolean;
+  isDirectory: boolean;
   isUntracked: boolean;
   status: GitFileStatus;
 }
