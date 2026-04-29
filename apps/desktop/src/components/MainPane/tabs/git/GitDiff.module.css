@@ -2,7 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .commitSection {
@@ -196,6 +198,171 @@
   overflow: hidden;
 }
 
+.diffWorkbench {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.diffWorkbenchHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.diffTabsMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.diffTabs {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  width: fit-content;
+  justify-self: start;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.diffTab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  min-width: 116px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.diffTab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.diffTabActive {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.diffTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.diffTabWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.diffWorkbenchBody {
+  display: grid;
+  grid-template-columns: minmax(190px, 26%) minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.diffTreePane {
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.changeTree {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  overflow: hidden;
+  color-scheme: inherit;
+  --trees-bg-override: var(--surface);
+  --trees-fg-override: var(--text);
+  --trees-fg-muted-override: var(--muted);
+  --trees-bg-muted-override: color-mix(in srgb, var(--surface-2) 72%, var(--surface));
+  --trees-border-color-override: var(--border);
+  --trees-accent-override: var(--accent);
+  --trees-focus-ring-color-override: var(--accent);
+  --trees-focus-ring-offset-override: 0;
+  --trees-input-bg-override: var(--bg-soft);
+  --trees-selected-bg-override: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  --trees-selected-fg-override: var(--text);
+  --trees-selected-focused-border-color-override: var(--accent);
+  --trees-scrollbar-thumb-override: color-mix(in srgb, var(--muted) 28%, var(--surface));
+  --trees-indent-guide-bg-override: color-mix(in srgb, var(--muted) 20%, transparent);
+  --trees-status-added-override: #22c55e;
+  --trees-status-untracked-override: #22c55e;
+  --trees-status-modified-override: #3b82f6;
+  --trees-status-deleted-override: #ef4444;
+  --trees-git-added-color-override: #22c55e;
+  --trees-git-untracked-color-override: #22c55e;
+  --trees-git-modified-color-override: #3b82f6;
+  --trees-git-deleted-color-override: #ef4444;
+  --trees-search-bg-override: var(--bg-soft);
+  --trees-search-fg-override: var(--text);
+  --trees-search-font-weight-override: 400;
+  --trees-file-icon-color: var(--muted);
+  --trees-border-radius-override: 10px;
+  --trees-font-family-override: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  --trees-font-size-override: 0.85rem;
+  --trees-font-weight-regular-override: 400;
+  --trees-font-weight-semibold-override: 600;
+  --trees-item-margin-x-override: 6px;
+  --trees-padding-inline-override: 10px;
+}
+
+.diffPanel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: var(--surface);
+}
+
+.diffWorkbenchEmpty {
+  padding: 12px;
+}
+
 .diffSummary {
   display: flex;
   align-items: center;
@@ -333,6 +500,12 @@
   background: var(--surface);
   border: 1px solid var(--border);
   overflow: hidden;
+  scroll-margin-top: 12px;
+}
+
+.diffFileSelected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .diffFileSection {
@@ -347,6 +520,7 @@
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  position: relative;
   width: 100%;
 }
 
@@ -375,6 +549,23 @@
   gap: 12px;
   flex: 1;
   min-width: 0;
+  padding-right: 118px;
+}
+
+.diffFileActions {
+  position: absolute;
+  right: 46px;
+  top: 50%;
+  z-index: 1;
+  padding-right: 0;
+  transform: translateY(-50%);
+}
+
+.diffFileActionButton {
+  min-height: 32px;
+  padding: 0 11px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .diffFileName {
@@ -449,10 +640,9 @@
 
 .diffRowsSurface {
   min-width: 0;
-  overflow: auto;
-  max-height: min(62vh, 640px);
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-gutter: stable;
 }
 
 .diffRowsSurface:focus {
@@ -642,4 +832,41 @@
 :global(body[data-theme="light"]) .diffCode :global(.token.doctype),
 :global(body[data-theme="light"]) .diffCode :global(.token.cdata) {
   color: #64748b;
+}
+
+@media (max-width: 900px) {
+  .diffWorkbenchHeader {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .diffTabsMeta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .diffSummaryActions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .diffWorkbenchBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diffTreePane {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .changeTree {
+    min-height: 180px;
+    height: 240px;
+    max-height: 240px;
+  }
+
+  .diffPanel {
+    max-height: none;
+  }
 }

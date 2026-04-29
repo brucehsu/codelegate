@@ -348,10 +348,24 @@ async fn stage_all_changes(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn stage_file_change(path: String, file_path: String) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || git::stage_file_change(path, file_path))
+    .await
+    .map_err(|error| format!("Failed to join stage file task: {error}"))?
+}
+
+#[tauri::command]
 async fn unstage_all_changes(path: String) -> Result<(), String> {
   tauri::async_runtime::spawn_blocking(move || git::unstage_all_changes(path))
     .await
     .map_err(|error| format!("Failed to join unstage task: {error}"))?
+}
+
+#[tauri::command]
+async fn unstage_file_change(path: String, file_path: String) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || git::unstage_file_change(path, file_path))
+    .await
+    .map_err(|error| format!("Failed to join unstage file task: {error}"))?
 }
 
 #[tauri::command]
@@ -803,7 +817,9 @@ pub fn run() {
       get_git_change_summary,
       get_git_file_diff,
       stage_all_changes,
+      stage_file_change,
       unstage_all_changes,
+      unstage_file_change,
       discard_all_changes,
       remove_session_worktree,
       commit_git_changes,

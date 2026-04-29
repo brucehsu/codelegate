@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { flushSync } from "react-dom";
 import Prism from "prismjs";
@@ -23,8 +23,10 @@ import {
   type DiffLineType,
   type FileDiff,
   type GitChangeSummary,
+  type GitDiffSection,
   type GitFileDiffPayload,
 } from "../../../../utils/gitDiff";
+import ActionButton from "../../../ui/ActionButton/ActionButton";
 import CollapsibleSection from "../../../ui/CollapsibleSection/CollapsibleSection";
 import styles from "./GitDiff.module.css";
 
@@ -40,6 +42,12 @@ interface GitFileCardProps {
   isOpen: boolean;
   detailState?: GitFileCardDetailState;
   onToggle: () => void;
+  section: GitDiffSection;
+  actionDisabled?: boolean;
+  actionLoading?: boolean;
+  isSelected?: boolean;
+  getScrollElement?: () => HTMLElement | null;
+  onFileAction: () => void;
 }
 
 const emptyCell = { __html: "&nbsp;" };
@@ -125,10 +133,23 @@ function buildFileDiff(detail?: GitFileDiffPayload): FileDiff | null {
   };
 }
 
-export default function GitFileCard({ summary, fileKey, isOpen, detailState, onToggle }: GitFileCardProps) {
+export default function GitFileCard({
+  summary,
+  fileKey,
+  isOpen,
+  detailState,
+  onToggle,
+  section,
+  actionDisabled = false,
+  actionLoading = false,
+  isSelected = false,
+  getScrollElement,
+  onFileAction,
+}: GitFileCardProps) {
   const [selectionColumn, setSelectionColumn] = useState<"left" | "right" | null>(null);
   const [selectionFullRender, setSelectionFullRender] = useState(false);
-  const virtualViewportRef = useRef<HTMLDivElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const rowsSurfaceRef = useRef<HTMLDivElement | null>(null);
   const lineHtmlCacheRef = useRef<Map<string, { __html: string }>>(new Map());
 
   const clearSelectionColumn = useCallback(() => {
@@ -184,9 +205,10 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
   );
   const rowVirtualizer = useVirtualizer({
     count: file?.rows.length ?? 0,
-    getScrollElement: () => virtualViewportRef.current,
+    getScrollElement: () => getScrollElement?.() ?? rowsSurfaceRef.current,
     estimateSize: () => DIFF_ROW_HEIGHT,
     overscan: DIFF_ROW_OVERSCAN,
+    scrollMargin,
   });
   const virtualRows = shouldVirtualize ? rowVirtualizer.getVirtualItems() : [];
   const displayFile = file ?? {
@@ -195,6 +217,54 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
     newPath: summary.newPath,
     status: summary.status,
   };
+
+  useLayoutEffect(() => {
+    if (!shouldVirtualize || !getScrollElement) {
+      setScrollMargin(0);
+      return;
+    }
+
+    let resizeObserver: ResizeObserver | null = null;
+    let frameId: number | null = null;
+
+    const updateScrollMargin = () => {
+      const surface = rowsSurfaceRef.current;
+      const scrollElement = getScrollElement();
+      if (!surface || !scrollElement) {
+        return;
+      }
+      const nextMargin =
+        surface.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top + scrollElement.scrollTop;
+      setScrollMargin(nextMargin);
+    };
+
+    updateScrollMargin();
+    frameId = window.requestAnimationFrame(updateScrollMargin);
+    window.addEventListener("resize", updateScrollMargin);
+
+    if (typeof ResizeObserver !== "undefined") {
+      const surface = rowsSurfaceRef.current;
+      const scrollElement = getScrollElement();
+      resizeObserver = new ResizeObserver(updateScrollMargin);
+      if (surface) {
+        resizeObserver.observe(surface);
+      }
+      if (scrollElement) {
+        resizeObserver.observe(scrollElement);
+        if (scrollElement.firstElementChild) {
+          resizeObserver.observe(scrollElement.firstElementChild);
+        }
+      }
+    }
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateScrollMargin);
+    };
+  }, [getScrollElement, shouldVirtualize]);
 
   const renderColumnRow = useCallback(
     (
@@ -234,7 +304,7 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
   );
 
   return (
-    <div className={styles.diffFile}>
+    <div className={`${styles.diffFile} ${isSelected ? styles.diffFileSelected : ""}`}>
       <CollapsibleSection
         className={styles.diffFileSection}
         title={
@@ -261,6 +331,19 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
         titleClassName={styles.diffFileTitle}
         chevronClassName={styles.diffFileIcon}
         bodyClassName={styles.diffBody}
+        actionsClassName={styles.diffFileActions}
+        actions={
+          <ActionButton
+            className={styles.diffFileActionButton}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFileAction();
+            }}
+            disabled={actionDisabled || actionLoading}
+          >
+            {actionLoading ? "Working..." : section === "staged" ? "Unstage" : "Stage"}
+          </ActionButton>
+        }
       >
         {detailState?.status === "loading" ? (
           <div className={styles.state}>Loading diff…</div>
@@ -355,7 +438,7 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
           </div>
         ) : file ? (
           <div
-            ref={shouldVirtualize ? virtualViewportRef : undefined}
+            ref={rowsSurfaceRef}
             tabIndex={0}
             className={[styles.diffRowsSurface, selectionClass].filter(Boolean).join(" ")}
             onPointerDownCapture={() => {
@@ -382,7 +465,7 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
                         top: 0,
                         left: 0,
                         width: "100%",
-                        transform: `translateY(${virtualRow.start}px)`,
+                        transform: `translateY(${virtualRow.start - scrollMargin}px)`,
                       })
                     )}
                   </div>
@@ -398,7 +481,7 @@ export default function GitFileCard({ summary, fileKey, isOpen, detailState, onT
                         top: 0,
                         left: 0,
                         width: "100%",
-                        transform: `translateY(${virtualRow.start}px)`,
+                        transform: `translateY(${virtualRow.start - scrollMargin}px)`,
                       })
                     )}
                   </div>

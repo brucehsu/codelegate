@@ -157,28 +157,20 @@ pub fn stage_all_changes(path: String) -> Result<(), String> {
   let mut index = repo.index().map_err(|error| git_error("Failed to open git index", error))?;
 
   for entry in unstaged {
-    match entry.status {
-      GitFileStatus::Deleted => {
-        index
-          .remove_path(Path::new(&entry.path))
-          .map_err(|error| git_error("Failed to stage deleted file", error))?;
-      }
-      GitFileStatus::Renamed => {
-        if let Some(old_path) = entry.old_path.as_deref() {
-          let _ = index.remove_path(Path::new(old_path));
-        }
-        index
-          .add_path(Path::new(&entry.path))
-          .map_err(|error| git_error("Failed to stage renamed file", error))?;
-      }
-      GitFileStatus::Modified | GitFileStatus::Added | GitFileStatus::Untracked => {
-        index
-          .add_path(Path::new(&entry.path))
-          .map_err(|error| git_error("Failed to stage file", error))?;
-      }
-    }
+    stage_index_entry(&mut index, &entry)?;
   }
 
+  index.write().map_err(|error| git_error("Failed to write git index", error))
+}
+
+pub fn stage_file_change(path: String, file_path: String) -> Result<(), String> {
+  let repo = open_repository(&path)?;
+  let entry = get_unstaged_summaries(&repo)?
+    .into_iter()
+    .find(|entry| entry.path == file_path)
+    .ok_or_else(|| format!("Unable to find unstaged change for '{}'", file_path))?;
+  let mut index = repo.index().map_err(|error| git_error("Failed to open git index", error))?;
+  stage_index_entry(&mut index, &entry)?;
   index.write().map_err(|error| git_error("Failed to write git index", error))
 }
 
@@ -189,10 +181,47 @@ pub fn unstage_all_changes(path: String) -> Result<(), String> {
     return Ok(());
   }
 
+  unstage_entries(&repo, &staged)
+}
+
+pub fn unstage_file_change(path: String, file_path: String) -> Result<(), String> {
+  let repo = open_repository(&path)?;
+  let entry = get_staged_summaries(&repo)?
+    .into_iter()
+    .find(|entry| entry.path == file_path)
+    .ok_or_else(|| format!("Unable to find staged change for '{}'", file_path))?;
+  unstage_entries(&repo, &[entry])
+}
+
+fn stage_index_entry(index: &mut git2::Index, entry: &GitChangeSummary) -> Result<(), String> {
+  match entry.status {
+    GitFileStatus::Deleted => {
+      index
+        .remove_path(Path::new(&entry.path))
+        .map_err(|error| git_error("Failed to stage deleted file", error))?;
+    }
+    GitFileStatus::Renamed => {
+      if let Some(old_path) = entry.old_path.as_deref() {
+        let _ = index.remove_path(Path::new(old_path));
+      }
+      index
+        .add_path(Path::new(&entry.path))
+        .map_err(|error| git_error("Failed to stage renamed file", error))?;
+    }
+    GitFileStatus::Modified | GitFileStatus::Added | GitFileStatus::Untracked => {
+      index
+        .add_path(Path::new(&entry.path))
+        .map_err(|error| git_error("Failed to stage file", error))?;
+    }
+  }
+  Ok(())
+}
+
+fn unstage_entries(repo: &Repository, staged: &[GitChangeSummary]) -> Result<(), String> {
   if let Some(head_commit) = head_commit(&repo)? {
     let target = head_commit.as_object();
     let mut pathspecs = Vec::new();
-    for entry in &staged {
+    for entry in staged {
       pathspecs.push(entry.path.clone());
       if entry.status == GitFileStatus::Renamed {
         if let Some(old_path) = entry.old_path.as_ref() {
@@ -207,7 +236,16 @@ pub fn unstage_all_changes(path: String) -> Result<(), String> {
   }
 
   let mut index = repo.index().map_err(|error| git_error("Failed to open git index", error))?;
-  index.clear().map_err(|error| git_error("Failed to clear git index", error))?;
+  for entry in staged {
+    index
+      .remove_path(Path::new(&entry.path))
+      .map_err(|error| git_error("Failed to remove file from git index", error))?;
+    if entry.status == GitFileStatus::Renamed {
+      if let Some(old_path) = entry.old_path.as_ref() {
+        let _ = index.remove_path(Path::new(old_path));
+      }
+    }
+  }
   index.write().map_err(|error| git_error("Failed to write git index", error))
 }
 
@@ -873,6 +911,10 @@ mod tests {
     let _ = workdir;
   }
 
+  fn summary_for(path: &Path) -> GitChangeSummaryPayload {
+    get_git_change_summary(path.to_string_lossy().to_string()).expect("summary")
+  }
+
   #[test]
   fn summary_marks_large_untracked_file() {
     let (repo, path) = make_temp_repo("summary-untracked");
@@ -957,6 +999,128 @@ mod tests {
     assert!(detail.rows.iter().any(|row| row.left.line_type == GitDiffLineType::Meta));
     assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "three"));
     assert_eq!(detail.changed_line_count, 1);
+  }
+
+  #[test]
+  fn stage_file_change_stages_one_modified_file() {
+    let (repo, path) = make_temp_repo("stage-one-modified");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("alpha.txt"), "one\n").expect("write alpha");
+    fs::write(workdir.join("beta.txt"), "two\n").expect("write beta");
+    commit_all(&repo, "initial");
+
+    fs::write(workdir.join("alpha.txt"), "one\nthree\n").expect("update alpha");
+    fs::write(workdir.join("beta.txt"), "two\nfour\n").expect("update beta");
+
+    stage_file_change(path.to_string_lossy().to_string(), "alpha.txt".to_string()).expect("stage alpha");
+
+    let summary = summary_for(&path);
+    assert!(summary.staged.iter().any(|entry| entry.path == "alpha.txt"));
+    assert!(!summary.staged.iter().any(|entry| entry.path == "beta.txt"));
+    assert!(summary.unstaged.iter().any(|entry| entry.path == "beta.txt"));
+  }
+
+  #[test]
+  fn stage_file_change_stages_one_deleted_file() {
+    let (repo, path) = make_temp_repo("stage-one-deleted");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("alpha.txt"), "one\n").expect("write alpha");
+    fs::write(workdir.join("beta.txt"), "two\n").expect("write beta");
+    commit_all(&repo, "initial");
+
+    fs::remove_file(workdir.join("alpha.txt")).expect("delete alpha");
+    fs::write(workdir.join("beta.txt"), "two\nfour\n").expect("update beta");
+
+    stage_file_change(path.to_string_lossy().to_string(), "alpha.txt".to_string()).expect("stage alpha");
+
+    let summary = summary_for(&path);
+    let staged = summary.staged.iter().find(|entry| entry.path == "alpha.txt").expect("staged alpha");
+    assert_eq!(staged.status, GitFileStatus::Deleted);
+    assert!(!summary.staged.iter().any(|entry| entry.path == "beta.txt"));
+    assert!(summary.unstaged.iter().any(|entry| entry.path == "beta.txt"));
+  }
+
+  #[test]
+  fn stage_file_change_stages_one_untracked_file() {
+    let (repo, path) = make_temp_repo("stage-one-untracked");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("tracked.txt"), "one\n").expect("write tracked");
+    commit_all(&repo, "initial");
+
+    fs::write(workdir.join("tracked.txt"), "one\ntwo\n").expect("update tracked");
+    fs::write(workdir.join("draft.txt"), "draft\n").expect("write draft");
+
+    stage_file_change(path.to_string_lossy().to_string(), "draft.txt".to_string()).expect("stage draft");
+
+    let summary = summary_for(&path);
+    assert!(summary.staged.iter().any(|entry| entry.path == "draft.txt"));
+    assert!(!summary.staged.iter().any(|entry| entry.path == "tracked.txt"));
+    assert!(summary.unstaged.iter().any(|entry| entry.path == "tracked.txt"));
+  }
+
+  #[test]
+  fn unstage_file_change_unstages_one_staged_file() {
+    let (repo, path) = make_temp_repo("unstage-one-file");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("alpha.txt"), "one\n").expect("write alpha");
+    fs::write(workdir.join("beta.txt"), "two\n").expect("write beta");
+    commit_all(&repo, "initial");
+
+    fs::write(workdir.join("alpha.txt"), "one\nthree\n").expect("update alpha");
+    fs::write(workdir.join("beta.txt"), "two\nfour\n").expect("update beta");
+    stage_all_changes(path.to_string_lossy().to_string()).expect("stage all");
+
+    unstage_file_change(path.to_string_lossy().to_string(), "alpha.txt".to_string()).expect("unstage alpha");
+
+    let summary = summary_for(&path);
+    assert!(!summary.staged.iter().any(|entry| entry.path == "alpha.txt"));
+    assert!(summary.staged.iter().any(|entry| entry.path == "beta.txt"));
+    assert!(summary.unstaged.iter().any(|entry| entry.path == "alpha.txt"));
+  }
+
+  #[test]
+  fn unstage_file_change_unstages_both_sides_of_staged_rename() {
+    let (repo, path) = make_temp_repo("unstage-one-rename");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("before.txt"), "same\n").expect("write before");
+    commit_all(&repo, "initial");
+
+    let status = std::process::Command::new("git")
+      .current_dir(&path)
+      .args(["mv", "before.txt", "after.txt"])
+      .status()
+      .expect("run git mv");
+    assert!(status.success());
+
+    let before = summary_for(&path);
+    assert_eq!(before.staged.len(), 1);
+    assert_eq!(before.staged[0].status, GitFileStatus::Renamed);
+
+    unstage_file_change(path.to_string_lossy().to_string(), "after.txt".to_string()).expect("unstage rename");
+
+    let after = summary_for(&path);
+    assert!(after.staged.is_empty());
+    assert!(after.unstaged.iter().any(|entry| entry.path == "after.txt"));
+  }
+
+  #[test]
+  fn unstage_file_change_removes_only_that_path_for_unborn_head() {
+    let (repo, path) = make_temp_repo("unstage-one-unborn");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("alpha.txt"), "alpha\n").expect("write alpha");
+    fs::write(workdir.join("beta.txt"), "beta\n").expect("write beta");
+
+    let mut index = repo.index().expect("index");
+    index.add_path(Path::new("alpha.txt")).expect("stage alpha");
+    index.add_path(Path::new("beta.txt")).expect("stage beta");
+    index.write().expect("write index");
+
+    unstage_file_change(path.to_string_lossy().to_string(), "alpha.txt".to_string()).expect("unstage alpha");
+
+    let summary = summary_for(&path);
+    assert!(!summary.staged.iter().any(|entry| entry.path == "alpha.txt"));
+    assert!(summary.staged.iter().any(|entry| entry.path == "beta.txt"));
+    assert!(summary.unstaged.iter().any(|entry| entry.path == "alpha.txt"));
   }
 
   #[test]
