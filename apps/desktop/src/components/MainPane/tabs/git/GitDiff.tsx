@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import type { GitStatusEntry } from "@pierre/trees";
@@ -34,6 +42,11 @@ const nonTextInputTypes = new Set([
 const EMPTY_SUMMARY: GitChangeSummaryPayload = { staged: [], unstaged: [] };
 const AUTO_OPEN_LIMIT = 10;
 const LARGE_DIFF_THRESHOLD = 250;
+const CHANGE_TREE_MIN_WIDTH = 250;
+const CHANGE_TREE_DEFAULT_WIDTH = 320;
+const CHANGE_TREE_MAX_WIDTH_RATIO = 0.4;
+const DIFF_PANEL_MIN_WIDTH = 320;
+const CHANGE_TREE_RESIZE_HANDLE_WIDTH = 8;
 const CHANGE_TREE_UNSAFE_CSS = `
   :host,
   [data-file-tree-virtualized-wrapper='true'],
@@ -417,6 +430,8 @@ export default function GitDiff({
   const [isCommitting, setIsCommitting] = useState(false);
   const [commitMessageInvalid, setCommitMessageInvalid] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const [changeTreeWidth, setChangeTreeWidth] = useState(CHANGE_TREE_DEFAULT_WIDTH);
+  const [isResizingChangeTree, setIsResizingChangeTree] = useState(false);
   const commitMenuRef = useRef<HTMLDivElement | null>(null);
   const commitMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const commitMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -426,11 +441,31 @@ export default function GitDiff({
   const summaryVersionRef = useRef(0);
   const detailRequestTokensRef = useRef<Record<string, number>>({});
   const loadedRepoPathRef = useRef("");
+  const changeTreeResizeRef = useRef({ startX: 0, startWidth: CHANGE_TREE_DEFAULT_WIDTH });
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const diffWorkbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const diffListRef = useRef<HTMLDivElement | null>(null);
 
   const repoPath = session?.cwd ?? session?.repo.repoPath ?? "";
   const getDiffScrollElement = useCallback(() => diffListRef.current, []);
+  const clampChangeTreeWidth = useCallback((width: number) => {
+    const body = diffWorkbenchBodyRef.current;
+    if (!body) {
+      return Math.max(CHANGE_TREE_MIN_WIDTH, width);
+    }
+    const bodyWidth = body.getBoundingClientRect().width;
+    if (bodyWidth <= 0) {
+      return Math.max(CHANGE_TREE_MIN_WIDTH, width);
+    }
+    const maxWidth = Math.max(
+      CHANGE_TREE_MIN_WIDTH,
+      Math.min(
+        bodyWidth * CHANGE_TREE_MAX_WIDTH_RATIO,
+        bodyWidth - DIFF_PANEL_MIN_WIDTH - CHANGE_TREE_RESIZE_HANDLE_WIDTH
+      )
+    );
+    return Math.min(maxWidth, Math.max(CHANGE_TREE_MIN_WIDTH, width));
+  }, []);
 
   useEffect(() => {
     detailMapRef.current = detailMap;
@@ -625,6 +660,35 @@ export default function GitDiff({
       window.removeEventListener("keydown", handleEscape);
     };
   }, [commitMenuOpen]);
+
+  useEffect(() => {
+    if (!isResizingChangeTree) {
+      return;
+    }
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const delta = event.clientX - changeTreeResizeRef.current.startX;
+      setChangeTreeWidth(clampChangeTreeWidth(changeTreeResizeRef.current.startWidth + delta));
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingChangeTree(false);
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [clampChangeTreeWidth, isResizingChangeTree]);
 
   const handleRefresh = useCallback(async () => {
     try {
@@ -919,6 +983,27 @@ export default function GitDiff({
     [activeSection, focusFileDiff]
   );
 
+  const handleChangeTreeResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    changeTreeResizeRef.current = {
+      startX: event.clientX,
+      startWidth: changeTreeWidth,
+    };
+    setIsResizingChangeTree(true);
+    event.preventDefault();
+  }, [changeTreeWidth]);
+
+  const handleChangeTreeResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+    event.preventDefault();
+    const direction = event.key === "ArrowLeft" ? -1 : 1;
+    setChangeTreeWidth((current) => clampChangeTreeWidth(current + direction * 16));
+  }, [clampChangeTreeWidth]);
+
   const runFileAction = useCallback(
     async (section: GitDiffSection, filePath: string) => {
       if (!repoPath) {
@@ -1173,7 +1258,11 @@ export default function GitDiff({
               <div className={styles.state}>No changes.</div>
             </div>
           ) : (
-            <div className={styles.diffWorkbenchBody}>
+            <div
+              ref={diffWorkbenchBodyRef}
+              className={styles.diffWorkbenchBody}
+              style={{ "--diff-tree-width": `${changeTreeWidth}px` } as CSSProperties}
+            >
               <aside className={styles.diffTreePane}>
                 <GitChangeTree
                   files={activeSectionData.files}
@@ -1185,6 +1274,19 @@ export default function GitDiff({
                   onSelectFile={handleTreeSelect}
                 />
               </aside>
+              <div
+                className={`${styles.diffTreeResizeHandle} ${
+                  isResizingChangeTree ? styles.diffTreeResizeHandleActive : ""
+                }`}
+                role="separator"
+                aria-label="Resize changed files tree"
+                aria-orientation="vertical"
+                aria-valuemin={CHANGE_TREE_MIN_WIDTH}
+                aria-valuenow={Math.round(changeTreeWidth)}
+                tabIndex={0}
+                onPointerDown={handleChangeTreeResizeStart}
+                onKeyDown={handleChangeTreeResizeKeyDown}
+              />
               <div ref={diffListRef} className={styles.diffPanel}>
                 <div className={styles.diffList}>
                   {activeTreeOrderedFiles.map((file) => {

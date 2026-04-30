@@ -289,7 +289,7 @@
 
 .diffWorkbenchBody {
   display: grid;
-  grid-template-columns: minmax(190px, 26%) minmax(0, 1fr);
+  grid-template-columns: minmax(250px, min(var(--diff-tree-width, 320px), 40%, calc(100% - 328px))) 8px minmax(0, 1fr);
   min-height: 0;
   flex: 1;
   overflow: hidden;
@@ -302,6 +302,35 @@
   background: var(--surface);
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.diffTreeResizeHandle {
+  position: relative;
+  min-width: 8px;
+  cursor: col-resize;
+  background: var(--surface);
+}
+
+.diffTreeResizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.2s ease;
+}
+
+.diffTreeResizeHandle:hover::after,
+.diffTreeResizeHandle:focus-visible::after,
+.diffTreeResizeHandleActive::after {
+  background: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.diffTreeResizeHandle:focus-visible {
+  outline: none;
 }
 
 .changeTree {
@@ -858,6 +887,10 @@
   .diffTreePane {
     border-right: none;
     border-bottom: 1px solid var(--border);
+  }
+
+  .diffTreeResizeHandle {
+    display: none;
   }
 
   .changeTree {
