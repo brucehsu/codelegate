@@ -210,6 +210,109 @@ function mapGitStatus(file: GitChangeSummary): GitStatusEntry["status"] {
   return file.status;
 }
 
+function summaryEntryKey(section: GitDiffSection, file: GitChangeSummary) {
+  return `${section}:${file.path}`;
+}
+
+function buildSummaryEntryMap(summary: GitChangeSummaryPayload) {
+  const entries = new Map<string, GitChangeSummary>();
+  for (const file of summary.staged) {
+    entries.set(summaryEntryKey("staged", file), file);
+  }
+  for (const file of summary.unstaged) {
+    entries.set(summaryEntryKey("unstaged", file), file);
+  }
+  return entries;
+}
+
+function summariesMatch(left: GitChangeSummary, right: GitChangeSummary) {
+  return (
+    left.path === right.path &&
+    left.oldPath === right.oldPath &&
+    left.newPath === right.newPath &&
+    left.additions === right.additions &&
+    left.deletions === right.deletions &&
+    left.changedLineCount === right.changedLineCount &&
+    left.isBinary === right.isBinary &&
+    left.isDirectory === right.isDirectory &&
+    left.isUntracked === right.isUntracked &&
+    left.status === right.status
+  );
+}
+
+function collectChangedSummaryKeys(previous: GitChangeSummaryPayload, next: GitChangeSummaryPayload) {
+  const previousEntries = buildSummaryEntryMap(previous);
+  const nextEntries = buildSummaryEntryMap(next);
+  const changedKeys = new Set<string>();
+
+  for (const [key, previousFile] of previousEntries) {
+    const nextFile = nextEntries.get(key);
+    if (!nextFile || !summariesMatch(previousFile, nextFile)) {
+      changedKeys.add(key);
+    }
+  }
+
+  for (const [key, nextFile] of nextEntries) {
+    const previousFile = previousEntries.get(key);
+    if (!previousFile || !summariesMatch(previousFile, nextFile)) {
+      changedKeys.add(key);
+    }
+  }
+
+  return changedKeys;
+}
+
+function collectSummaryKeys(summary: GitChangeSummaryPayload) {
+  return new Set(buildSummaryEntryMap(summary).keys());
+}
+
+interface ScrollSnapshot {
+  top: number;
+  anchorKey: string | null;
+  anchorOffset: number;
+}
+
+function captureScrollSnapshot(scrollElement: HTMLElement | null): ScrollSnapshot | null {
+  if (!scrollElement) {
+    return null;
+  }
+
+  const scrollRect = scrollElement.getBoundingClientRect();
+  const anchors = scrollElement.querySelectorAll<HTMLElement>("[data-file-key]");
+  for (const anchor of anchors) {
+    const anchorRect = anchor.getBoundingClientRect();
+    if (anchorRect.bottom > scrollRect.top && anchorRect.top < scrollRect.bottom) {
+      return {
+        top: scrollElement.scrollTop,
+        anchorKey: anchor.dataset.fileKey ?? null,
+        anchorOffset: anchorRect.top - scrollRect.top,
+      };
+    }
+  }
+
+  return { top: scrollElement.scrollTop, anchorKey: null, anchorOffset: 0 };
+}
+
+function restoreScrollSnapshot(scrollElement: HTMLElement | null, snapshot: ScrollSnapshot | null) {
+  if (!scrollElement || !snapshot) {
+    return;
+  }
+
+  if (snapshot.anchorKey) {
+    const anchor = Array.from(scrollElement.querySelectorAll<HTMLElement>("[data-file-key]")).find(
+      (element) => element.dataset.fileKey === snapshot.anchorKey
+    );
+    if (anchor) {
+      const scrollRect = scrollElement.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      scrollElement.scrollTop += anchorRect.top - scrollRect.top - snapshot.anchorOffset;
+      return;
+    }
+  }
+
+  scrollElement.scrollTop = snapshot.top;
+}
+
 function getSectionStats(files: GitChangeSummary[]) {
   return files.reduce(
     (stats, file) => ({
@@ -437,8 +540,10 @@ export default function GitDiff({
   const commitMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const commitMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const summaryRef = useRef<GitChangeSummaryPayload>(EMPTY_SUMMARY);
   const detailMapRef = useRef<Record<string, GitFileCardDetailState>>({});
-  const summaryVersionRef = useRef(0);
+  const summaryRequestVersionRef = useRef(0);
+  const detailGenerationRef = useRef(0);
   const detailRequestTokensRef = useRef<Record<string, number>>({});
   const loadedRepoPathRef = useRef("");
   const changeTreeResizeRef = useRef({ startX: 0, startWidth: CHANGE_TREE_DEFAULT_WIDTH });
@@ -468,6 +573,10 @@ export default function GitDiff({
   }, []);
 
   useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
+
+  useEffect(() => {
     detailMapRef.current = detailMap;
   }, [detailMap]);
 
@@ -485,9 +594,11 @@ export default function GitDiff({
 
   const loadSummary = useCallback(async () => {
     if (!repoPath) {
-      summaryVersionRef.current += 1;
+      summaryRequestVersionRef.current += 1;
+      detailGenerationRef.current += 1;
       detailRequestTokensRef.current = {};
       loadedRepoPathRef.current = "";
+      summaryRef.current = EMPTY_SUMMARY;
       setSummary(EMPTY_SUMMARY);
       setDetailMap({});
       setFileOpenMap({});
@@ -499,18 +610,20 @@ export default function GitDiff({
 
     const shouldResetActiveSection = loadedRepoPathRef.current !== repoPath;
     loadedRepoPathRef.current = repoPath;
-    const requestVersion = summaryVersionRef.current + 1;
-    summaryVersionRef.current = requestVersion;
-    detailRequestTokensRef.current = {};
+    const requestVersion = summaryRequestVersionRef.current + 1;
+    summaryRequestVersionRef.current = requestVersion;
     setIsLoading(true);
     setError(null);
 
     try {
       const output = await invoke<GitChangeSummaryPayload>("get_git_change_summary", { path: repoPath });
-      if (summaryVersionRef.current !== requestVersion) {
+      if (summaryRequestVersionRef.current !== requestVersion) {
         return;
       }
       const nextSummary = output ?? EMPTY_SUMMARY;
+      detailGenerationRef.current += 1;
+      detailRequestTokensRef.current = {};
+      summaryRef.current = nextSummary;
       setSummary(nextSummary);
       setDetailMap({});
       setFileOpenMap(buildInitialFileOpenMap(nextSummary));
@@ -519,15 +632,18 @@ export default function GitDiff({
         setActiveSection(nextSummary.unstaged.length > 0 || nextSummary.staged.length === 0 ? "unstaged" : "staged");
       }
     } catch (err) {
-      if (summaryVersionRef.current !== requestVersion) {
+      if (summaryRequestVersionRef.current !== requestVersion) {
         return;
       }
+      detailGenerationRef.current += 1;
+      detailRequestTokensRef.current = {};
+      summaryRef.current = EMPTY_SUMMARY;
       setSummary(EMPTY_SUMMARY);
       setDetailMap({});
       setFileOpenMap({});
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (summaryVersionRef.current === requestVersion) {
+      if (summaryRequestVersionRef.current === requestVersion) {
         setIsLoading(false);
       }
     }
@@ -544,7 +660,7 @@ export default function GitDiff({
         return;
       }
 
-      const requestVersion = summaryVersionRef.current;
+      const requestGeneration = detailGenerationRef.current;
       const token = (detailRequestTokensRef.current[fileKey] ?? 0) + 1;
       detailRequestTokensRef.current[fileKey] = token;
       setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "loading" } }));
@@ -556,7 +672,7 @@ export default function GitDiff({
           filePath,
         });
         if (
-          summaryVersionRef.current !== requestVersion ||
+          detailGenerationRef.current !== requestGeneration ||
           detailRequestTokensRef.current[fileKey] !== token
         ) {
           return;
@@ -564,7 +680,7 @@ export default function GitDiff({
         setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "ready", data: detail } }));
       } catch (err) {
         if (
-          summaryVersionRef.current !== requestVersion ||
+          detailGenerationRef.current !== requestGeneration ||
           detailRequestTokensRef.current[fileKey] !== token
         ) {
           return;
@@ -756,6 +872,7 @@ export default function GitDiff({
         amend: commitAmend,
       });
       setCommitMessage("");
+      setCommitMode("commit");
       onNotify({ tone: "success", message: commitAmend ? "Amended." : "Committed." });
       await loadSummary();
     } catch (err) {
@@ -983,6 +1100,48 @@ export default function GitDiff({
     [activeSection, focusFileDiff]
   );
 
+  const applyActionSummary = useCallback(
+    (section: GitDiffSection, filePath: string, nextSummary: GitChangeSummaryPayload) => {
+      const sourceKey = `${section}:${filePath}`;
+      const scrollElement = diffListRef.current;
+      const scrollSnapshot = captureScrollSnapshot(scrollElement);
+      const changedKeys = collectChangedSummaryKeys(summaryRef.current, nextSummary);
+      const nextKeys = collectSummaryKeys(nextSummary);
+
+      summaryRequestVersionRef.current += 1;
+      detailGenerationRef.current += 1;
+      detailRequestTokensRef.current = {};
+      setIsLoading(false);
+      summaryRef.current = nextSummary;
+      setSummary(nextSummary);
+      // Summary counts are display metadata, not a content identity. Clear cached diffs so open files refetch.
+      setDetailMap({});
+      setFileOpenMap((current) => {
+        const next = { ...current };
+        const wasOpen = next[sourceKey] ?? false;
+        for (const key of Object.keys(next)) {
+          if (!nextKeys.has(key) || changedKeys.has(key)) {
+            delete next[key];
+          }
+        }
+        if (wasOpen) {
+          for (const key of changedKeys) {
+            if (nextKeys.has(key)) {
+              next[key] = true;
+            }
+          }
+        }
+        return next;
+      });
+      setSelectedFileKey((current) => (current && (!nextKeys.has(current) || changedKeys.has(current)) ? null : current));
+      requestAnimationFrame(() => {
+        restoreScrollSnapshot(scrollElement, scrollSnapshot);
+        requestAnimationFrame(() => restoreScrollSnapshot(scrollElement, scrollSnapshot));
+      });
+    },
+    []
+  );
+
   const handleChangeTreeResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
@@ -1014,13 +1173,20 @@ export default function GitDiff({
       setError(null);
       try {
         if (section === "staged") {
-          await invoke("unstage_file_change", { path: repoPath, filePath });
+          const nextSummary = await invoke<GitChangeSummaryPayload>("unstage_file_change", {
+            path: repoPath,
+            filePath,
+          });
+          applyActionSummary(section, filePath, nextSummary);
           onNotify({ tone: "success", message: "Unstaged." });
         } else {
-          await invoke("stage_file_change", { path: repoPath, filePath });
+          const nextSummary = await invoke<GitChangeSummaryPayload>("stage_file_change", {
+            path: repoPath,
+            filePath,
+          });
+          applyActionSummary(section, filePath, nextSummary);
           onNotify({ tone: "success", message: "Staged." });
         }
-        await loadSummary();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
@@ -1029,7 +1195,7 @@ export default function GitDiff({
         setFileActionTarget((current) => (current === fileKey ? null : current));
       }
     },
-    [loadSummary, onNotify, repoPath]
+    [applyActionSummary, onNotify, repoPath]
   );
 
   useEffect(() => {
