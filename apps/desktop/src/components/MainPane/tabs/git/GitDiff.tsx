@@ -510,6 +510,8 @@ interface GitDiffProps {
 }
 
 const COMMIT_MODE_OPTIONS: Array<"commit" | "amend"> = ["commit", "amend"];
+type GitDiffViewMode = "split" | "unified";
+const DIFF_VIEW_MODE_OPTIONS: GitDiffViewMode[] = ["split", "unified"];
 
 export default function GitDiff({
   session,
@@ -533,6 +535,7 @@ export default function GitDiff({
   const [isCommitting, setIsCommitting] = useState(false);
   const [commitMessageInvalid, setCommitMessageInvalid] = useState(false);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const [diffViewMode, setDiffViewMode] = useState<GitDiffViewMode>("split");
   const [changeTreeWidth, setChangeTreeWidth] = useState(CHANGE_TREE_DEFAULT_WIDTH);
   const [isResizingChangeTree, setIsResizingChangeTree] = useState(false);
   const commitMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1363,6 +1366,21 @@ export default function GitDiff({
               <span className={styles.diffSummarySlash}>/</span>
               <span className={styles.diffSummaryDel}>-{activeStats.deletions}</span>
             </div>
+            <div className={styles.diffViewToggle} role="group" aria-label="Diff view mode">
+              {DIFF_VIEW_MODE_OPTIONS.map((viewMode) => (
+                <button
+                  key={viewMode}
+                  type="button"
+                  className={`${styles.diffViewButton} ${
+                    diffViewMode === viewMode ? styles.diffViewButtonActive : ""
+                  }`}
+                  aria-pressed={diffViewMode === viewMode}
+                  onClick={() => setDiffViewMode(viewMode)}
+                >
+                  {viewMode === "split" ? "Split" : "Unified"}
+                </button>
+              ))}
+            </div>
           </div>
           <div className={styles.diffSummaryActions}>
             {activeSectionData.key === "unstaged" ? (
@@ -1474,6 +1492,7 @@ export default function GitDiff({
                           isOpen={fileOpenMap[fileKey] ?? false}
                           onToggle={() => toggleFile(activeSectionData.key, file.path)}
                           section={activeSectionData.key}
+                          viewMode={diffViewMode}
                           isSelected={selectedFileKey === fileKey}
                           actionDisabled={!repoPath || isLoading || actionTarget !== null || fileActionTarget !== null}
                           actionLoading={fileActionTarget === fileKey}

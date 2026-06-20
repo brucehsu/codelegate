@@ -287,6 +287,46 @@
   display: inline-flex;
 }
 
+.diffViewToggle {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.diffViewButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.diffViewButton:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.diffViewButtonActive {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
 .diffWorkbenchBody {
   display: grid;
   grid-template-columns: minmax(250px, min(var(--diff-tree-width, 320px), 40%, calc(100% - 328px))) 8px minmax(0, 1fr);
@@ -657,11 +697,36 @@
   gap: 0;
 }
 
+.diffUnifiedGrid {
+  min-width: 0;
+}
+
+.diffUnifiedBody {
+  width: max-content;
+  min-width: 100%;
+}
+
+.diffUnifiedRow {
+  display: grid;
+  grid-template-columns: 64px 64px auto;
+  width: 100%;
+  min-width: 100%;
+}
+
+.diffUnifiedGutter {
+  min-width: 64px;
+}
+
+.diffUnifiedCell {
+  border-right: none;
+}
+
 .diffBody {
   padding: 0;
 }
 
 .diffGrid,
+.diffUnifiedGrid,
 .diffRowsSurface {
   font-family: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
   font-size: 0.82rem;
@@ -756,6 +821,7 @@
 }
 
 .diffRowsList > :last-child > *,
+.diffUnifiedBody > :last-child > *,
 .diffVirtualInner > :last-child > * {
   border-bottom: none;
 }
