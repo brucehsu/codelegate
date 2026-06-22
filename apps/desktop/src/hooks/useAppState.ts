@@ -203,6 +203,7 @@ const defaultConfig: AppConfig = {
 };
 
 const TERMINAL_SCROLLBACK_LINES = 30000;
+const BRANCH_MONITOR_INTERVAL_MS = 10_000;
 
 function formatWorktreeStamp(date: Date) {
   const pad = (value: number) => value.toString().padStart(2, "0");
@@ -342,6 +343,7 @@ export function useAppState(
   const closePromptInProgressRef = useRef(false);
   const pendingExitRequestRef = useRef(false);
   const restoreInProgressRef = useRef(false);
+  const branchMonitorInFlightRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
@@ -1479,6 +1481,24 @@ export function useAppState(
     setSessions((prev) => prev.map((session) => (session.id === sessionId ? { ...session, ...partial } : session)));
   }, []);
 
+  const updateSessionBranchForPath = useCallback((path: string, branch: string) => {
+    const nextBranch = branch.trim();
+    if (!nextBranch) {
+      return;
+    }
+    setSessions((prev) => {
+      let changed = false;
+      const next = prev.map((session) => {
+        if (session.isTabClosed || resolveSessionCwd(session) !== path || session.branch === nextBranch) {
+          return session;
+        }
+        changed = true;
+        return { ...session, branch: nextBranch };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   const renameBranch = useCallback(
     async (sessionId: string, newName: string) => {
       const session = sessionsRef.current.find((item) => item.id === sessionId);
@@ -1494,14 +1514,14 @@ export function useAppState(
       }
       try {
         const branch = await invoke<string>("rename_git_branch", { path: cwd, name: trimmed });
-        updateSession(sessionId, { branch: branch.trim() || trimmed });
+        updateSessionBranchForPath(cwd, branch.trim() || trimmed);
         return true;
       } catch (error) {
         notify({ message: `Failed to rename branch: ${String(error)}`, tone: "error" });
         return false;
       }
     },
-    [notify, updateSession]
+    [notify, updateSessionBranchForPath]
   );
 
   const refreshSessionBranch = useCallback(
@@ -1513,16 +1533,46 @@ export function useAppState(
       }
       try {
         const branch = await invoke<string>("get_git_branch", { path: cwd });
-        const nextBranch = branch.trim();
-        if (nextBranch.length > 0) {
-          updateSession(sessionId, { branch: nextBranch });
-        }
+        updateSessionBranchForPath(cwd, branch);
       } catch {
         // Ignore refresh failures to avoid noisy toasts during manual refresh.
       }
     },
-    [updateSession]
+    [updateSessionBranchForPath]
   );
+
+  const pollSessionBranches = useCallback(async () => {
+    if (branchMonitorInFlightRef.current) {
+      return;
+    }
+    const paths = Array.from(
+      new Set(
+        sessionsRef.current
+          .filter((session) => !session.isTabClosed)
+          .map((session) => resolveSessionCwd(session))
+          .filter((path): path is string => Boolean(path))
+      )
+    );
+    if (paths.length === 0) {
+      return;
+    }
+
+    branchMonitorInFlightRef.current = true;
+    try {
+      await Promise.all(
+        paths.map(async (path) => {
+          try {
+            const branch = await invoke<string>("get_git_branch", { path });
+            updateSessionBranchForPath(path, branch);
+          } catch {
+            // Ignore monitor failures; missing paths and non-git dirs should stay silent.
+          }
+        })
+      );
+    } finally {
+      branchMonitorInFlightRef.current = false;
+    }
+  }, [updateSessionBranchForPath]);
 
   const closeSessionTab = useCallback(
     (sessionId: string) => {
@@ -1890,6 +1940,29 @@ export function useAppState(
       cancelled = true;
     };
   }, [notify, setActiveSessionId, startSession]);
+
+  useEffect(() => {
+    void pollSessionBranches();
+    const intervalId = window.setInterval(() => {
+      void pollSessionBranches();
+    }, BRANCH_MONITOR_INTERVAL_MS);
+    const handleFocus = () => {
+      void pollSessionBranches();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void pollSessionBranches();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [pollSessionBranches]);
 
   useEffect(() => {
     let unlistenOutput: (() => void) | undefined;
