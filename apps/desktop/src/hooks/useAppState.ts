@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -1218,7 +1219,13 @@ export function useAppState(
       term.loadAddon(new SearchAddon());
       term.loadAddon(new Unicode11Addon());
       term.unicode.activeVersion = "11";
-      term.loadAddon(new WebLinksAddon());
+      term.loadAddon(
+        new WebLinksAddon((event, uri) => {
+          if (isMac ? event.metaKey : event.ctrlKey) {
+            void openUrl(uri);
+          }
+        })
+      );
       term.open(element);
       attachTerminalHandlers(term, runtime, sessionId, kind);
       runtime.term = term;
@@ -1230,6 +1237,7 @@ export function useAppState(
       applyTerminalAppearance,
       attachTerminalHandlers,
       configureTerminalOptions,
+      isMac,
       refreshTerminalRows,
       terminalAppearance,
     ]

@@ -10,6 +10,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
 portable-pty = "0.8"
 base64 = "0.22"
 git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
