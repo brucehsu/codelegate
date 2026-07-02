@@ -1,6 +1,6 @@
 import type { AgentAvailability, AgentId } from "../../types";
 import { agentCatalog } from "../../constants";
-import { ClaudeIconIcon, FactoryIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
+import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import styles from "./AgentPicker.module.css";
 
 interface AgentPickerProps {
@@ -20,7 +20,6 @@ function CodexLogo() {
 const iconById: Record<AgentId, JSX.Element> = {
   claude: <ClaudeLogo />,
   codex: <CodexLogo />,
-  droid: <FactoryIconIcon />,
 };
 
 export default function AgentPicker({ selected, availability, onSelect }: AgentPickerProps) {

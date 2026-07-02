@@ -10,7 +10,7 @@ import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { agentCommandById } from "../constants";
+import { agentCommandById, isSupportedAgentId, normalizeAgentId } from "../constants";
 import { DEFAULT_TERMINAL_LINE_HEIGHT, useTerminalRenderer } from "./useTerminalRenderer";
 import type { TerminalAppearance, TerminalRendererRuntime } from "./useTerminalRenderer";
 import type {
@@ -186,6 +186,23 @@ function parseOsc52ClipboardData(data: string) {
   } catch {
     return null;
   }
+}
+
+function normalizeAgentArgs(agentArgs: Record<string, string> | undefined) {
+  const cleaned: Record<string, string> = {};
+  Object.entries(agentArgs ?? {}).forEach(([agentId, args]) => {
+    if (isSupportedAgentId(agentId)) {
+      cleaned[agentId] = args;
+    }
+  });
+  return cleaned;
+}
+
+function normalizeRepoConfig(repo: RepoConfig): RepoConfig {
+  return {
+    ...repo,
+    agent: normalizeAgentId(repo.agent),
+  };
 }
 
 const defaultSettings = {
@@ -682,7 +699,7 @@ export function useAppState(
               loaded.settings?.shortcutModifier ?? defaultSettings.shortcutModifier
             ),
             repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
-            agentArgs: loaded.settings?.agentArgs ?? defaultSettings.agentArgs,
+            agentArgs: normalizeAgentArgs(loaded.settings?.agentArgs),
           },
         } as AppConfig;
         setConfig(nextConfig);
@@ -1702,10 +1719,11 @@ export function useAppState(
         return false;
       }
 
-      const envMap = ensureTermEnv(envListToMap(repo.env));
+      const normalizedRepo = normalizeRepoConfig(repo);
+      const envMap = ensureTermEnv(envListToMap(normalizedRepo.env));
 
       const initCommands: string[] = [...initialCommands, `cd ${escapeShellArg(sessionCwd)}`];
-      const preCommands = repo.preCommands.trim();
+      const preCommands = normalizedRepo.preCommands.trim();
       if (preCommands) {
         preCommands
           .split("\n")
@@ -1713,8 +1731,8 @@ export function useAppState(
           .filter((line) => line.length > 0)
           .forEach((line) => initCommands.push(line));
       }
-      const agentCommand = agentCommandById[repo.agent] ?? repo.agent;
-      const agentArgs = configRef.current.settings.agentArgs?.[repo.agent]?.trim() ?? "";
+      const agentCommand = agentCommandById[normalizedRepo.agent];
+      const agentArgs = configRef.current.settings.agentArgs?.[normalizedRepo.agent]?.trim() ?? "";
       initCommands.push(applyAgentArgs(agentCommand, agentArgs));
 
       const runtime = ensureTerminalRuntime(sessionId, "agent");
@@ -1800,20 +1818,21 @@ export function useAppState(
     async (repo: RepoConfig, options: { activate?: boolean; cwd?: string | null } = {}) => {
       await configReadyPromiseRef.current;
       const shouldActivate = options.activate !== false;
+      const normalizedRepo = normalizeRepoConfig(repo);
       if (shouldActivate) {
         const activeElement = document.activeElement;
         if (activeElement instanceof HTMLElement) {
           activeElement.blur();
         }
       }
-      const sessionId = createSessionId(repo.repoPath);
+      const sessionId = createSessionId(normalizedRepo.repoPath);
       const session: Session = {
         id: sessionId,
-        repo,
-        cwd: repo.repoPath,
+        repo: normalizedRepo,
+        cwd: normalizedRepo.repoPath,
         lastActivePaneKind: "agent",
         status: "stopped",
-        branch: repo.worktree?.branch?.trim() || undefined,
+        branch: normalizedRepo.worktree?.branch?.trim() || undefined,
       };
 
       setSessions((prev) => [...prev, session]);
@@ -1822,11 +1841,11 @@ export function useAppState(
         pendingFocusRef.current = { sessionId, kind: "agent" };
       }
 
-      const repoRoot = repo.repoPath;
+      const repoRoot = normalizedRepo.repoPath;
       let sessionCwd = repoRoot;
       const initCommands: string[] = [];
 
-      if (repo.worktree?.enabled) {
+      if (normalizedRepo.worktree?.enabled) {
         let homeDir = "";
         try {
           homeDir = await invoke<string>("get_home_dir");
@@ -1853,10 +1872,10 @@ export function useAppState(
 
         if (sessionCwd === repoRoot) {
           const stamp = formatWorktreeStamp(new Date());
-          const worktreePath = `${worktreeRoot}/${stamp}-${repo.agent}`;
+          const worktreePath = `${worktreeRoot}/${stamp}-${normalizedRepo.agent}`;
           const base = escapeShellArg(repoRoot);
           const target = escapeShellArg(worktreePath);
-          const branch = repo.worktree.branch?.trim();
+          const branch = normalizedRepo.worktree.branch?.trim();
 
           initCommands.push(`mkdir -p ${escapeShellArg(worktreeRoot)}`);
           if (branch) {
@@ -1892,11 +1911,11 @@ export function useAppState(
         }
       };
 
-      resolveBranch(repo.worktree?.enabled ? 5 : 1);
+      resolveBranch(normalizedRepo.worktree?.enabled ? 5 : 1);
 
       const started = await spawnAgentForSession({
         sessionId,
-        repo,
+        repo: normalizedRepo,
         repoRoot,
         sessionCwd,
         initialCommands: initCommands,

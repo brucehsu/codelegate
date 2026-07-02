@@ -9,7 +9,7 @@ import {
   normalizeShortcutModifier,
 } from "../../utils/shortcutModifier";
 import { agentCatalog } from "../../constants";
-import { ClaudeIconIcon, FactoryIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
+import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import styles from "./SettingsDialog.module.css";
 
 interface SettingsDialogProps {
@@ -51,13 +51,11 @@ export default function SettingsDialog({
   const iconById: Record<string, JSX.Element> = {
     claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
     codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
-    droid: <FactoryIconIcon />,
   };
 
   const iconClassById: Record<string, string> = {
     claude: styles.agentIconClaude,
     codex: styles.agentIconCodex,
-    droid: styles.agentIconDroid,
   };
 
   const handleSubmitShortcut = (event: React.KeyboardEvent) => {

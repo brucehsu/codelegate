@@ -1,7 +1,7 @@
 import { Bot, MoreHorizontal, Plus, Settings } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import type { SessionGroup } from "../../utils/session";
-import { ClaudeIconIcon, FactoryIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
+import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
 import IconButton from "../ui/IconButton/IconButton";
 import CollapsibleSection from "../ui/CollapsibleSection/CollapsibleSection";
 import styles from "./Sidebar.module.css";
@@ -52,13 +52,11 @@ export default function Sidebar({
   const iconById: Record<string, JSX.Element> = {
     claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
     codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
-    droid: <FactoryIconIcon />,
   };
 
   const classById: Record<string, string> = {
     claude: styles.agentClaude,
     codex: styles.agentCodex,
-    droid: styles.agentDroid,
   };
 
   const resolveAgentIcon = (agentId: string) => iconById[agentId] ?? <Bot aria-hidden="true" />;
