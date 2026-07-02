@@ -413,6 +413,59 @@ pub fn get_last_commit_message(path: String) -> Result<String, String> {
   Ok(message)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranchInfo {
+  pub name: String,
+  /// Set when the branch is checked out in a worktree (including the primary checkout).
+  pub worktree_path: Option<String>,
+}
+
+pub fn list_git_branches(path: String) -> Result<Vec<GitBranchInfo>, String> {
+  let output = Command::new("git")
+    .arg("-C")
+    .arg(&path)
+    .args([
+      "for-each-ref",
+      "refs/heads",
+      "--sort=-committerdate",
+      // %(worktreepath) (git >= 2.22) is non-empty when the branch is
+      // checked out in any worktree, including the main checkout.
+      "--format=%(refname:short)%00%(worktreepath)",
+    ])
+    .output()
+    .map_err(|error| format!("Failed to list branches: {error}"))?;
+
+  if !output.status.success() {
+    return Err(command_error("Failed to list branches", &output));
+  }
+
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  let branches = stdout
+    .lines()
+    .filter_map(|line| {
+      let mut parts = line.splitn(2, '\0');
+      let name = parts.next()?.trim();
+      if name.is_empty() {
+        return None;
+      }
+      let worktree_path = parts
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        // A registration whose directory is gone is stale; `worktree prune`
+        // runs before `worktree add`, so the branch is still selectable.
+        .filter(|value| Path::new(value).exists());
+      Some(GitBranchInfo {
+        name: name.to_string(),
+        worktree_path: worktree_path.map(str::to_string),
+      })
+    })
+    .collect();
+
+  Ok(branches)
+}
+
 fn open_repository(path: &str) -> Result<Repository, String> {
   let root = super::resolve_repo_root(path.to_string())?;
   Repository::open(&root).map_err(|error| git_error("Failed to open repository", error))
@@ -1600,4 +1653,35 @@ mod tests {
     assert!(entry.is_binary);
   }
 
+  #[test]
+  fn list_git_branches_reports_checked_out_and_worktree_state() {
+    let (repo, path) = make_temp_repo("list-branches");
+    commit_all(&repo, "initial");
+
+    let current_branch = repo
+      .head()
+      .expect("head")
+      .shorthand()
+      .expect("shorthand")
+      .to_string();
+
+    let commit = head_commit(&repo).expect("head commit").expect("commit");
+    repo
+      .branch("side-branch", &commit, false)
+      .expect("create side branch");
+
+    let branches = list_git_branches(path.to_string_lossy().to_string()).expect("list branches");
+
+    let current = branches
+      .iter()
+      .find(|branch| branch.name == current_branch)
+      .expect("current branch present");
+    assert!(matches!(&current.worktree_path, Some(value) if !value.is_empty()));
+
+    let side = branches
+      .iter()
+      .find(|branch| branch.name == "side-branch")
+      .expect("side branch present");
+    assert!(side.worktree_path.is_none());
+  }
 }

@@ -72,6 +72,8 @@ struct RepoDefaults {
 #[serde(rename_all = "camelCase")]
 struct WorktreeConfig {
   enabled: bool,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  branch: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -508,6 +510,13 @@ async fn get_last_commit_message(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn list_git_branches(path: String) -> Result<Vec<git::GitBranchInfo>, String> {
+  tauri::async_runtime::spawn_blocking(move || git::list_git_branches(path))
+    .await
+    .map_err(|error| format!("Failed to join branch list task: {error}"))?
+}
+
+#[tauri::command]
 fn load_config() -> Result<AppConfig, String> {
   let file = config_file()?;
   if !file.exists() {
@@ -820,6 +829,7 @@ pub fn run() {
       exit_app,
       resolve_repo_root,
       get_git_branch,
+      list_git_branches,
       rename_git_branch,
       get_git_change_summary,
       get_git_file_diff,

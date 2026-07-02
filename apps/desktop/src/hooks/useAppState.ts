@@ -1598,6 +1598,9 @@ export function useAppState(
       } = {}
     ) => {
       const runtime = runtimeRef.current.get(sessionId);
+      // A branch the user picked pre-existed the session and must never be deleted.
+      const closingSession = sessionsRef.current.find((session) => session.id === sessionId);
+      const keepBranch = Boolean(closingSession?.repo.worktree?.branch?.trim());
       const ptyIds = new Set<number>();
 
       if (runtime?.agent.ptyId) {
@@ -1649,7 +1652,7 @@ export function useAppState(
             await invoke("remove_session_worktree", {
               repoPath,
               worktreePath,
-              branch: branch?.trim() || undefined,
+              branch: keepBranch ? undefined : branch?.trim() || undefined,
             });
             notify({ message: `Deleted worktree [${repoName}] ${branchName}`, tone: "success" });
           } catch (error) {
@@ -1802,6 +1805,7 @@ export function useAppState(
         cwd: repo.repoPath,
         lastActivePaneKind: "agent",
         status: "stopped",
+        branch: repo.worktree?.branch?.trim() || undefined,
       };
 
       setSessions((prev) => [...prev, session]);
@@ -1844,9 +1848,16 @@ export function useAppState(
           const worktreePath = `${worktreeRoot}/${stamp}-${repo.agent}`;
           const base = escapeShellArg(repoRoot);
           const target = escapeShellArg(worktreePath);
+          const branch = repo.worktree.branch?.trim();
 
           initCommands.push(`mkdir -p ${escapeShellArg(worktreeRoot)}`);
-          initCommands.push(`git -C ${base} worktree add ${target}`);
+          if (branch) {
+            // Drop stale registrations so a previously deleted worktree directory can't block the checkout.
+            initCommands.push(`git -C ${base} worktree prune`);
+            initCommands.push(`git -C ${base} worktree add ${target} ${escapeShellArg(branch)}`);
+          } else {
+            initCommands.push(`git -C ${base} worktree add ${target}`);
+          }
           sessionCwd = worktreePath;
         }
       } else if (options.cwd) {

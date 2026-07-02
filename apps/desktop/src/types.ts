@@ -14,6 +14,14 @@ export interface RepoSessionDefaults {
 
 export interface WorktreeConfig {
   enabled: boolean;
+  /** Existing local branch checked out directly in the worktree. Absent means git auto-creates a branch. */
+  branch?: string;
+}
+
+export interface GitBranchInfo {
+  name: string;
+  /** Set when the branch is checked out in a worktree (including the primary checkout). */
+  worktreePath?: string | null;
 }
 
 export interface RepoConfig {

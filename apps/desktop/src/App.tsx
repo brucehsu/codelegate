@@ -166,6 +166,7 @@ export default function App() {
   const [repoPath, setRepoPath] = useState("");
   const [repoHint, setRepoHint] = useState("");
   const [worktreeEnabled, setWorktreeEnabled] = useState(true);
+  const [worktreeBranch, setWorktreeBranch] = useState<string | null>(null);
   const [envVars, setEnvVars] = useState<EnvVar[]>(emptyEnv);
   const [preCommands, setPreCommands] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -629,6 +630,7 @@ export default function App() {
     setRepoPath("");
     setRepoHint("");
     setWorktreeEnabled(true);
+    setWorktreeBranch(null);
     setEnvVars(emptyEnv);
     setPreCommands("");
   }
@@ -730,6 +732,7 @@ export default function App() {
     const trimmedPath = path.trim();
     setRepoPath(trimmedPath);
     setRepoHint("");
+    setWorktreeBranch(null);
     applyRepoDefaults(trimmedPath);
   };
 
@@ -762,6 +765,7 @@ export default function App() {
       worktree: worktreeEnabled
         ? {
             enabled: true,
+            ...(worktreeBranch ? { branch: worktreeBranch } : {}),
           }
         : undefined,
     };
@@ -906,6 +910,8 @@ export default function App() {
         repoHint={repoHint}
         worktreeEnabled={worktreeEnabled}
         onToggleWorktree={setWorktreeEnabled}
+        worktreeBranch={worktreeBranch}
+        onSelectWorktreeBranch={setWorktreeBranch}
         envVars={envVars}
         onEnvChange={setEnvVars}
         preCommands={preCommands}

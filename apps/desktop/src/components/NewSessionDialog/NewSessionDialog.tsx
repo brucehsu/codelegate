@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
-import type { AgentAvailability, AgentId, EnvVar } from "../../types";
+import type { AgentAvailability, AgentId, EnvVar, GitBranchInfo } from "../../types";
 import AgentPicker from "../AgentPicker/AgentPicker";
 import RepoPicker from "../RepoPicker/RepoPicker";
 import EnvList from "../EnvList/EnvList";
+import BranchPicker from "../BranchPicker/BranchPicker";
 import Button from "../ui/Button/Button";
 import IconButton from "../ui/IconButton/IconButton";
 import styles from "./NewSessionDialog.module.css";
@@ -20,6 +22,8 @@ interface NewSessionDialogProps {
   repoHint?: string;
   worktreeEnabled: boolean;
   onToggleWorktree: (next: boolean) => void;
+  worktreeBranch: string | null;
+  onSelectWorktreeBranch: (branch: string | null) => void;
   envVars: EnvVar[];
   onEnvChange: (vars: EnvVar[]) => void;
   preCommands: string;
@@ -29,6 +33,8 @@ interface NewSessionDialogProps {
   onClose: () => void;
   onSubmit: () => void;
 }
+
+const EMPTY_BRANCHES: GitBranchInfo[] = [];
 
 export default function NewSessionDialog({
   open,
@@ -42,6 +48,8 @@ export default function NewSessionDialog({
   repoHint,
   worktreeEnabled,
   onToggleWorktree,
+  worktreeBranch,
+  onSelectWorktreeBranch,
   envVars,
   onEnvChange,
   preCommands,
@@ -53,6 +61,43 @@ export default function NewSessionDialog({
 }: NewSessionDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+  const [branchList, setBranchList] = useState<GitBranchInfo[]>(EMPTY_BRANCHES);
+  const [branchListLoading, setBranchListLoading] = useState(false);
+  const [branchListError, setBranchListError] = useState<string | null>(null);
+
+  const trimmedRepoPath = repoPath.trim();
+
+  useEffect(() => {
+    if (!open || !trimmedRepoPath) {
+      setBranchList(EMPTY_BRANCHES);
+      setBranchListError(null);
+      setBranchListLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBranchListLoading(true);
+    setBranchListError(null);
+    invoke<GitBranchInfo[]>("list_git_branches", { path: trimmedRepoPath })
+      .then((branches) => {
+        if (!cancelled) {
+          setBranchList(branches);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setBranchList(EMPTY_BRANCHES);
+          setBranchListError(String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBranchListLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, trimmedRepoPath]);
 
   const handleSubmitShortcut = (event: React.KeyboardEvent) => {
     if (event.defaultPrevented) {
@@ -147,6 +192,19 @@ export default function NewSessionDialog({
             />
             {repoHint ? <span className={styles.hint}>{repoHint}</span> : null}
           </label>
+
+          {worktreeEnabled && repoPath.trim() ? (
+            <div className={styles.fieldFull}>
+              <span>Worktree branch (optional)</span>
+              <BranchPicker
+                branches={branchList}
+                loading={branchListLoading}
+                error={branchListError}
+                value={worktreeBranch}
+                onSelect={onSelectWorktreeBranch}
+              />
+            </div>
+          ) : null}
 
           <div className={styles.fieldFull}>
             <span>Environment variables (optional)</span>
