@@ -42,6 +42,8 @@ const nonTextInputTypes = new Set([
 const EMPTY_SUMMARY: GitChangeSummaryPayload = { staged: [], unstaged: [] };
 const AUTO_OPEN_LIMIT = 10;
 const LARGE_DIFF_THRESHOLD = 250;
+const MATERIALIZE_SEED_COUNT = 30;
+const MATERIALIZE_ROOT_MARGIN = "600px 0px";
 const CHANGE_TREE_MIN_WIDTH = 250;
 const CHANGE_TREE_DEFAULT_WIDTH = 320;
 const CHANGE_TREE_MAX_WIDTH_RATIO = 0.4;
@@ -530,6 +532,7 @@ export default function GitDiff({
   const [activeSection, setActiveSection] = useState<GitDiffSection>("unstaged");
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(null);
   const [fileOpenMap, setFileOpenMap] = useState<Record<string, boolean>>({});
+  const [materializedKeys, setMaterializedKeys] = useState<Set<string>>(() => new Set());
   const [commitMessage, setCommitMessage] = useState("");
   const [commitMode, setCommitMode] = useState<"commit" | "amend">("commit");
   const [isCommitting, setIsCommitting] = useState(false);
@@ -546,6 +549,9 @@ export default function GitDiff({
   const summaryRef = useRef<GitChangeSummaryPayload>(EMPTY_SUMMARY);
   const detailMapRef = useRef<Record<string, GitFileCardDetailState>>({});
   const summaryRequestVersionRef = useRef(0);
+  const summaryInFlightRef = useRef(false);
+  const summaryReloadPendingRef = useRef(false);
+  const summaryRequestedRepoPathRef = useRef("");
   const detailGenerationRef = useRef(0);
   const detailRequestTokensRef = useRef<Record<string, number>>({});
   const loadedRepoPathRef = useRef("");
@@ -598,6 +604,8 @@ export default function GitDiff({
   const loadSummary = useCallback(async () => {
     if (!repoPath) {
       summaryRequestVersionRef.current += 1;
+      summaryRequestedRepoPathRef.current = "";
+      summaryReloadPendingRef.current = false;
       detailGenerationRef.current += 1;
       detailRequestTokensRef.current = {};
       loadedRepoPathRef.current = "";
@@ -611,44 +619,69 @@ export default function GitDiff({
       return;
     }
 
-    const shouldResetActiveSection = loadedRepoPathRef.current !== repoPath;
-    loadedRepoPathRef.current = repoPath;
-    const requestVersion = summaryRequestVersionRef.current + 1;
-    summaryRequestVersionRef.current = requestVersion;
-    setIsLoading(true);
-    setError(null);
+    summaryRequestedRepoPathRef.current = repoPath;
+    if (summaryInFlightRef.current) {
+      // A scan is already running; coalesce this request into a single follow-up
+      // run instead of firing a concurrent backend scan. The follow-up reads the
+      // requested-path ref so it targets the most recently requested repo.
+      summaryReloadPendingRef.current = true;
+      return;
+    }
 
+    summaryInFlightRef.current = true;
     try {
-      const output = await invoke<GitChangeSummaryPayload>("get_git_change_summary", { path: repoPath });
-      if (summaryRequestVersionRef.current !== requestVersion) {
-        return;
+      while (true) {
+        const targetRepoPath = summaryRequestedRepoPathRef.current;
+        if (!targetRepoPath) {
+          break;
+        }
+        const shouldResetActiveSection = loadedRepoPathRef.current !== targetRepoPath;
+        loadedRepoPathRef.current = targetRepoPath;
+        const requestVersion = summaryRequestVersionRef.current + 1;
+        summaryRequestVersionRef.current = requestVersion;
+        setIsLoading(true);
+        setError(null);
+
+        try {
+          const output = await invoke<GitChangeSummaryPayload>("get_git_change_summary", { path: targetRepoPath });
+          if (summaryRequestVersionRef.current === requestVersion) {
+            const nextSummary = output ?? EMPTY_SUMMARY;
+            detailGenerationRef.current += 1;
+            detailRequestTokensRef.current = {};
+            summaryRef.current = nextSummary;
+            setSummary(nextSummary);
+            setDetailMap({});
+            setFileOpenMap(buildInitialFileOpenMap(nextSummary));
+            setSelectedFileKey(null);
+            if (shouldResetActiveSection) {
+              setActiveSection(
+                nextSummary.unstaged.length > 0 || nextSummary.staged.length === 0 ? "unstaged" : "staged"
+              );
+            }
+          }
+        } catch (err) {
+          if (summaryRequestVersionRef.current === requestVersion) {
+            detailGenerationRef.current += 1;
+            detailRequestTokensRef.current = {};
+            summaryRef.current = EMPTY_SUMMARY;
+            setSummary(EMPTY_SUMMARY);
+            setDetailMap({});
+            setFileOpenMap({});
+            setError(err instanceof Error ? err.message : String(err));
+          }
+        } finally {
+          if (summaryRequestVersionRef.current === requestVersion) {
+            setIsLoading(false);
+          }
+        }
+
+        if (!summaryReloadPendingRef.current) {
+          break;
+        }
+        summaryReloadPendingRef.current = false;
       }
-      const nextSummary = output ?? EMPTY_SUMMARY;
-      detailGenerationRef.current += 1;
-      detailRequestTokensRef.current = {};
-      summaryRef.current = nextSummary;
-      setSummary(nextSummary);
-      setDetailMap({});
-      setFileOpenMap(buildInitialFileOpenMap(nextSummary));
-      setSelectedFileKey(null);
-      if (shouldResetActiveSection) {
-        setActiveSection(nextSummary.unstaged.length > 0 || nextSummary.staged.length === 0 ? "unstaged" : "staged");
-      }
-    } catch (err) {
-      if (summaryRequestVersionRef.current !== requestVersion) {
-        return;
-      }
-      detailGenerationRef.current += 1;
-      detailRequestTokensRef.current = {};
-      summaryRef.current = EMPTY_SUMMARY;
-      setSummary(EMPTY_SUMMARY);
-      setDetailMap({});
-      setFileOpenMap({});
-      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (summaryRequestVersionRef.current === requestVersion) {
-        setIsLoading(false);
-      }
+      summaryInFlightRef.current = false;
     }
   }, [repoPath]);
 
@@ -668,11 +701,14 @@ export default function GitDiff({
       detailRequestTokensRef.current[fileKey] = token;
       setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "loading" } }));
 
+      const sectionEntry = summaryRef.current[section].find((entry) => entry.path === filePath);
+
       try {
         const detail = await invoke<GitFileDiffPayload>("get_git_file_diff", {
           path: repoPath,
           section,
           filePath,
+          oldPath: sectionEntry?.oldPath ?? null,
         });
         if (
           detailGenerationRef.current !== requestGeneration ||
@@ -735,17 +771,48 @@ export default function GitDiff({
   const bulkActionDisabled = !repoPath || isLoading || actionTarget !== null || fileActionTarget !== null;
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
+  const materializeKeys = useCallback((fileKeys: string[]) => {
+    setMaterializedKeys((prev) => {
+      if (fileKeys.every((key) => prev.has(key))) {
+        return prev;
+      }
+      const next = new Set(prev);
+      for (const key of fileKeys) {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  // Seed the materialized card set so only the initial viewport worth of cards mounts up
+  // front; the rest materialize lazily as the IntersectionObserver below sees them. The
+  // set resets when the repo or section changes but survives summary refreshes, so
+  // staging or refreshing does not unmount cards the user has already scrolled to.
+  const materializeContextRef = useRef("");
+  useEffect(() => {
+    const seeded = activeTreeOrderedFiles
+      .slice(0, MATERIALIZE_SEED_COUNT)
+      .map((file) => summaryEntryKey(activeSectionData.key, file));
+    const context = `${repoPath}|${activeSectionData.key}`;
+    if (materializeContextRef.current !== context) {
+      materializeContextRef.current = context;
+      setMaterializedKeys(new Set(seeded));
+      return;
+    }
+    materializeKeys(seeded);
+  }, [activeSectionData.key, activeTreeOrderedFiles, materializeKeys, repoPath]);
+
   useEffect(() => {
     if (!isActive) {
       return;
     }
     for (const file of activeTreeOrderedFiles) {
       const fileKey = `${activeSectionData.key}:${file.path}`;
-      if (fileOpenMap[fileKey]) {
+      if (fileOpenMap[fileKey] && materializedKeys.has(fileKey)) {
         void fetchFileDetail(activeSectionData.key, file.path);
       }
     }
-  }, [activeSectionData.key, activeTreeOrderedFiles, fetchFileDetail, fileOpenMap, isActive]);
+  }, [activeSectionData.key, activeTreeOrderedFiles, fetchFileDetail, fileOpenMap, isActive, materializedKeys]);
 
   useEffect(() => {
     setCommitMessage("");
@@ -1088,12 +1155,15 @@ export default function GitDiff({
       const fileKey = `${section}:${filePath}`;
       setSelectedFileKey(fileKey);
       setFileOpenMap((prev) => ({ ...prev, [fileKey]: true }));
+      materializeKeys([fileKey]);
       void fetchFileDetail(section, filePath);
       requestAnimationFrame(() => {
-        cardRefs.current[fileKey]?.scrollIntoView({ block: "start", behavior: "smooth" });
+        requestAnimationFrame(() => {
+          cardRefs.current[fileKey]?.scrollIntoView({ block: "start", behavior: "smooth" });
+        });
       });
     },
-    [fetchFileDetail]
+    [fetchFileDetail, materializeKeys]
   );
 
   const handleTreeSelect = useCallback(
@@ -1208,6 +1278,7 @@ export default function GitDiff({
     const root = diffListRef.current;
     const observer = new IntersectionObserver(
       (entries) => {
+        const keysToMaterialize: string[] = [];
         for (const entry of entries) {
           if (!entry.isIntersecting) {
             continue;
@@ -1216,19 +1287,26 @@ export default function GitDiff({
           const fileKey = element.dataset.fileKey;
           const section = element.dataset.diffSection as GitDiffSection | undefined;
           const filePath = element.dataset.filePath;
-          if (fileKey && fileOpenMap[fileKey] && section && filePath) {
+          if (!fileKey) {
+            continue;
+          }
+          keysToMaterialize.push(fileKey);
+          if (fileOpenMap[fileKey] && section && filePath) {
             void fetchFileDetail(section, filePath);
           }
         }
+        if (keysToMaterialize.length > 0) {
+          materializeKeys(keysToMaterialize);
+        }
       },
-      { root, rootMargin: "180px 0px", threshold: 0.01 }
+      { root, rootMargin: MATERIALIZE_ROOT_MARGIN, threshold: 0.01 }
     );
     const observed = root?.querySelectorAll<HTMLElement>("[data-file-key]") ?? [];
     observed.forEach((element) => observer.observe(element));
     return () => {
       observer.disconnect();
     };
-  }, [activeSectionData.key, activeTreeOrderedFiles, fetchFileDetail, fileOpenMap, isActive]);
+  }, [activeSectionData.key, activeTreeOrderedFiles, fetchFileDetail, fileOpenMap, isActive, materializeKeys]);
 
   return (
     <div className={styles.container}>
@@ -1475,6 +1553,7 @@ export default function GitDiff({
                 <div className={styles.diffList}>
                   {activeTreeOrderedFiles.map((file) => {
                     const fileKey = `${activeSectionData.key}:${file.path}`;
+                    const isMaterialized = materializedKeys.has(fileKey);
                     return (
                       <div
                         key={fileKey}
@@ -1484,21 +1563,24 @@ export default function GitDiff({
                         data-file-key={fileKey}
                         data-diff-section={activeSectionData.key}
                         data-file-path={file.path}
+                        className={isMaterialized ? undefined : styles.diffCardPlaceholder}
                       >
-                        <GitFileCard
-                          fileKey={fileKey}
-                          summary={file}
-                          detailState={detailMap[fileKey]}
-                          isOpen={fileOpenMap[fileKey] ?? false}
-                          onToggle={() => toggleFile(activeSectionData.key, file.path)}
-                          section={activeSectionData.key}
-                          viewMode={diffViewMode}
-                          isSelected={selectedFileKey === fileKey}
-                          actionDisabled={!repoPath || isLoading || actionTarget !== null || fileActionTarget !== null}
-                          actionLoading={fileActionTarget === fileKey}
-                          getScrollElement={getDiffScrollElement}
-                          onFileAction={() => void runFileAction(activeSectionData.key, file.path)}
-                        />
+                        {isMaterialized ? (
+                          <GitFileCard
+                            fileKey={fileKey}
+                            summary={file}
+                            detailState={detailMap[fileKey]}
+                            isOpen={fileOpenMap[fileKey] ?? false}
+                            onToggle={() => toggleFile(activeSectionData.key, file.path)}
+                            section={activeSectionData.key}
+                            viewMode={diffViewMode}
+                            isSelected={selectedFileKey === fileKey}
+                            actionDisabled={!repoPath || isLoading || actionTarget !== null || fileActionTarget !== null}
+                            actionLoading={fileActionTarget === fileKey}
+                            getScrollElement={getDiffScrollElement}
+                            onFileAction={() => void runFileAction(activeSectionData.key, file.path)}
+                          />
+                        ) : null}
                       </div>
                     );
                   })}

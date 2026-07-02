@@ -572,6 +572,12 @@
   scroll-margin-top: 12px;
 }
 
+/* Lazy-mount placeholder for a not-yet-materialized card; keep in step with the
+   collapsed .diffFileToggle header height so scroll positions stay stable. */
+.diffCardPlaceholder {
+  min-height: 44px;
+}
+
 .diffFileSelected {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
@@ -723,6 +729,14 @@
 
 .diffBody {
   padding: 0;
+}
+
+.diffTruncatedNotice {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .diffGrid,

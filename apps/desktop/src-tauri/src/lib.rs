@@ -334,8 +334,9 @@ async fn get_git_file_diff(
   path: String,
   section: git::GitDiffSection,
   file_path: String,
+  old_path: Option<String>,
 ) -> Result<git::GitFileDiffPayload, String> {
-  tauri::async_runtime::spawn_blocking(move || git::get_git_file_diff(path, section, file_path))
+  tauri::async_runtime::spawn_blocking(move || git::get_git_file_diff(path, section, file_path, old_path))
     .await
     .map_err(|error| format!("Failed to join git diff task: {error}"))?
 }

@@ -26,6 +26,7 @@ export interface FileDiff {
   isDirectory: boolean;
   isUntracked: boolean;
   status: GitFileStatus;
+  truncated: boolean;
 }
 
 export interface GitChangeSummary {
@@ -48,6 +49,7 @@ export interface GitChangeSummaryPayload {
 
 export interface GitFileDiffPayload extends GitChangeSummary {
   rows: DiffRow[];
+  truncated: boolean;
 }
 
 const plainTextExtensions = new Set([

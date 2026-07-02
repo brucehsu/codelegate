@@ -138,6 +138,7 @@ function buildFileDiff(detail?: GitFileDiffPayload): FileDiff | null {
     isDirectory: detail.isDirectory,
     isUntracked: detail.isUntracked,
     status: detail.status,
+    truncated: detail.truncated,
   };
 }
 
@@ -590,6 +591,11 @@ export default function GitFileCard({
         ) : (
           <div className={styles.state}>Diff will load when expanded.</div>
         )}
+        {file?.truncated ? (
+          <div className={styles.diffTruncatedNotice}>
+            Diff truncated. Showing the first {file.rows.length} rows.
+          </div>
+        ) : null}
       </CollapsibleSection>
     </div>
   );

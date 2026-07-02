@@ -1,12 +1,17 @@
 use git2::{
-  build::CheckoutBuilder, Commit, Delta, Diff, DiffFormat, DiffLineType, DiffOptions, Error, Patch,
-  Repository, Status, StatusOptions,
+  build::CheckoutBuilder, Commit, Delta, Diff, DiffFormat, DiffLineType, DiffOptions, Error, IndexAddOption,
+  Patch, Repository, Status, StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+const MAX_UNTRACKED_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_DIFF_BLOB_SIZE: i64 = MAX_UNTRACKED_PREVIEW_BYTES as i64;
+const MAX_DIFF_ROWS: usize = 4000;
+const BINARY_SNIFF_BYTES: usize = 8192;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -61,6 +66,7 @@ pub struct GitFileDiffPayload {
   pub is_untracked: bool,
   pub status: GitFileStatus,
   pub rows: Vec<GitDiffRow>,
+  pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -134,23 +140,34 @@ pub fn get_git_file_diff(
   path: String,
   section: GitDiffSection,
   file_path: String,
+  old_path: Option<String>,
 ) -> Result<GitFileDiffPayload, String> {
   let repo = open_repository(&path)?;
-  let summary = match section {
-    GitDiffSection::Staged => get_staged_summaries(&repo)?,
-    GitDiffSection::Unstaged => get_unstaged_summaries(&repo)?,
+
+  let mut pathspecs = vec![file_path.as_str()];
+  if let Some(old) = old_path.as_deref() {
+    if old != file_path {
+      pathspecs.push(old);
+    }
   }
-  .into_iter()
-  .find(|entry| entry.path == file_path)
-  .ok_or_else(|| format!("Unable to find diff for '{}'", file_path))?;
+
+  let mut diff = match section {
+    GitDiffSection::Staged => staged_diff(&repo, &pathspecs)?,
+    GitDiffSection::Unstaged => unstaged_diff(&repo, &pathspecs)?,
+  };
+  find_similar(&mut diff)?;
+
+  let summary = collect_summaries(&repo, &diff, section, &pathspecs)?
+    .into_iter()
+    .find(|entry| entry.path == file_path)
+    .ok_or_else(|| format!("Unable to find diff for '{}'", file_path))?;
 
   let diff_text = if summary.is_untracked {
     render_untracked_diff(&repo, &summary.path)?
-  } else if summary.status == GitFileStatus::Renamed {
-    render_section_diff(&repo, section, None)?
   } else {
-    render_section_diff(&repo, section, Some(&file_path))?
+    render_diff(&diff)?
   };
+
   let parsed_files = parse_diff_text(&diff_text, summary.is_untracked);
   let parsed = if summary.status == GitFileStatus::Renamed {
     parsed_files
@@ -160,19 +177,28 @@ pub fn get_git_file_diff(
     parsed_files.into_iter().next()
   };
   let is_binary = summary.is_binary && parsed.as_ref().map(|file| file.rows.is_empty()).unwrap_or(true);
+  let old_path_final = parsed.as_ref().and_then(|file| file.old_path.clone()).or(summary.old_path);
+  let new_path_final = parsed.as_ref().and_then(|file| file.new_path.clone()).or(summary.new_path);
+  let status_final = parsed.as_ref().map(|file| file.status).unwrap_or(summary.status);
+  let mut rows = parsed.map(|file| file.rows).unwrap_or_default();
+  let truncated = rows.len() > MAX_DIFF_ROWS;
+  if truncated {
+    rows.truncate(MAX_DIFF_ROWS);
+  }
 
   Ok(GitFileDiffPayload {
     path: summary.path,
-    old_path: parsed.as_ref().and_then(|file| file.old_path.clone()).or(summary.old_path),
-    new_path: parsed.as_ref().and_then(|file| file.new_path.clone()).or(summary.new_path),
+    old_path: old_path_final,
+    new_path: new_path_final,
     additions: summary.additions,
     deletions: summary.deletions,
     changed_line_count: summary.changed_line_count,
     is_binary,
     is_directory: summary.is_directory,
     is_untracked: summary.is_untracked,
-    status: parsed.as_ref().map(|file| file.status).unwrap_or(summary.status),
-    rows: parsed.map(|file| file.rows).unwrap_or_default(),
+    status: status_final,
+    rows,
+    truncated,
   })
 }
 
@@ -242,6 +268,14 @@ fn summary_matches_path(entry: &GitChangeSummary, path: &str) -> bool {
 }
 
 fn stage_index_entry(index: &mut git2::Index, entry: &GitChangeSummary) -> Result<(), String> {
+  if entry.is_directory {
+    let trimmed = entry.path.trim_end_matches('/');
+    index
+      .add_all([trimmed].iter(), IndexAddOption::DEFAULT, None)
+      .map_err(|error| git_error("Failed to stage directory", error))?;
+    return Ok(());
+  }
+
   match entry.status {
     GitFileStatus::Deleted => {
       index
@@ -395,19 +429,6 @@ fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, String> {
   }
 }
 
-fn render_section_diff(
-  repo: &Repository,
-  section: GitDiffSection,
-  pathspec: Option<&str>,
-) -> Result<String, String> {
-  let mut diff = match section {
-    GitDiffSection::Staged => staged_diff(repo, pathspec)?,
-    GitDiffSection::Unstaged => unstaged_diff(repo, pathspec)?,
-  };
-  find_similar(&mut diff)?;
-  render_diff(&diff)
-}
-
 fn parsed_file_matches_summary(file: &ParsedDiffFile, summary: &GitChangeSummary) -> bool {
   let candidates = [
     Some(summary.path.as_str()),
@@ -421,45 +442,46 @@ fn parsed_file_matches_summary(file: &ParsedDiffFile, summary: &GitChangeSummary
 }
 
 fn get_staged_summaries(repo: &Repository) -> Result<Vec<GitChangeSummary>, String> {
-  let mut diff = staged_diff(repo, None)?;
+  let mut diff = staged_diff(repo, &[])?;
   find_similar(&mut diff)?;
-  collect_summaries(repo, &diff, GitDiffSection::Staged)
+  collect_summaries(repo, &diff, GitDiffSection::Staged, &[])
 }
 
 fn get_unstaged_summaries(repo: &Repository) -> Result<Vec<GitChangeSummary>, String> {
-  let mut diff = unstaged_diff(repo, None)?;
+  let mut diff = unstaged_diff(repo, &[])?;
   find_similar(&mut diff)?;
-  collect_summaries(repo, &diff, GitDiffSection::Unstaged)
+  collect_summaries(repo, &diff, GitDiffSection::Unstaged, &[])
 }
 
-fn staged_diff<'repo>(repo: &'repo Repository, pathspec: Option<&str>) -> Result<Diff<'repo>, String> {
+fn staged_diff<'repo>(repo: &'repo Repository, pathspecs: &[&str]) -> Result<Diff<'repo>, String> {
   let index = repo.index().map_err(|error| git_error("Failed to open git index", error))?;
   let head_tree = head_commit(repo)?
     .map(|commit| commit.tree().map_err(|error| git_error("Failed to load HEAD tree", error)))
     .transpose()?;
-  let mut options = diff_options(pathspec, false);
+  let mut options = diff_options(pathspecs, false);
   repo
     .diff_tree_to_index(head_tree.as_ref(), Some(&index), Some(&mut options))
     .map_err(|error| git_error("Failed to generate staged diff", error))
 }
 
-fn unstaged_diff<'repo>(repo: &'repo Repository, pathspec: Option<&str>) -> Result<Diff<'repo>, String> {
+fn unstaged_diff<'repo>(repo: &'repo Repository, pathspecs: &[&str]) -> Result<Diff<'repo>, String> {
   let index = repo.index().map_err(|error| git_error("Failed to open git index", error))?;
-  let mut options = diff_options(pathspec, true);
+  let mut options = diff_options(pathspecs, true);
   repo
     .diff_index_to_workdir(Some(&index), Some(&mut options))
     .map_err(|error| git_error("Failed to generate unstaged diff", error))
 }
 
-fn diff_options(pathspec: Option<&str>, include_untracked: bool) -> DiffOptions {
+fn diff_options(pathspecs: &[&str], include_untracked: bool) -> DiffOptions {
   let mut options = DiffOptions::new();
   options
     .include_typechange(true)
     .include_untracked(include_untracked)
-    .recurse_untracked_dirs(include_untracked)
-    .include_unmodified(false);
-  if let Some(path) = pathspec {
-    options.pathspec(path);
+    .recurse_untracked_dirs(false)
+    .include_unmodified(false)
+    .max_size(MAX_DIFF_BLOB_SIZE);
+  for pathspec in pathspecs {
+    options.pathspec(*pathspec);
   }
   options
 }
@@ -473,9 +495,10 @@ fn collect_summaries(
   repo: &Repository,
   diff: &Diff<'_>,
   section: GitDiffSection,
+  pathspecs: &[&str],
 ) -> Result<Vec<GitChangeSummary>, String> {
   let untracked_paths = if section == GitDiffSection::Unstaged {
-    get_untracked_paths(repo)?
+    get_untracked_paths(repo, pathspecs)?
   } else {
     HashSet::new()
   };
@@ -760,12 +783,15 @@ impl ParsedDiffFileBuilder {
   }
 }
 
-fn get_untracked_paths(repo: &Repository) -> Result<HashSet<String>, String> {
+fn get_untracked_paths(repo: &Repository, pathspecs: &[&str]) -> Result<HashSet<String>, String> {
   let mut options = StatusOptions::new();
   options
     .include_untracked(true)
-    .recurse_untracked_dirs(true)
+    .recurse_untracked_dirs(false)
     .include_unmodified(false);
+  for pathspec in pathspecs {
+    options.pathspec(*pathspec);
+  }
   let statuses = repo
     .statuses(Some(&mut options))
     .map_err(|error| git_error("Failed to read git status", error))?;
@@ -788,35 +814,59 @@ struct UntrackedEntrySummary {
   is_directory: bool,
 }
 
-fn summarize_untracked_entry(repo: &Repository, path: &str) -> Result<UntrackedEntrySummary, String> {
+enum UntrackedRead {
+  Directory,
+  Oversized,
+  Loaded {
+    contents: Vec<u8>,
+    line_count: usize,
+    is_binary: bool,
+  },
+}
+
+fn read_untracked_within_cap(repo: &Repository, path: &str) -> Result<UntrackedRead, String> {
   let full_path = worktree_full_path(repo, path)?;
   let metadata = fs::metadata(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
   if metadata.is_dir() {
-    return Ok(UntrackedEntrySummary {
+    return Ok(UntrackedRead::Directory);
+  }
+  if metadata.len() > MAX_UNTRACKED_PREVIEW_BYTES {
+    return Ok(UntrackedRead::Oversized);
+  }
+  let contents = fs::read(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
+  let (line_count, is_binary) = summarize_untracked_contents(&contents)?;
+  Ok(UntrackedRead::Loaded {
+    contents,
+    line_count,
+    is_binary,
+  })
+}
+
+fn summarize_untracked_entry(repo: &Repository, path: &str) -> Result<UntrackedEntrySummary, String> {
+  Ok(match read_untracked_within_cap(repo, path)? {
+    UntrackedRead::Directory => UntrackedEntrySummary {
       line_count: 0,
       is_binary: false,
       is_directory: true,
-    });
-  }
-
-  let contents = fs::read(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
-  let (line_count, is_binary) = summarize_untracked_contents(&contents)?;
-  Ok(UntrackedEntrySummary {
-    line_count,
-    is_binary,
-    is_directory: false,
+    },
+    UntrackedRead::Oversized => UntrackedEntrySummary {
+      line_count: 0,
+      is_binary: true,
+      is_directory: false,
+    },
+    UntrackedRead::Loaded { line_count, is_binary, .. } => UntrackedEntrySummary {
+      line_count,
+      is_binary,
+      is_directory: false,
+    },
   })
 }
 
 fn render_untracked_diff(repo: &Repository, path: &str) -> Result<String, String> {
-  let full_path = worktree_full_path(repo, path)?;
-  let metadata = fs::metadata(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
-  if metadata.is_dir() {
-    return Ok(String::new());
-  }
-
-  let contents = fs::read(&full_path).map_err(|error| format!("Failed to read '{}': {error}", path))?;
-  let (line_count, is_binary) = summarize_untracked_contents(&contents)?;
+  let (contents, line_count, is_binary) = match read_untracked_within_cap(repo, path)? {
+    UntrackedRead::Directory | UntrackedRead::Oversized => return Ok(String::new()),
+    UntrackedRead::Loaded { contents, line_count, is_binary } => (contents, line_count, is_binary),
+  };
   if is_binary {
     return Ok(String::new());
   }
@@ -857,7 +907,8 @@ fn summarize_untracked_contents(contents: &[u8]) -> Result<(usize, bool), String
   if contents.is_empty() {
     return Ok((0, false));
   }
-  if contents.contains(&0) {
+  let sniff_len = contents.len().min(BINARY_SNIFF_BYTES);
+  if contents[..sniff_len].contains(&0) {
     return Ok((0, true));
   }
   let newline_count = contents.iter().filter(|byte| **byte == b'\n').count();
@@ -917,7 +968,7 @@ fn command_error(fallback: &str, output: &std::process::Output) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use git2::{IndexAddOption, Repository, Signature};
+  use git2::{Repository, Signature};
   use std::path::PathBuf;
   use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -993,6 +1044,7 @@ mod tests {
       path.to_string_lossy().to_string(),
       GitDiffSection::Unstaged,
       "draft.txt".to_string(),
+      None,
     )
     .expect("detail");
 
@@ -1002,6 +1054,7 @@ mod tests {
     assert!(detail.rows.iter().any(|row| row.left.line_type == GitDiffLineType::Meta));
     assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "alpha"));
     assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "beta"));
+    assert!(!detail.truncated);
   }
 
   #[test]
@@ -1038,6 +1091,7 @@ mod tests {
       path.to_string_lossy().to_string(),
       GitDiffSection::Unstaged,
       "alpha.txt".to_string(),
+      None,
     )
     .expect("detail");
 
@@ -1358,6 +1412,7 @@ mod tests {
       path.to_string_lossy().to_string(),
       GitDiffSection::Staged,
       "after.txt".to_string(),
+      Some("before.txt".to_string()),
     )
     .expect("detail");
 
@@ -1374,6 +1429,175 @@ mod tests {
     assert!(file.rows.iter().any(|row| row.left.line_type == GitDiffLineType::Meta));
     assert!(file.rows.iter().any(|row| row.left.line_type == GitDiffLineType::Del && row.left.text == "old"));
     assert!(file.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "new"));
+  }
+
+  #[test]
+  fn untracked_directory_with_many_files_collapses_to_single_entry() {
+    let (repo, path) = make_temp_repo("untracked-dir-collapse");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("bigdir");
+    fs::create_dir_all(&dir).expect("create dir");
+    for index in 0..25 {
+      fs::write(dir.join(format!("file-{index}.txt")), "content\n").expect("write nested file");
+    }
+
+    let summary = summary_for(&path);
+    let entry = summary
+      .unstaged
+      .iter()
+      .find(|item| item.path == "bigdir/")
+      .expect("collapsed directory entry");
+    assert!(entry.is_directory);
+    assert!(entry.is_untracked);
+    assert_eq!(entry.status, GitFileStatus::Untracked);
+    assert!(!summary.unstaged.iter().any(|item| item.path.starts_with("bigdir/") && item.path != "bigdir/"));
+  }
+
+  #[test]
+  fn stage_file_change_stages_untracked_directory_contents() {
+    let (repo, path) = make_temp_repo("stage-untracked-dir");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("bigdir");
+    fs::create_dir_all(&dir).expect("create dir");
+    fs::write(dir.join("file-0.txt"), "content\n").expect("write nested file");
+    fs::write(dir.join("file-1.txt"), "content\n").expect("write nested file");
+
+    stage_file_change(path.to_string_lossy().to_string(), "bigdir/".to_string()).expect("stage directory");
+
+    let summary = summary_for(&path);
+    assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-0.txt"));
+    assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-1.txt"));
+    assert!(!summary.unstaged.iter().any(|entry| entry.path == "bigdir/"));
+  }
+
+  #[test]
+  fn stage_all_changes_stages_untracked_directory_contents() {
+    let (repo, path) = make_temp_repo("stage-all-untracked-dir");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("bigdir");
+    fs::create_dir_all(&dir).expect("create dir");
+    fs::write(dir.join("file-0.txt"), "content\n").expect("write nested file");
+    fs::write(dir.join("file-1.txt"), "content\n").expect("write nested file");
+
+    stage_all_changes(path.to_string_lossy().to_string()).expect("stage all");
+
+    let summary = summary_for(&path);
+    assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-0.txt"));
+    assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-1.txt"));
+    assert!(!summary.unstaged.iter().any(|entry| entry.path == "bigdir/"));
+  }
+
+  #[test]
+  fn summary_marks_oversized_untracked_file_binary_without_reading_it_fully() {
+    let (repo, path) = make_temp_repo("oversized-untracked");
+    let workdir = repo.workdir().expect("workdir");
+    let content = vec![b'a'; (MAX_UNTRACKED_PREVIEW_BYTES + 1) as usize];
+    fs::write(workdir.join("huge.txt"), &content).expect("write huge file");
+
+    let summary = summary_for(&path);
+    let entry = summary
+      .unstaged
+      .iter()
+      .find(|item| item.path == "huge.txt")
+      .expect("huge file entry");
+    assert!(entry.is_binary);
+    assert_eq!(entry.additions, 0);
+
+    let detail = get_git_file_diff(
+      path.to_string_lossy().to_string(),
+      GitDiffSection::Unstaged,
+      "huge.txt".to_string(),
+      None,
+    )
+    .expect("detail");
+    assert!(detail.rows.is_empty());
+  }
+
+  #[test]
+  fn detail_truncates_rows_beyond_row_cap() {
+    let (repo, path) = make_temp_repo("truncate-rows");
+    let workdir = repo.workdir().expect("workdir");
+    let mut content = String::new();
+    for index in 0..(MAX_DIFF_ROWS + 500) {
+      content.push_str(&format!("l{index}\n"));
+    }
+    fs::write(workdir.join("large.txt"), content).expect("write large file");
+    fs::write(workdir.join("small.txt"), "one\ntwo\n").expect("write small file");
+
+    let large_detail = get_git_file_diff(
+      path.to_string_lossy().to_string(),
+      GitDiffSection::Unstaged,
+      "large.txt".to_string(),
+      None,
+    )
+    .expect("large detail");
+    assert!(large_detail.rows.len() <= MAX_DIFF_ROWS);
+    assert!(large_detail.truncated);
+
+    let small_detail = get_git_file_diff(
+      path.to_string_lossy().to_string(),
+      GitDiffSection::Unstaged,
+      "small.txt".to_string(),
+      None,
+    )
+    .expect("small detail");
+    assert!(!small_detail.truncated);
+  }
+
+  #[test]
+  fn detail_scopes_rename_diff_away_from_unrelated_staged_file() {
+    let (repo, path) = make_temp_repo("rename-scoped");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("before.txt"), "same\n").expect("write before");
+    fs::write(workdir.join("unrelated.txt"), "zero\n").expect("write unrelated");
+    commit_all(&repo, "initial");
+
+    let status = std::process::Command::new("git")
+      .current_dir(&path)
+      .args(["mv", "before.txt", "after.txt"])
+      .status()
+      .expect("run git mv");
+    assert!(status.success());
+
+    fs::write(workdir.join("unrelated.txt"), "zero\nUNRELATED_MARKER\n").expect("update unrelated");
+    let add_status = std::process::Command::new("git")
+      .current_dir(&path)
+      .args(["add", "unrelated.txt"])
+      .status()
+      .expect("stage unrelated");
+    assert!(add_status.success());
+
+    let detail = get_git_file_diff(
+      path.to_string_lossy().to_string(),
+      GitDiffSection::Staged,
+      "after.txt".to_string(),
+      Some("before.txt".to_string()),
+    )
+    .expect("detail");
+
+    assert_eq!(detail.status, GitFileStatus::Renamed);
+    assert_eq!(detail.old_path.as_deref(), Some("before.txt"));
+    assert_eq!(detail.new_path.as_deref(), Some("after.txt"));
+    assert!(!detail.rows.iter().any(|row| row.left.text.contains("UNRELATED_MARKER") || row.right.text.contains("UNRELATED_MARKER")));
+  }
+
+  #[test]
+  fn tracked_file_rewritten_beyond_max_blob_size_is_treated_as_binary() {
+    let (repo, path) = make_temp_repo("oversized-tracked");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join("alpha.txt"), "one\n").expect("write alpha");
+    commit_all(&repo, "initial");
+
+    let content = vec![b'b'; (MAX_DIFF_BLOB_SIZE + 1) as usize];
+    fs::write(workdir.join("alpha.txt"), &content).expect("rewrite alpha huge");
+
+    let summary = summary_for(&path);
+    let entry = summary
+      .unstaged
+      .iter()
+      .find(|item| item.path == "alpha.txt")
+      .expect("alpha entry");
+    assert!(entry.is_binary);
   }
 
 }
