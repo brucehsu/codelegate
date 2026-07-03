@@ -194,7 +194,8 @@ function buildInitialFileOpenMap(summary: GitChangeSummaryPayload) {
         autoOpened < AUTO_OPEN_LIMIT &&
         file.changedLineCount <= LARGE_DIFF_THRESHOLD &&
         !file.isBinary &&
-        !file.isDirectory;
+        !file.isDirectory &&
+        !file.fromUntrackedDir;
       next[key] = shouldAutoOpen;
       if (shouldAutoOpen) {
         autoOpened += 1;
@@ -238,6 +239,7 @@ function summariesMatch(left: GitChangeSummary, right: GitChangeSummary) {
     left.isBinary === right.isBinary &&
     left.isDirectory === right.isDirectory &&
     left.isUntracked === right.isUntracked &&
+    left.fromUntrackedDir === right.fromUntrackedDir &&
     left.status === right.status
   );
 }
@@ -695,13 +697,15 @@ export default function GitDiff({
       if (currentStatus === "loading" || currentStatus === "ready") {
         return;
       }
+      const sectionEntry = summaryRef.current[section].find((entry) => entry.path === filePath);
+      if (sectionEntry?.isDirectory) {
+        return;
+      }
 
       const requestGeneration = detailGenerationRef.current;
       const token = (detailRequestTokensRef.current[fileKey] ?? 0) + 1;
       detailRequestTokensRef.current[fileKey] = token;
       setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "loading" } }));
-
-      const sectionEntry = summaryRef.current[section].find((entry) => entry.path === filePath);
 
       try {
         const detail = await invoke<GitFileDiffPayload>("get_git_file_diff", {

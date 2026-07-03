@@ -12,6 +12,8 @@ const MAX_UNTRACKED_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DIFF_BLOB_SIZE: i64 = MAX_UNTRACKED_PREVIEW_BYTES as i64;
 const MAX_DIFF_ROWS: usize = 4000;
 const BINARY_SNIFF_BYTES: usize = 8192;
+const MAX_UNTRACKED_DIR_FILES: usize = 15;
+const MAX_UNTRACKED_DIR_WALK_ENTRIES: usize = 512;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -42,6 +44,7 @@ pub struct GitChangeSummary {
   pub is_binary: bool,
   pub is_directory: bool,
   pub is_untracked: bool,
+  pub from_untracked_dir: bool,
   pub status: GitFileStatus,
 }
 
@@ -64,6 +67,7 @@ pub struct GitFileDiffPayload {
   pub is_binary: bool,
   pub is_directory: bool,
   pub is_untracked: bool,
+  pub from_untracked_dir: bool,
   pub status: GitFileStatus,
   pub rows: Vec<GitDiffRow>,
   pub truncated: bool,
@@ -160,6 +164,7 @@ pub fn get_git_file_diff(
   let summary = collect_summaries(&repo, &diff, section, &pathspecs)?
     .into_iter()
     .find(|entry| entry.path == file_path)
+    .or_else(|| synthesize_untracked_summary(&repo, section, &file_path))
     .ok_or_else(|| format!("Unable to find diff for '{}'", file_path))?;
 
   let diff_text = if summary.is_untracked {
@@ -196,6 +201,7 @@ pub fn get_git_file_diff(
     is_binary,
     is_directory: summary.is_directory,
     is_untracked: summary.is_untracked,
+    from_untracked_dir: summary.from_untracked_dir,
     status: status_final,
     rows,
     truncated,
@@ -503,7 +509,8 @@ fn get_staged_summaries(repo: &Repository) -> Result<Vec<GitChangeSummary>, Stri
 fn get_unstaged_summaries(repo: &Repository) -> Result<Vec<GitChangeSummary>, String> {
   let mut diff = unstaged_diff(repo, &[])?;
   find_similar(&mut diff)?;
-  collect_summaries(repo, &diff, GitDiffSection::Unstaged, &[])
+  let summaries = collect_summaries(repo, &diff, GitDiffSection::Unstaged, &[])?;
+  Ok(expand_untracked_dir_summaries(repo, summaries))
 }
 
 fn staged_diff<'repo>(repo: &'repo Repository, pathspecs: &[&str]) -> Result<Diff<'repo>, String> {
@@ -560,7 +567,152 @@ fn collect_summaries(
     .deltas()
     .enumerate()
     .map(|(index, delta)| build_summary(repo, diff, index, delta, section, &untracked_paths))
-    .collect()
+    .collect::<Result<Vec<_>, _>>()
+}
+
+/// Replaces each collapsed untracked-directory entry with individual file entries when the
+/// directory is small enough to enumerate safely; otherwise keeps it collapsed. Runs only for the
+/// unstaged section, where untracked directories can appear.
+fn expand_untracked_dir_summaries(
+  repo: &Repository,
+  summaries: Vec<GitChangeSummary>,
+) -> Vec<GitChangeSummary> {
+  let mut expanded = Vec::with_capacity(summaries.len());
+  for summary in summaries {
+    if summary.is_untracked && summary.is_directory {
+      // Expansion is best-effort: if the directory can't be enumerated or any file can't be
+      // summarized, fall back to the original collapsed entry so one problem directory collapses
+      // only itself instead of failing the whole Git summary.
+      if let Some(entries) = try_expand_untracked_dir(repo, &summary.path) {
+        expanded.extend(entries);
+        continue;
+      }
+    }
+    expanded.push(summary);
+  }
+  expanded
+}
+
+/// Attempts to expand a single collapsed untracked directory into per-file summaries. Returns
+/// `None` when the directory should stay collapsed, whether because it is too large or unsafe to
+/// walk, or because enumerating or summarizing it hit an error. In every `None` case the caller
+/// keeps the original collapsed directory entry.
+fn try_expand_untracked_dir(repo: &Repository, dir_path: &str) -> Option<Vec<GitChangeSummary>> {
+  let paths = list_untracked_dir_files(repo, dir_path)?;
+  let mut entries = Vec::with_capacity(paths.len());
+  for path in paths {
+    let entry = summarize_untracked_entry(repo, &path).ok()?;
+    entries.push(untracked_file_summary(path, &entry));
+  }
+  Some(entries)
+}
+
+/// Bounded depth-first walk of an untracked directory. Returns `Some(sorted repo-relative file
+/// paths)` when the directory is small enough to expand, or `None` when it should stay collapsed
+/// (too many files, too many visited entries, a nested repository, or an empty result). Never
+/// follows symlinks and never counts ignored entries toward the file cap.
+fn list_untracked_dir_files(repo: &Repository, dir_path: &str) -> Option<Vec<String>> {
+  let trimmed = dir_path.trim_end_matches('/');
+  let root = worktree_full_path(repo, trimmed).ok()?;
+
+  let mut files: Vec<String> = Vec::new();
+  let mut visited: usize = 0;
+  let mut stack: Vec<(PathBuf, String)> = vec![(root, trimmed.to_string())];
+
+  while let Some((dir_full, dir_rel)) = stack.pop() {
+    // Expansion is best-effort: a directory git enumerated that we can no longer read (unreadable
+    // permissions, or a watcher-triggered refresh racing a deletion) just means "do not expand".
+    // Keep the directory collapsed instead of failing the entire Git summary.
+    let Ok(entries) = fs::read_dir(&dir_full) else {
+      return None;
+    };
+    for entry in entries {
+      let Ok(entry) = entry else {
+        return None;
+      };
+      visited += 1;
+      if visited > MAX_UNTRACKED_DIR_WALK_ENTRIES {
+        return None;
+      }
+
+      let file_name = entry.file_name();
+      let name = file_name.to_string_lossy();
+      // A nested repository can't be enumerated safely; keep the directory collapsed.
+      if name.as_ref() == ".git" {
+        return None;
+      }
+
+      let rel = format!("{dir_rel}/{name}");
+      // Ignored entries never count toward the file cap and are never descended into.
+      if repo.is_path_ignored(&rel).unwrap_or(false) {
+        continue;
+      }
+
+      // A file type we cannot stat (permissions, or the entry vanished mid-walk) degrades the
+      // whole directory to collapsed rather than propagating an error.
+      let Ok(file_type) = entry.file_type() else {
+        return None;
+      };
+      if file_type.is_dir() {
+        stack.push((entry.path(), rel));
+      } else {
+        // Symlinks are counted as files and never followed.
+        files.push(rel);
+        if files.len() > MAX_UNTRACKED_DIR_FILES {
+          return None;
+        }
+      }
+    }
+  }
+
+  if files.is_empty() {
+    return None;
+  }
+
+  files.sort();
+  Some(files)
+}
+
+/// Builds a synthetic new-file summary for a single file discovered inside an expanded untracked
+/// directory.
+fn untracked_file_summary(path: String, entry: &UntrackedEntrySummary) -> GitChangeSummary {
+  GitChangeSummary {
+    old_path: Some(path.clone()),
+    new_path: Some(path.clone()),
+    path,
+    additions: entry.line_count,
+    deletions: 0,
+    changed_line_count: entry.line_count,
+    is_binary: entry.is_binary,
+    is_directory: false,
+    is_untracked: true,
+    from_untracked_dir: true,
+    status: GitFileStatus::Untracked,
+  }
+}
+
+/// Primary resolution for a file requested inside an untracked directory on the detail endpoint.
+/// `get_git_file_diff` no longer expands untracked directories, so a path like `dir/file.txt` is
+/// absent from the collected summaries and is resolved here instead. `status_file` is exact-path,
+/// so this stays O(1)-bounded and only synthesizes a summary for a real, newly created (untracked)
+/// file.
+fn synthesize_untracked_summary(
+  repo: &Repository,
+  section: GitDiffSection,
+  file_path: &str,
+) -> Option<GitChangeSummary> {
+  if section != GitDiffSection::Unstaged {
+    return None;
+  }
+  let status = repo.status_file(Path::new(file_path)).ok()?;
+  if !status.contains(Status::WT_NEW) {
+    return None;
+  }
+  let entry = summarize_untracked_entry(repo, file_path).ok()?;
+  if entry.is_directory {
+    return None;
+  }
+  Some(untracked_file_summary(file_path.to_string(), &entry))
 }
 
 fn build_summary(
@@ -601,6 +753,7 @@ fn build_summary(
     is_binary,
     is_directory,
     is_untracked,
+    from_untracked_dir: false,
     status: map_delta_status(delta.status(), is_untracked),
   })
 }
@@ -1067,6 +1220,13 @@ mod tests {
     get_git_change_summary(path.to_string_lossy().to_string()).expect("summary")
   }
 
+  fn write_numbered_files(dir: &std::path::Path, count: usize) {
+    fs::create_dir_all(dir).expect("create numbered files dir");
+    for index in 0..count {
+      fs::write(dir.join(format!("file-{index}.txt")), "content\n").expect("write numbered file");
+    }
+  }
+
   #[test]
   fn summary_marks_large_untracked_file() {
     let (repo, path) = make_temp_repo("summary-untracked");
@@ -1489,10 +1649,7 @@ mod tests {
     let (repo, path) = make_temp_repo("untracked-dir-collapse");
     let workdir = repo.workdir().expect("workdir");
     let dir = workdir.join("bigdir");
-    fs::create_dir_all(&dir).expect("create dir");
-    for index in 0..25 {
-      fs::write(dir.join(format!("file-{index}.txt")), "content\n").expect("write nested file");
-    }
+    write_numbered_files(&dir, 25);
 
     let summary = summary_for(&path);
     let entry = summary
@@ -1511,15 +1668,18 @@ mod tests {
     let (repo, path) = make_temp_repo("stage-untracked-dir");
     let workdir = repo.workdir().expect("workdir");
     let dir = workdir.join("bigdir");
-    fs::create_dir_all(&dir).expect("create dir");
-    fs::write(dir.join("file-0.txt"), "content\n").expect("write nested file");
-    fs::write(dir.join("file-1.txt"), "content\n").expect("write nested file");
+    // 16 files keep the directory collapsed, so staging still exercises the directory add_all path.
+    write_numbered_files(&dir, 16);
+
+    // The directory stays collapsed as a single entry rather than expanding to file entries.
+    let before = summary_for(&path);
+    assert!(before.unstaged.iter().any(|entry| entry.path == "bigdir/" && entry.is_directory));
 
     stage_file_change(path.to_string_lossy().to_string(), "bigdir/".to_string()).expect("stage directory");
 
     let summary = summary_for(&path);
     assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-0.txt"));
-    assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-1.txt"));
+    assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-15.txt"));
     assert!(!summary.unstaged.iter().any(|entry| entry.path == "bigdir/"));
   }
 
@@ -1538,6 +1698,215 @@ mod tests {
     assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-0.txt"));
     assert!(summary.staged.iter().any(|entry| entry.path == "bigdir/file-1.txt"));
     assert!(!summary.unstaged.iter().any(|entry| entry.path == "bigdir/"));
+  }
+
+  #[test]
+  fn untracked_directory_with_few_files_expands_to_file_entries() {
+    let (repo, path) = make_temp_repo("untracked-dir-expand");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("smalldir");
+    fs::create_dir_all(dir.join("nested")).expect("create nested dir");
+    fs::write(dir.join("alpha.txt"), "one\n").expect("write alpha");
+    fs::write(dir.join("beta.txt"), "two\nthree\n").expect("write beta");
+    fs::write(dir.join("nested").join("gamma.txt"), "four\n").expect("write nested gamma");
+
+    let summary = summary_for(&path);
+    // The collapsed directory entry is gone, replaced by one entry per file.
+    assert!(!summary.unstaged.iter().any(|entry| entry.path == "smalldir/"));
+
+    let alpha = summary
+      .unstaged
+      .iter()
+      .find(|entry| entry.path == "smalldir/alpha.txt")
+      .expect("alpha entry");
+    assert!(alpha.is_untracked);
+    assert!(alpha.from_untracked_dir);
+    assert!(!alpha.is_directory);
+    assert_eq!(alpha.status, GitFileStatus::Untracked);
+    assert_eq!(alpha.additions, 1);
+    assert_eq!(alpha.deletions, 0);
+    assert_eq!(alpha.old_path.as_deref(), Some("smalldir/alpha.txt"));
+    assert_eq!(alpha.new_path.as_deref(), Some("smalldir/alpha.txt"));
+
+    let beta = summary
+      .unstaged
+      .iter()
+      .find(|entry| entry.path == "smalldir/beta.txt")
+      .expect("beta entry");
+    assert!(beta.from_untracked_dir);
+    assert_eq!(beta.additions, 2);
+
+    // Nested files are expanded too, with forward-slash paths and no trailing slash.
+    let gamma = summary
+      .unstaged
+      .iter()
+      .find(|entry| entry.path == "smalldir/nested/gamma.txt")
+      .expect("nested gamma entry");
+    assert!(gamma.from_untracked_dir);
+    assert!(!gamma.is_directory);
+  }
+
+  #[test]
+  fn detail_returns_diff_for_file_in_small_untracked_directory() {
+    let (repo, path) = make_temp_repo("untracked-dir-detail");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("smalldir");
+    fs::create_dir_all(&dir).expect("create dir");
+    fs::write(dir.join("alpha.txt"), "one\ntwo\n").expect("write alpha");
+
+    let detail = get_git_file_diff(
+      path.to_string_lossy().to_string(),
+      GitDiffSection::Unstaged,
+      "smalldir/alpha.txt".to_string(),
+      None,
+    )
+    .expect("detail");
+
+    assert_eq!(detail.path, "smalldir/alpha.txt");
+    assert!(detail.is_untracked);
+    assert!(detail.from_untracked_dir);
+    assert!(!detail.is_directory);
+    assert_eq!(detail.additions, 2);
+    assert_eq!(detail.deletions, 0);
+    assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "one"));
+    assert!(detail.rows.iter().any(|row| row.right.line_type == GitDiffLineType::Add && row.right.text == "two"));
+    assert!(!detail.truncated);
+  }
+
+  #[test]
+  fn untracked_directory_expands_at_fifteen_and_collapses_at_sixteen() {
+    let (repo, path) = make_temp_repo("untracked-dir-boundary");
+    let workdir = repo.workdir().expect("workdir");
+
+    let fifteen = workdir.join("fifteen");
+    write_numbered_files(&fifteen, 15);
+
+    let sixteen = workdir.join("sixteen");
+    write_numbered_files(&sixteen, 16);
+
+    let summary = summary_for(&path);
+
+    // Exactly 15 files: expanded, no collapsed directory entry.
+    assert!(!summary.unstaged.iter().any(|entry| entry.path == "fifteen/"));
+    let expanded_fifteen = summary
+      .unstaged
+      .iter()
+      .filter(|entry| entry.path.starts_with("fifteen/"))
+      .collect::<Vec<_>>();
+    assert_eq!(expanded_fifteen.len(), 15);
+    assert!(expanded_fifteen.iter().all(|entry| entry.from_untracked_dir && !entry.is_directory));
+
+    // 16 files: stays a single collapsed directory entry.
+    let sixteen_entry = summary
+      .unstaged
+      .iter()
+      .find(|entry| entry.path == "sixteen/")
+      .expect("collapsed sixteen directory entry");
+    assert!(sixteen_entry.is_directory);
+    assert!(sixteen_entry.is_untracked);
+    assert!(!sixteen_entry.from_untracked_dir);
+    assert!(!summary
+      .unstaged
+      .iter()
+      .any(|entry| entry.path.starts_with("sixteen/") && entry.path != "sixteen/"));
+  }
+
+  #[test]
+  fn untracked_directory_ignored_files_do_not_count_toward_expansion_cap() {
+    let (repo, path) = make_temp_repo("untracked-dir-ignored");
+    let workdir = repo.workdir().expect("workdir");
+    fs::write(workdir.join(".gitignore"), "mixed/*.log\n").expect("write gitignore");
+
+    let dir = workdir.join("mixed");
+    write_numbered_files(&dir, 3);
+    // 20 ignored files would blow past the cap of 15 if they counted.
+    for index in 0..20 {
+      fs::write(dir.join(format!("ignored-{index}.log")), "noise\n").expect("write ignored file");
+    }
+
+    let summary = summary_for(&path);
+    // Ignored files are skipped, so the 3 real files expand instead of collapsing.
+    assert!(!summary.unstaged.iter().any(|entry| entry.path == "mixed/"));
+    let expanded = summary
+      .unstaged
+      .iter()
+      .filter(|entry| entry.path.starts_with("mixed/"))
+      .map(|entry| entry.path.as_str())
+      .collect::<Vec<_>>();
+    assert_eq!(expanded.len(), 3);
+    assert!(expanded.contains(&"mixed/file-0.txt"));
+    assert!(expanded.contains(&"mixed/file-1.txt"));
+    assert!(expanded.contains(&"mixed/file-2.txt"));
+    assert!(!expanded.iter().any(|entry| entry.ends_with(".log")));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn untracked_directory_with_unreadable_subdir_stays_collapsed_without_error() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (repo, path) = make_temp_repo("untracked-dir-unreadable");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("outer");
+    let locked = dir.join("locked");
+    fs::create_dir_all(&locked).expect("create nested dir");
+    fs::write(dir.join("keep.txt"), "one\n").expect("write readable file");
+
+    // An unreadable subdirectory makes the expansion walk hit EACCES on read_dir. Pre-feature this
+    // directory rendered as one collapsed entry; the walk must degrade to that, never error.
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("lock subdir");
+
+    let result = get_git_change_summary(path.to_string_lossy().to_string());
+
+    // Restore permissions before asserting so the temp directory can always be cleaned up.
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("restore subdir");
+
+    let summary = result.expect("summary should not error");
+
+    let entry = summary
+      .unstaged
+      .iter()
+      .find(|item| item.path == "outer/")
+      .expect("collapsed directory entry");
+    assert!(entry.is_directory);
+    assert!(entry.is_untracked);
+    assert_eq!(entry.status, GitFileStatus::Untracked);
+    assert!(!entry.from_untracked_dir);
+    // No per-file entries leaked out of the directory that could not be expanded.
+    assert!(!summary
+      .unstaged
+      .iter()
+      .any(|item| item.path.starts_with("outer/") && item.path != "outer/"));
+  }
+
+  #[test]
+  fn stage_file_change_stages_single_file_from_expanded_untracked_directory() {
+    let (repo, path) = make_temp_repo("stage-expanded-file");
+    let workdir = repo.workdir().expect("workdir");
+    let dir = workdir.join("smalldir");
+    fs::create_dir_all(&dir).expect("create dir");
+    fs::write(dir.join("alpha.txt"), "one\n").expect("write alpha");
+    fs::write(dir.join("beta.txt"), "two\n").expect("write beta");
+
+    // Both files are expanded (from an untracked directory) before staging.
+    let before = summary_for(&path);
+    assert!(before
+      .unstaged
+      .iter()
+      .any(|entry| entry.path == "smalldir/alpha.txt" && entry.from_untracked_dir));
+    assert!(before
+      .unstaged
+      .iter()
+      .any(|entry| entry.path == "smalldir/beta.txt" && entry.from_untracked_dir));
+
+    stage_file_change(path.to_string_lossy().to_string(), "smalldir/alpha.txt".to_string())
+      .expect("stage single file");
+
+    let summary = summary_for(&path);
+    assert!(summary.staged.iter().any(|entry| entry.path == "smalldir/alpha.txt"));
+    assert!(!summary.staged.iter().any(|entry| entry.path == "smalldir/beta.txt"));
+    assert!(!summary.unstaged.iter().any(|entry| entry.path == "smalldir/alpha.txt"));
+    assert!(summary.unstaged.iter().any(|entry| entry.path == "smalldir/beta.txt"));
   }
 
   #[test]

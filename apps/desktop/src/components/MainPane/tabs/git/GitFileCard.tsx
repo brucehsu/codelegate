@@ -482,12 +482,12 @@ export default function GitFileCard({
           </ActionButton>
         }
       >
-        {detailState?.status === "loading" ? (
+        {summary.isDirectory ? (
+          renderPlaceholderDiff("Directory has too many files")
+        ) : detailState?.status === "loading" ? (
           <div className={styles.state}>Loading diff…</div>
         ) : detailState?.status === "error" ? (
           <div className={`${styles.state} ${styles.stateError}`}>{detailState.error ?? "Unable to load diff."}</div>
-        ) : file?.isDirectory ? (
-          renderPlaceholderDiff("Directory preview is not available")
         ) : file?.isBinary ? (
           renderPlaceholderDiff("Binary file changed")
         ) : file && file.rows.length === 0 ? (

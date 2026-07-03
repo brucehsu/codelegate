@@ -39,6 +39,7 @@ export interface GitChangeSummary {
   isBinary: boolean;
   isDirectory: boolean;
   isUntracked: boolean;
+  fromUntrackedDir: boolean;
   status: GitFileStatus;
 }
 
