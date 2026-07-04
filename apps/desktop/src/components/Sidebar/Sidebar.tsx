@@ -567,17 +567,17 @@ export default function Sidebar({
                     onSelectSession(session.id);
                   }}
                 >
+                  {showShortcutHints && shortcut ? (
+                    <span className={styles.popoutShortcut} aria-hidden="true">
+                      {shortcut}
+                    </span>
+                  ) : null}
                   <span className={`${styles.agentIcon} ${resolveAgentClass(agentId)}`}>
                     {resolveAgentIcon(agentId)}
                   </span>
                   <span className={styles.popoutRepo}>{groupName}</span>
                   <span className={styles.popoutBranch}>{branchTitle}</span>
                   <span className={resolveStatusClass(session, isOutputting, isUnread)} />
-                  {showShortcutHints && shortcut ? (
-                    <span className={styles.popoutShortcut} aria-hidden="true">
-                      {shortcut}
-                    </span>
-                  ) : null}
                 </button>
               </div>
             );

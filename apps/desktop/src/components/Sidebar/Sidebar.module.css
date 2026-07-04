@@ -646,7 +646,9 @@
 
 .popoutShortcut {
   flex-shrink: 0;
+  min-width: 20px;
   font-size: 0.75rem;
+  text-align: center;
 }
 
 .popoutClosing {
