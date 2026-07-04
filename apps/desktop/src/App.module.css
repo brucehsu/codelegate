@@ -1,11 +1,17 @@
 .shell {
   --sidebar-width: 360px;
+  --rail-width: 52px;
   display: grid;
   grid-template-columns: clamp(320px, var(--sidebar-width), 80%) 1fr;
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   position: relative;
   overflow: hidden;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.shellCollapsed {
+  grid-template-columns: var(--rail-width) 1fr;
 }
 
 .bootScreen {
@@ -24,6 +30,10 @@
   min-height: 0;
   display: flex;
   overflow: hidden;
+}
+
+.sidebarPaneCollapsed {
+  overflow: visible;
 }
 
 .sidebarResizeHandle {
@@ -53,12 +63,23 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
+/* Breakpoint mirrors NARROW_LAYOUT_QUERY in src/hooks/useMediaQuery.ts */
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
   }
 
+  .shellCollapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebarResizeHandle {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell {
+    transition: none;
   }
 }

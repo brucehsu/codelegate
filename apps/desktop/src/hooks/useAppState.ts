@@ -213,6 +213,7 @@ const defaultSettings = {
   shortcutModifier: "Alt",
   repoDefaults: {},
   agentArgs: {},
+  sidebarCollapsed: false,
 };
 
 const defaultConfig: AppConfig = {
@@ -700,6 +701,7 @@ export function useAppState(
             ),
             repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
             agentArgs: normalizeAgentArgs(loaded.settings?.agentArgs),
+            sidebarCollapsed: loaded.settings?.sidebarCollapsed ?? false,
           },
         } as AppConfig;
         setConfig(nextConfig);
@@ -852,6 +854,13 @@ export function useAppState(
     },
     [updateSettings]
   );
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    updateSettings((settings) => ({
+      ...settings,
+      sidebarCollapsed: !settings.sidebarCollapsed,
+    }));
+  }, [updateSettings]);
 
   const updateRepoDefaults = useCallback(
     (repoPath: string, envVars: EnvVar[], preCommands: string) => {
@@ -2273,6 +2282,7 @@ export function useAppState(
     updateRecentDirs,
     updateTerminalSettings,
     updateShortcutModifier,
+    toggleSidebarCollapsed,
     updateRepoDefaults,
     updateAgentSettings,
     startSession,

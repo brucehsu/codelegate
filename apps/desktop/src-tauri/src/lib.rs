@@ -122,6 +122,8 @@ struct AppSettings {
   repo_defaults: HashMap<String, RepoDefaults>,
   #[serde(default)]
   agent_args: HashMap<String, String>,
+  #[serde(default)]
+  sidebar_collapsed: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -721,6 +723,7 @@ fn default_config() -> AppConfig {
       shortcut_modifier: default_shortcut_modifier(),
       repo_defaults: HashMap::new(),
       agent_args: HashMap::new(),
+      sidebar_collapsed: false,
     },
   }
 }

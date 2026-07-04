@@ -19,6 +19,7 @@ import TerminateSessionDialog from "./components/TerminateSessionDialog/Terminat
 import OnboardingDialog from "./components/OnboardingDialog/OnboardingDialog";
 import { useAppState } from "./hooks/useAppState";
 import { useToasts } from "./hooks/useToasts";
+import { useMediaQuery, NARROW_LAYOUT_QUERY } from "./hooks/useMediaQuery";
 import Toasts from "./components/Toasts/Toasts";
 import type {
   AgentAvailability,
@@ -157,6 +158,7 @@ export default function App() {
     unreadOutput,
     jumpToBottom,
     persistConfig,
+    toggleSidebarCollapsed,
   } = useAppState(pushToast, focusSearch, requestCloseConfirm);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -182,6 +184,9 @@ export default function App() {
   const [collapsedRepoGroups, setCollapsedRepoGroups] = useState<Record<string, boolean>>({});
   const [sessionHotkeyPage, setSessionHotkeyPage] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
+  const isNarrow = useMediaQuery(NARROW_LAYOUT_QUERY);
+  const sidebarCollapsed = config.settings.sidebarCollapsed ?? false;
+  const effectiveCollapsed = sidebarCollapsed && !isNarrow;
   const shortcutModifier = config.settings.shortcutModifier;
   const shortcutModifierTokens = useMemo(
     () => getShortcutModifierTokens(shortcutModifier),
@@ -851,11 +856,14 @@ export default function App() {
 
   return (
     <div
-      className={styles.shell}
+      className={`${styles.shell} ${effectiveCollapsed ? styles.shellCollapsed : ""}`}
       ref={shellRef}
       style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
     >
-      <div className={styles.sidebarPane} ref={sidebarPaneRef}>
+      <div
+        className={`${styles.sidebarPane} ${effectiveCollapsed ? styles.sidebarPaneCollapsed : ""}`}
+        ref={sidebarPaneRef}
+      >
         <Sidebar
           filter={filter}
           sessionGroups={sessionGroups}
@@ -865,6 +873,12 @@ export default function App() {
           }
           sessionShortcuts={sessionShortcuts}
           activeSessionId={activeSessionId}
+          collapsed={effectiveCollapsed}
+          onToggleCollapsed={() => {
+            toggleSidebarCollapsed();
+            requestTerminalResize();
+            window.setTimeout(requestTerminalResize, 250);
+          }}
           onFilterChange={setFilter}
           onSelectSession={handleSelectSession}
           onNewSession={handleOpenDialog}
@@ -876,13 +890,15 @@ export default function App() {
           showShortcutHints={showShortcutHints}
           shortcutModifierTokens={shortcutModifierTokens}
         />
-        <div
-          className={styles.sidebarResizeHandle}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          onPointerDown={handleSidebarResizeStart}
-        />
+        {!effectiveCollapsed ? (
+          <div
+            className={styles.sidebarResizeHandle}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            onPointerDown={handleSidebarResizeStart}
+          />
+        ) : null}
       </div>
       <MainPane
         sessions={visibleSessions}
