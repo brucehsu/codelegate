@@ -154,6 +154,7 @@ export default function App() {
     refreshSessionBranch,
     terminateSession,
     agentOutputting,
+    agentUnread,
     focusActiveSession,
     unreadOutput,
     jumpToBottom,
@@ -886,6 +887,7 @@ export default function App() {
           onRenameSession={openRename}
           onTerminateSession={openTerminateDialog}
           agentOutputting={agentOutputting}
+          unreadSessions={agentUnread}
           searchRef={searchInputRef}
           showShortcutHints={showShortcutHints}
           shortcutModifierTokens={shortcutModifierTokens}

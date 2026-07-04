@@ -328,6 +328,7 @@ export function useAppState(
   const [filter, setFilter] = useState("");
   const [unreadOutput, setUnreadOutput] = useState<Record<string, boolean>>({});
   const [agentOutputting, setAgentOutputting] = useState<Record<string, boolean>>({});
+  const [agentUnread, setAgentUnread] = useState<Record<string, boolean>>({});
   const configRef = useRef(config);
   const configReadyResolveRef = useRef<(() => void) | null>(null);
   const configReadyPromiseRef = useRef(
@@ -338,6 +339,7 @@ export function useAppState(
 
   const unreadOutputRef = useRef(unreadOutput);
   const agentOutputtingRef = useRef(agentOutputting);
+  const agentUnreadRef = useRef(agentUnread);
   const agentOutputtingTimersRef = useRef<Map<string, number>>(new Map());
   const agentOutputtingSuppressUntilRef = useRef<Map<string, number>>(new Map());
   const notificationPermissionRequestRef = useRef<Promise<string> | null>(null);
@@ -349,6 +351,9 @@ export function useAppState(
   useEffect(() => {
     agentOutputtingRef.current = agentOutputting;
   }, [agentOutputting]);
+  useEffect(() => {
+    agentUnreadRef.current = agentUnread;
+  }, [agentUnread]);
   useEffect(() => {
     configRef.current = config;
   }, [config]);
@@ -458,6 +463,25 @@ export function useAppState(
       return;
     }
     setAgentOutputting((prev) => {
+      const exists = Boolean(prev[sessionId]);
+      if (exists === value) {
+        return prev;
+      }
+      if (!value) {
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      }
+      return { ...prev, [sessionId]: true };
+    });
+  }, []);
+
+  const setAgentUnreadFor = useCallback((sessionId: string, value: boolean) => {
+    const current = Boolean(agentUnreadRef.current[sessionId]);
+    if (current === value) {
+      return;
+    }
+    setAgentUnread((prev) => {
       const exists = Boolean(prev[sessionId]);
       if (exists === value) {
         return prev;
@@ -638,9 +662,12 @@ export function useAppState(
         ? sessionsRef.current.find((session) => session.id === nextSessionId)
         : null;
       activePaneKindRef.current = nextSession?.lastActivePaneKind ?? "agent";
+      if (nextSessionId) {
+        setAgentUnreadFor(nextSessionId, false);
+      }
       setActiveSessionIdState(nextSessionId);
     },
-    [snapshotActiveRuntimeViewport]
+    [setAgentUnreadFor, snapshotActiveRuntimeViewport]
   );
 
   const markConfigReady = useCallback(() => {
@@ -1663,6 +1690,7 @@ export function useAppState(
       }
 
       clearAgentOutputting(sessionId);
+      setAgentUnreadFor(sessionId, false);
       if (runtime) {
         disposeSessionRuntime(runtime);
       }
@@ -1700,7 +1728,7 @@ export function useAppState(
         void Promise.allSettled(killTasks);
       }
     },
-    [clearAgentOutputting, disposeSessionRuntime, notify, setActiveSessionId]
+    [clearAgentOutputting, disposeSessionRuntime, notify, setActiveSessionId, setAgentUnreadFor]
   );
 
   const spawnAgentForSession = useCallback(
@@ -2029,6 +2057,9 @@ export function useAppState(
         if (!suppressUntil || performance.now() >= suppressUntil) {
           markAgentOutputting(info.sessionId);
         }
+        if (activeSessionRef.current !== info.sessionId) {
+          setAgentUnreadFor(info.sessionId, true);
+        }
       }
       const shouldFollow = runtime.isFollowing !== false;
       setFollowingState(runtime, info.sessionId, info.kind, shouldFollow);
@@ -2294,6 +2325,7 @@ export function useAppState(
     closeSessionTab,
     terminateSession,
     agentOutputting,
+    agentUnread,
     focusActiveSession,
     unreadOutput,
     jumpToBottom,

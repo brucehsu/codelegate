@@ -23,6 +23,7 @@ interface SidebarProps {
   onRenameSession: (sessionId: string) => void;
   onTerminateSession: (sessionId: string) => void;
   agentOutputting: Record<string, boolean>;
+  unreadSessions?: Record<string, boolean>;
   sessionShortcuts: Record<string, string>;
   collapsedRepoGroups: Record<string, boolean>;
   onToggleRepoGroup: (repoPath: string) => void;
@@ -33,12 +34,15 @@ interface SidebarProps {
   showFooterActions?: boolean;
 }
 
-function resolveStatusClass(session: Session, isOutputting: boolean) {
+function resolveStatusClass(session: Session, isOutputting: boolean, isUnread: boolean) {
   const isRunning = session.status === "running";
+  const showOutputting = isRunning && isOutputting;
+  const showUnread = isRunning && !showOutputting && isUnread;
   return [
     styles.status,
     isRunning ? styles.statusRunning : "",
-    isRunning && isOutputting ? styles.statusOutputting : "",
+    showUnread ? styles.statusUnread : "",
+    showOutputting ? styles.statusOutputting : "",
     session.status === "error" ? styles.statusError : "",
   ]
     .filter(Boolean)
@@ -58,6 +62,7 @@ export default function Sidebar({
   onRenameSession,
   onTerminateSession,
   agentOutputting,
+  unreadSessions = {},
   sessionShortcuts,
   collapsedRepoGroups,
   onToggleRepoGroup,
@@ -328,6 +333,7 @@ export default function Sidebar({
                 const agentId = session.repo.agent;
                 const shortcut = sessionShortcuts[session.id] ?? null;
                 const isOutputting = Boolean(agentOutputting[session.id]);
+                const isUnread = Boolean(unreadSessions[session.id]);
                 const branchTitle = session.branch?.trim() || "Loading branch...";
                 return (
                   <div
@@ -347,7 +353,7 @@ export default function Sidebar({
                       <div className={styles.sessionText}>
                         <div className={styles.sessionLabel}>{branchTitle}</div>
                       </div>
-                      <span className={resolveStatusClass(session, isOutputting)} />
+                      <span className={resolveStatusClass(session, isOutputting, isUnread)} />
                     </button>
                     <div className={styles.sessionMenu} data-session-menu>
                       <button
@@ -485,6 +491,7 @@ export default function Sidebar({
               {group.sessions.map((session) => {
                 const agentId = session.repo.agent;
                 const isOutputting = Boolean(agentOutputting[session.id]);
+                const isUnread = Boolean(unreadSessions[session.id]);
                 const branchTitle = session.branch?.trim() || "Loading branch...";
                 return (
                   <button
@@ -510,7 +517,7 @@ export default function Sidebar({
                     <span className={`${styles.railAgentIcon} ${resolveAgentClass(agentId)}`}>
                       {resolveAgentIcon(agentId)}
                     </span>
-                    <span className={`${resolveStatusClass(session, isOutputting)} ${styles.railStatusBadge}`} />
+                    <span className={`${resolveStatusClass(session, isOutputting, isUnread)} ${styles.railStatusBadge}`} />
                   </button>
                 );
               })}
@@ -538,6 +545,7 @@ export default function Sidebar({
             const { session, groupName } = info;
             const agentId = session.repo.agent;
             const isOutputting = Boolean(agentOutputting[session.id]);
+            const isUnread = Boolean(unreadSessions[session.id]);
             const branchTitle = session.branch?.trim() || "Loading branch...";
             const isError = session.status === "error";
             const shortcut = sessionShortcuts[session.id] ?? null;
@@ -564,7 +572,7 @@ export default function Sidebar({
                   </span>
                   <span className={styles.popoutRepo}>{groupName}</span>
                   <span className={styles.popoutBranch}>{branchTitle}</span>
-                  <span className={resolveStatusClass(session, isOutputting)} />
+                  <span className={resolveStatusClass(session, isOutputting, isUnread)} />
                   {showShortcutHints && shortcut ? (
                     <span className={styles.popoutShortcut} aria-hidden="true">
                       {shortcut}

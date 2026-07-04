@@ -273,6 +273,11 @@
   box-shadow: 0 0 6px rgba(56, 241, 212, 0.6), 0 0 12px rgba(40, 195, 170, 0.45);
 }
 
+.statusUnread {
+  background: radial-gradient(100% 100% at 50% 50%, var(--warning), #6b4f00 70%);
+  box-shadow: 0 0 6px rgba(246, 201, 69, 0.6), 0 0 12px rgba(214, 170, 40, 0.45);
+}
+
 .statusOutputting {
   background: radial-gradient(
       70% 70% at 30% 30%,
@@ -572,6 +577,7 @@
 }
 
 .railStatusBadge.statusRunning,
+.railStatusBadge.statusUnread,
 .railStatusBadge.statusOutputting {
   box-shadow: none;
 }
