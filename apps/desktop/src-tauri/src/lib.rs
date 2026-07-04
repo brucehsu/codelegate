@@ -567,14 +567,26 @@ fn load_previous_sessions() -> Result<Option<PreviousSessionsPayload>, String> {
 
 #[tauri::command]
 fn save_previous_sessions(payload: PreviousSessionsPayload) -> Result<(), String> {
-  let file = previous_sessions_file()?;
+  write_previous_sessions_to(previous_sessions_file()?, &payload)
+}
+
+#[tauri::command]
+async fn save_previous_sessions_snapshot(payload: PreviousSessionsPayload) -> Result<(), String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    write_previous_sessions_to(previous_sessions_snapshot_file()?, &payload)
+  })
+  .await
+  .map_err(|error| format!("Failed to join previous sessions snapshot task: {error}"))?
+}
+
+fn write_previous_sessions_to(file: PathBuf, payload: &PreviousSessionsPayload) -> Result<(), String> {
   if let Some(parent) = file.parent() {
     std::fs::create_dir_all(parent)
       .map_err(|error| format!("Failed to create previous sessions directory: {error}"))?;
   }
-  let payload = serde_json::to_string_pretty(&payload)
+  let raw = serde_json::to_string_pretty(payload)
     .map_err(|error| format!("Failed to serialize previous sessions: {error}"))?;
-  std::fs::write(&file, payload)
+  std::fs::write(&file, raw)
     .map_err(|error| format!("Failed to write previous sessions: {error}"))?;
   Ok(())
 }
@@ -742,6 +754,10 @@ fn previous_sessions_file() -> Result<PathBuf, String> {
   Ok(home.join(".codelegate").join("previous_sessions.json"))
 }
 
+fn previous_sessions_snapshot_file() -> Result<PathBuf, String> {
+  Ok(previous_sessions_file()?.with_extension("json.tmp"))
+}
+
 fn worktrees_root_dir() -> Result<PathBuf, String> {
   let home = std::env::var_os("HOME")
     .map(PathBuf::from)
@@ -850,6 +866,7 @@ pub fn run() {
       save_config,
       load_previous_sessions,
       save_previous_sessions,
+      save_previous_sessions_snapshot,
       clear_previous_sessions,
       spawn_pty,
       write_pty,

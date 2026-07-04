@@ -223,6 +223,7 @@ const defaultConfig: AppConfig = {
 
 const TERMINAL_SCROLLBACK_LINES = 30000;
 const BRANCH_MONITOR_INTERVAL_MS = 10_000;
+const SESSION_SNAPSHOT_DEBOUNCE_MS = 300;
 
 function formatWorktreeStamp(date: Date) {
   const pad = (value: number) => value.toString().padStart(2, "0");
@@ -314,6 +315,22 @@ function getNextVisibleSessionId(sessions: Session[], closingId: string) {
   }
 
   return visible[0].id;
+}
+
+function buildPreviousSessionsPayload(
+  visibleSessions: Session[],
+  activeSessionId: string | null
+): PreviousSessionsPayload {
+  const activeIndex = activeSessionId
+    ? visibleSessions.findIndex((session) => session.id === activeSessionId)
+    : -1;
+  return {
+    sessions: visibleSessions.map((session) => ({
+      repo: session.repo,
+      cwd: session.cwd || undefined,
+    })),
+    activeIndex: activeIndex >= 0 ? activeIndex : 0,
+  };
 }
 
 export function useAppState(
@@ -2016,6 +2033,28 @@ export function useAppState(
     };
   }, [notify, setActiveSessionId, startSession]);
 
+  const sessionSnapshotKey = useMemo(
+    () =>
+      sessions
+        .filter((session) => !session.isTabClosed)
+        .map((session) => session.id)
+        .join("|"),
+    [sessions]
+  );
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const visibleSessions = sessionsRef.current.filter((session) => !session.isTabClosed);
+      const payload = buildPreviousSessionsPayload(visibleSessions, activeSessionRef.current);
+      invoke("save_previous_sessions_snapshot", { payload }).catch((error) => {
+        console.error("Failed to save session snapshot:", error);
+      });
+    }, SESSION_SNAPSHOT_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [sessionSnapshotKey]);
+
   useEffect(() => {
     void pollSessionBranches();
     const intervalId = window.setInterval(() => {
@@ -2190,17 +2229,7 @@ export function useAppState(
     if (onConfirmClose) {
       try {
         if (result.remember) {
-          const activeId = activeSessionRef.current;
-          const activeIndex = activeId
-            ? visibleSessions.findIndex((session) => session.id === activeId)
-            : -1;
-          const payload: PreviousSessionsPayload = {
-            sessions: visibleSessions.map((session) => ({
-              repo: session.repo,
-              cwd: session.cwd || undefined,
-            })),
-            activeIndex: activeIndex >= 0 ? activeIndex : 0,
-          };
+          const payload = buildPreviousSessionsPayload(visibleSessions, activeSessionRef.current);
           await invoke("save_previous_sessions", { payload });
         } else {
           await invoke("clear_previous_sessions");
