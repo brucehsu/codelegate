@@ -524,10 +524,6 @@
   width: 100%;
 }
 
-.railGroup:not(:first-child) {
-  margin-top: 8px;
-}
-
 .railItem {
   position: relative;
   width: 32px;
