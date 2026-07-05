@@ -227,6 +227,7 @@ export default function Sidebar({
       <span className={styles.menuShortcutPill}>{key}</span>
     </span>
   );
+  const sidebarToggleKeyShortcut = [...shortcutModifierTokens, "C"].join("+");
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -300,15 +301,23 @@ export default function Sidebar({
               ) : null}
             </div>
             {onToggleCollapsed ? (
-              <button
-                type="button"
-                className={styles.collapseToggle}
-                onClick={onToggleCollapsed}
-                aria-label="Collapse sidebar"
-                aria-expanded={!collapsed}
-              >
-                <ChevronsLeft aria-hidden="true" />
-              </button>
+              <div className={styles.collapseToggleWrap}>
+                <button
+                  type="button"
+                  className={styles.collapseToggle}
+                  onClick={onToggleCollapsed}
+                  aria-label="Collapse sidebar"
+                  aria-expanded={!collapsed}
+                  aria-keyshortcuts={sidebarToggleKeyShortcut}
+                >
+                  <ChevronsLeft aria-hidden="true" />
+                </button>
+                {showShortcutHints ? (
+                  <span className={styles.collapseShortcut} aria-hidden="true">
+                    C
+                  </span>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
@@ -467,15 +476,23 @@ export default function Sidebar({
       >
         <div className={styles.railHeader}>
           {onToggleCollapsed ? (
-            <button
-              type="button"
-              className={`${styles.collapseToggle} ${styles.railExpandToggle}`}
-              onClick={onToggleCollapsed}
-              aria-label="Expand sidebar"
-              aria-expanded={false}
-            >
-              <ChevronsRight aria-hidden="true" />
-            </button>
+            <div className={styles.collapseToggleWrap}>
+              <button
+                type="button"
+                className={`${styles.collapseToggle} ${styles.railExpandToggle}`}
+                onClick={onToggleCollapsed}
+                aria-label="Expand sidebar"
+                aria-expanded={false}
+                aria-keyshortcuts={sidebarToggleKeyShortcut}
+              >
+                <ChevronsRight aria-hidden="true" />
+              </button>
+              {showShortcutHints ? (
+                <span className={styles.collapseShortcut} aria-hidden="true">
+                  C
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
         <div

@@ -49,6 +49,13 @@
   cursor: pointer;
 }
 
+.collapseToggleWrap {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
 .collapseToggle svg {
   width: 18px;
   height: 18px;
@@ -231,6 +238,7 @@
 }
 
 .actionShortcut,
+.collapseShortcut,
 .sessionShortcut,
 .popoutShortcut {
   padding: 2px 6px;
@@ -243,7 +251,8 @@
   pointer-events: none;
 }
 
-.actionShortcut {
+.actionShortcut,
+.collapseShortcut {
   position: absolute;
   top: -6px;
   right: -6px;

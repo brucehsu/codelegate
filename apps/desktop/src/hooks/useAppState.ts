@@ -1015,8 +1015,14 @@ export function useAppState(
         preventDefault: true,
         handler: () => onFocusSearch?.(),
       }),
+      defineHotkey({
+        id: "sidebar-toggle",
+        combo: buildShortcutCombo(config.settings.shortcutModifier, "KeyC"),
+        preventDefault: true,
+        handler: () => toggleSidebarCollapsed(),
+      }),
     ],
-    [config.settings.shortcutModifier, cycleSession, onFocusSearch]
+    [config.settings.shortcutModifier, cycleSession, onFocusSearch, toggleSidebarCollapsed]
   );
 
   const copySelection = useCallback((term: Terminal) => {
