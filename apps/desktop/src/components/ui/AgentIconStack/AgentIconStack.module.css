@@ -4,6 +4,10 @@
   display: inline-block;
   width: calc(var(--icon-size) + var(--stack-offset));
   height: var(--icon-size);
+  /* Contain the icons' z-indexes (1-3 during the swap) so they only order the
+     deck internally and never paint over siblings, e.g. the rail status badge
+     overlapping this stack's corner. */
+  isolation: isolate;
 }
 
 /* --stack-offset is the "peek": how far the active (front) icon is shifted

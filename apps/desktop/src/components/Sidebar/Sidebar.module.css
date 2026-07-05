@@ -565,6 +565,8 @@
   margin-left: 0;
   border: 2px solid var(--surface);
   border-radius: 999px;
+  /* Always above the agent icon stack it overlaps. */
+  z-index: 1;
 }
 
 .railStatusBadge.statusRunning,
