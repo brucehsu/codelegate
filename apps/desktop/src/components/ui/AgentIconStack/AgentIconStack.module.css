@@ -1,0 +1,137 @@
+.stack {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-block;
+  width: calc(var(--icon-size) + var(--stack-offset));
+  height: var(--icon-size);
+}
+
+/* --stack-offset is the "peek": how far the active (front) icon is shifted
+   right, which is also how much of the inactive (back) icon stays visible.
+   Keep it small so the back icon reads as a sliver, deck-of-cards style. */
+.list {
+  --icon-size: 24px;
+  --stack-offset: 8px;
+}
+
+.rail {
+  --icon-size: 20px;
+  --stack-offset: 6px;
+}
+
+.icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  display: grid;
+  place-items: center;
+  transform-origin: center;
+  /* Opaque backing plate. The agent glyphs are line/fill art with transparent
+     gaps, so without this the icon stacked behind shows through. The plate
+     fills the whole icon box (behind the svg) and is colored to match the
+     surface it sits on via --agent-stack-cover (set per render site in
+     Sidebar.module.css), so it is imperceptible against the background yet
+     fully occludes the icon below. Every icon gets one, so occlusion also
+     holds mid-swap when the z-index flips and the icons pass each other.
+     No border-radius: the glyphs reach the icon-box edges, so rounded corners
+     could expose the underlying glyph in the overlap region. */
+  background: var(--agent-stack-cover, var(--surface));
+}
+
+.icon svg,
+.icon > * {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  display: block;
+}
+
+/* Active icon: right slot, in front, full size, covering most of the back. */
+.front {
+  z-index: 2;
+  transform: translateX(var(--stack-offset)) scale(1);
+}
+
+/* Inactive icon: left slot at x=0, behind, shrunk and dimmed to a sliver. */
+.back {
+  z-index: 1;
+  transform: translateX(0) scale(0.8);
+}
+
+/* Dim only the glyph, not the whole element: element-level opacity would make
+   the backing plate semi-transparent too, and the outgoing icon is on top for
+   the first half of the swap (z-index flips at 50%), so a see-through plate
+   would let the incoming icon bleed through as they arc past. Keeping the
+   element (and its plate) fully opaque preserves occlusion throughout.
+   !important is required because the icon components hardcode inline
+   style="opacity:1" on the <svg>, which would otherwise win the cascade. */
+.back svg {
+  opacity: 0.65 !important;
+}
+
+.swapToFront {
+  animation: swapToFront 260ms ease-in-out;
+}
+
+.swapToBack {
+  animation: swapToBack 260ms ease-in-out;
+}
+
+.agentClaude {
+  color: var(--agent-claude-color);
+}
+
+.agentCodex {
+  color: var(--agent-codex-color);
+}
+
+/* Back slot (x=0, small) -> front slot (x=peek, full). Horizontal orbit:
+   the incoming icon swings out along the OUTER RIGHT, overshooting past the
+   front slot while scaling just above 1 so it reads as passing closest to the
+   viewer, then settles left into the resting .front transform. No vertical
+   movement: the swap reads as a flat, edge-on carousel. The 35% is relative to
+   the icon's own width, so the overshoot scales with --icon-size and stays
+   proportional across the list/rail variants. */
+@keyframes swapToFront {
+  0% {
+    transform: translateX(0) scale(0.8);
+    z-index: 1;
+  }
+  50% {
+    transform: translateX(calc(var(--stack-offset) + 35%)) scale(1.05);
+    z-index: 3;
+  }
+  100% {
+    transform: translateX(var(--stack-offset)) scale(1);
+    z-index: 3;
+  }
+}
+
+/* Front slot (x=peek, full) -> back slot (x=0, small). Mirror orbit: the
+   outgoing icon swings out along the OUTER LEFT, overshooting past the back
+   slot to a negative X while scaling below the resting back scale so it reads
+   as passing farthest from the viewer, then settles right into the resting
+   .back transform. Also purely horizontal; -35% mirrors the incoming overshoot
+   and scales with --icon-size. */
+@keyframes swapToBack {
+  0% {
+    transform: translateX(var(--stack-offset)) scale(1);
+    z-index: 2;
+  }
+  50% {
+    transform: translateX(-35%) scale(0.7);
+    z-index: 0;
+  }
+  100% {
+    transform: translateX(0) scale(0.8);
+    z-index: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swapToFront,
+  .swapToBack {
+    animation: none;
+  }
+}

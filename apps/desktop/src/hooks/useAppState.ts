@@ -10,10 +10,12 @@ import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { agentCommandById, isSupportedAgentId, normalizeAgentId } from "../constants";
+import { agentCatalog, agentCommandById, isSupportedAgentId, normalizeAgentId } from "../constants";
 import { DEFAULT_TERMINAL_LINE_HEIGHT, useTerminalRenderer } from "./useTerminalRenderer";
 import type { TerminalAppearance, TerminalRendererRuntime } from "./useTerminalRenderer";
 import type {
+  AgentId,
+  AgentProcessState,
   AppConfig,
   AppSettings,
   CloseConfirmPayload,
@@ -27,12 +29,13 @@ import type {
   PaneKind,
   ToastInput,
 } from "../types";
-import { createSessionId, envListToMap, getRepoName } from "../utils/session";
+import { createSessionId, envListToMap, getRepoName, unreadKey } from "../utils/session";
 import { escapeShellArg, shellArgs } from "../utils/shell";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "../utils/hotkeys";
 import { buildShortcutCombo, normalizeShortcutModifier } from "../utils/shortcutModifier";
 
 interface TerminalRuntime extends TerminalRendererRuntime {
+  agentId?: AgentId;
   container?: HTMLDivElement | null;
   term?: Terminal;
   fit?: FitAddon;
@@ -57,7 +60,7 @@ interface TerminalRuntime extends TerminalRendererRuntime {
 }
 
 interface SessionRuntime {
-  agent: TerminalRuntime;
+  agents: Map<AgentId, TerminalRuntime>;
   git: TerminalRuntime;
   terminal: TerminalRuntime;
 }
@@ -73,7 +76,7 @@ function forEachTerminalRuntime(
   apply: (terminal: TerminalRuntime) => void
 ) {
   runtimeMap.forEach((runtime) => {
-    apply(runtime.agent);
+    runtime.agents.forEach((agentRuntime) => apply(agentRuntime));
     apply(runtime.git);
     apply(runtime.terminal);
   });
@@ -326,7 +329,7 @@ function buildPreviousSessionsPayload(
     : -1;
   return {
     sessions: visibleSessions.map((session) => ({
-      repo: session.repo,
+      repo: { ...session.repo, agent: session.activeAgent },
       cwd: session.cwd || undefined,
     })),
     activeIndex: activeIndex >= 0 ? activeIndex : 0,
@@ -376,7 +379,9 @@ export function useAppState(
   }, [config]);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
-  const ptyToSessionRef = useRef(new Map<number, { sessionId: string; kind: PaneKind }>());
+  const ptyToSessionRef = useRef(
+    new Map<number, { sessionId: string; kind: PaneKind; agentId?: AgentId }>()
+  );
   const sessionsRef = useRef<Session[]>([]);
   const activeSessionRef = useRef<string | null>(null);
   const activePaneKindRef = useRef<PaneKind>("agent");
@@ -386,7 +391,27 @@ export function useAppState(
   const restoreInProgressRef = useRef(false);
   const branchMonitorInFlightRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
+  const agentSwitchHotkeysRef = useRef<HotkeyBinding[]>([]);
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
+
+  const getActiveAgentId = useCallback((sessionId: string): AgentId => {
+    const session = sessionsRef.current.find((item) => item.id === sessionId);
+    return session?.activeAgent ?? "claude";
+  }, []);
+
+  const getTerminalRuntime = useCallback(
+    (sessionId: string, kind: PaneKind, agentId?: AgentId): TerminalRuntime | undefined => {
+      const runtime = runtimeRef.current.get(sessionId);
+      if (!runtime) {
+        return undefined;
+      }
+      if (kind === "agent") {
+        return runtime.agents.get(agentId ?? getActiveAgentId(sessionId));
+      }
+      return runtime[kind];
+    },
+    [getActiveAgentId]
+  );
 
   const scheduleTerminalFit = useCallback((runtime: TerminalRuntime, force = false) => {
     if (!runtime.term || !runtime.fit || !runtime.container) {
@@ -441,19 +466,22 @@ export function useAppState(
   }, [notify, onConfirmClose]);
 
   const registerPty = useCallback(
-    (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, ptyId: number) => {
+    (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, ptyId: number, agentId?: AgentId) => {
       runtime.ptyId = ptyId;
-      ptyToSessionRef.current.set(ptyId, { sessionId, kind });
+      ptyToSessionRef.current.set(ptyId, { sessionId, kind, agentId });
       scheduleTerminalFit(runtime);
     },
     [scheduleTerminalFit]
   );
 
-  const getUnreadKey = useCallback((sessionId: string, kind: PaneKind) => `${sessionId}:${kind}`, []);
+  const getUnreadKey = useCallback(
+    (sessionId: string, kind: PaneKind, agentId?: AgentId) => unreadKey(sessionId, kind, agentId),
+    []
+  );
 
   const setUnreadFor = useCallback(
-    (sessionId: string, kind: PaneKind, value: boolean) => {
-      const key = getUnreadKey(sessionId, kind);
+    (sessionId: string, kind: PaneKind, value: boolean, agentId?: AgentId) => {
+      const key = getUnreadKey(sessionId, kind, agentId);
       const current = Boolean(unreadOutputRef.current[key]);
       if (current === value) {
         return;
@@ -556,7 +584,7 @@ export function useAppState(
       if (isFollowing) {
         runtime.savedViewportY = undefined;
       }
-      setUnreadFor(sessionId, kind, !isFollowing);
+      setUnreadFor(sessionId, kind, !isFollowing, runtime.agentId);
     },
     [setUnreadFor]
   );
@@ -588,13 +616,13 @@ export function useAppState(
     if (!sessionId) {
       return;
     }
-    const runtime = runtimeRef.current.get(sessionId)?.[kind];
+    const runtime = getTerminalRuntime(sessionId, kind);
     if (!runtime?.term) {
       return;
     }
     updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
     snapshotRuntimeViewport(runtime);
-  }, [snapshotRuntimeViewport, updateFollowState]);
+  }, [getTerminalRuntime, snapshotRuntimeViewport, updateFollowState]);
 
   const restoreRuntimeViewport = useCallback(
     (runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
@@ -633,7 +661,7 @@ export function useAppState(
   );
 
   const focusSession = useCallback((sessionId: string, kind: PaneKind) => {
-    const runtime = runtimeRef.current.get(sessionId)?.[kind];
+    const runtime = getTerminalRuntime(sessionId, kind);
     if (runtime?.term) {
       const activeElement = document.activeElement;
       const activeInsideTerminal = activeElement instanceof Element && Boolean(activeElement.closest(".xterm"));
@@ -649,7 +677,7 @@ export function useAppState(
       return true;
     }
     return false;
-  }, []);
+  }, [getTerminalRuntime]);
 
   const focusActiveSession = useCallback(() => {
     const sessionId = activeSessionRef.current;
@@ -1263,6 +1291,11 @@ export function useAppState(
           }
         }
         */
+        if (kind === "agent" && runHotkeys(event, agentSwitchHotkeysRef.current)) {
+          // Handled by the agent switch shortcut; swallow so no escape sequence
+          // reaches the PTY and the window listener does not fire again.
+          return false;
+        }
         const handled = runHotkeys(event, terminalHotkeys);
         return !handled;
       });
@@ -1323,18 +1356,27 @@ export function useAppState(
     const map = runtimeRef.current;
     let runtime = map.get(sessionId);
     if (!runtime) {
-      runtime = { agent: {}, git: {}, terminal: {} };
+      runtime = { agents: new Map(), git: {}, terminal: {} };
       map.set(sessionId, runtime);
     }
     return runtime;
   }, []);
 
   const ensureTerminalRuntime = useCallback(
-    (sessionId: string, kind: PaneKind) => {
+    (sessionId: string, kind: PaneKind, agentId?: AgentId): TerminalRuntime => {
       const runtime = ensureSessionRuntime(sessionId);
+      if (kind === "agent") {
+        const id = agentId ?? getActiveAgentId(sessionId);
+        let slot = runtime.agents.get(id);
+        if (!slot) {
+          slot = { agentId: id };
+          runtime.agents.set(id, slot);
+        }
+        return slot;
+      }
       return runtime[kind];
     },
-    [ensureSessionRuntime]
+    [ensureSessionRuntime, getActiveAgentId]
   );
 
   const cleanupTerminalRuntimeAttachment = useCallback(
@@ -1398,7 +1440,7 @@ export function useAppState(
 
   const disposeSessionRuntime = useCallback(
     (runtime: SessionRuntime) => {
-      disposeTerminalRuntime(runtime.agent);
+      runtime.agents.forEach((agentRuntime) => disposeTerminalRuntime(agentRuntime));
       disposeTerminalRuntime(runtime.git);
       disposeTerminalRuntime(runtime.terminal);
     },
@@ -1424,7 +1466,7 @@ export function useAppState(
       if (!sessionId) {
         return;
       }
-      const runtime = runtimeRef.current.get(sessionId)?.[kind];
+      const runtime = getTerminalRuntime(sessionId, kind);
       if (runtime?.term) {
         activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: false });
         return;
@@ -1433,12 +1475,12 @@ export function useAppState(
         pendingFocusRef.current = { sessionId, kind };
       }
     },
-    [activateVisibleRuntime, focusSession, snapshotActiveRuntimeViewport]
+    [activateVisibleRuntime, focusSession, getTerminalRuntime, snapshotActiveRuntimeViewport]
   );
 
   const jumpToBottom = useCallback(
     (sessionId: string, kind: PaneKind) => {
-      const runtime = runtimeRef.current.get(sessionId)?.[kind];
+      const runtime = getTerminalRuntime(sessionId, kind);
       if (!runtime?.term) {
         return;
       }
@@ -1446,20 +1488,20 @@ export function useAppState(
       runtime.term.scrollToBottom();
       scheduleTerminalFit(runtime, true);
     },
-    [scheduleTerminalFit, setFollowingState]
+    [getTerminalRuntime, scheduleTerminalFit, setFollowingState]
   );
 
   const registerTerminal = useCallback(
-    (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => {
+    (sessionId: string, kind: PaneKind, element: HTMLDivElement | null, agentId?: AgentId) => {
       if (!element) {
-        const runtime = runtimeRef.current.get(sessionId)?.[kind];
+        const runtime = getTerminalRuntime(sessionId, kind, agentId);
         if (!runtime) {
           return;
         }
         detachTerminalRuntime(runtime, true);
         return;
       }
-      const runtime = ensureTerminalRuntime(sessionId, kind);
+      const runtime = ensureTerminalRuntime(sessionId, kind, agentId);
       runtime.container = element;
       runtime.lastFit = undefined;
       if (!runtime.resizeObserver) {
@@ -1498,7 +1540,11 @@ export function useAppState(
         }
         updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
 
-        const isActiveRuntime = activeSessionRef.current === sessionId && activePaneKindRef.current === kind;
+        const activeAgentId = getActiveAgentId(sessionId);
+        const isActiveRuntime =
+          activeSessionRef.current === sessionId &&
+          activePaneKindRef.current === kind &&
+          (kind !== "agent" || !agentId || agentId === activeAgentId);
         const pending = pendingFocusRef.current;
         if (
           (pending && pending.sessionId === sessionId && pending.kind === kind) ||
@@ -1552,6 +1598,8 @@ export function useAppState(
       detachTerminalRuntime,
       ensureTerminalRuntime,
       focusSession,
+      getActiveAgentId,
+      getTerminalRuntime,
       registerPty,
       scheduleTerminalFit,
       updateFollowState,
@@ -1564,6 +1612,35 @@ export function useAppState(
   const updateSession = useCallback((sessionId: string, partial: Partial<Session>) => {
     setSessions((prev) => prev.map((session) => (session.id === sessionId ? { ...session, ...partial } : session)));
   }, []);
+
+  // Session-level status mirrors the active agent's status. Two sites write it:
+  // here (whenever the active agent's per-agent state changes) and switchAgent
+  // (which flips activeAgent and mirrors the newly-active agent's status,
+  // optimistically "running" for a target that has never spawned).
+  const updateSessionAgentState = useCallback(
+    (sessionId: string, agentId: AgentId, partial: Partial<AgentProcessState>) => {
+      setSessions((prev) =>
+        prev.map((session) => {
+          if (session.id !== sessionId) {
+            return session;
+          }
+          const prevStates = session.agentStates;
+          const prevAgentState: AgentProcessState = prevStates[agentId] ?? { status: "stopped" };
+          const nextAgentState: AgentProcessState = { ...prevAgentState, ...partial };
+          const nextStates: Partial<Record<AgentId, AgentProcessState>> = {
+            ...prevStates,
+            [agentId]: nextAgentState,
+          };
+          const nextSession: Session = { ...session, agentStates: nextStates };
+          if (agentId === session.activeAgent) {
+            nextSession.status = nextAgentState.status;
+          }
+          return nextSession;
+        })
+      );
+    },
+    []
+  );
 
   const updateSessionBranchForPath = useCallback((path: string, branch: string) => {
     const nextBranch = branch.trim();
@@ -1687,9 +1764,11 @@ export function useAppState(
       const keepBranch = Boolean(closingSession?.repo.worktree?.branch?.trim());
       const ptyIds = new Set<number>();
 
-      if (runtime?.agent.ptyId) {
-        ptyIds.add(runtime.agent.ptyId);
-      }
+      runtime?.agents.forEach((agentRuntime) => {
+        if (agentRuntime.ptyId) {
+          ptyIds.add(agentRuntime.ptyId);
+        }
+      });
       if (runtime?.terminal.ptyId) {
         ptyIds.add(runtime.terminal.ptyId);
       }
@@ -1758,6 +1837,7 @@ export function useAppState(
     async ({
       sessionId,
       repo,
+      agentId,
       repoRoot,
       sessionCwd,
       initialCommands = [],
@@ -1765,6 +1845,7 @@ export function useAppState(
     }: {
       sessionId: string;
       repo: RepoConfig;
+      agentId: AgentId;
       repoRoot: string;
       sessionCwd: string;
       initialCommands?: string[];
@@ -1774,7 +1855,7 @@ export function useAppState(
       try {
         shell = await invoke<string>("get_default_shell");
       } catch (error) {
-        updateSession(sessionId, { status: "error", lastError: String(error) });
+        updateSessionAgentState(sessionId, agentId, { status: "error", lastError: String(error) });
         notify({ message: String(error), tone: "error" });
         return false;
       }
@@ -1791,11 +1872,11 @@ export function useAppState(
           .filter((line) => line.length > 0)
           .forEach((line) => initCommands.push(line));
       }
-      const agentCommand = agentCommandById[normalizedRepo.agent];
-      const agentArgs = configRef.current.settings.agentArgs?.[normalizedRepo.agent]?.trim() ?? "";
+      const agentCommand = agentCommandById[agentId];
+      const agentArgs = configRef.current.settings.agentArgs?.[agentId]?.trim() ?? "";
       initCommands.push(applyAgentArgs(agentCommand, agentArgs));
 
-      const runtime = ensureTerminalRuntime(sessionId, "agent");
+      const runtime = ensureTerminalRuntime(sessionId, "agent", agentId);
       if (runtime.starting) {
         return false;
       }
@@ -1812,16 +1893,16 @@ export function useAppState(
           rows: runtime.term?.rows ?? 24,
         });
       } catch (error) {
-        updateSession(sessionId, { status: "error", lastError: String(error) });
+        updateSessionAgentState(sessionId, agentId, { status: "error", lastError: String(error) });
         notify({ message: `${failureMessage}: ${String(error)}`, tone: "error" });
         return false;
       } finally {
         runtime.starting = false;
       }
 
-      registerPty(runtime, sessionId, "agent", ptyId);
-      updateSession(sessionId, {
-        cwd: sessionCwd,
+      registerPty(runtime, sessionId, "agent", ptyId, agentId);
+      updateSession(sessionId, { cwd: sessionCwd });
+      updateSessionAgentState(sessionId, agentId, {
         status: "running",
         lastError: undefined,
         startedAt: Date.now(),
@@ -1829,7 +1910,7 @@ export function useAppState(
       });
       return true;
     },
-    [ensureTerminalRuntime, notify, registerPty, updateSession]
+    [ensureTerminalRuntime, notify, registerPty, updateSession, updateSessionAgentState]
   );
 
   const restartAgentSession = useCallback(
@@ -1847,7 +1928,8 @@ export function useAppState(
         return false;
       }
 
-      const runtime = ensureTerminalRuntime(sessionId, "agent");
+      const agentId = session.activeAgent;
+      const runtime = ensureTerminalRuntime(sessionId, "agent", agentId);
       const currentPtyId = runtime.ptyId;
       if (currentPtyId) {
         runtime.ptyId = undefined;
@@ -1861,17 +1943,98 @@ export function useAppState(
 
       clearAgentOutputting(sessionId);
       agentOutputtingSuppressUntilRef.current.delete(sessionId);
-      updateSession(sessionId, { status: "stopped", lastError: undefined, ptyId: undefined });
+      updateSessionAgentState(sessionId, agentId, { status: "stopped", lastError: undefined, ptyId: undefined });
 
       return spawnAgentForSession({
         sessionId,
         repo: session.repo,
+        agentId,
         repoRoot: session.repo.repoPath,
         sessionCwd,
         failureMessage: "Failed to restart agent",
       });
     },
-    [clearAgentOutputting, ensureTerminalRuntime, notify, spawnAgentForSession, updateSession]
+    [clearAgentOutputting, ensureTerminalRuntime, notify, spawnAgentForSession, updateSessionAgentState]
+  );
+
+  const switchAgent = useCallback(
+    async (sessionId: string, direction: 1 | -1) => {
+      await configReadyPromiseRef.current;
+      const session = sessionsRef.current.find((item) => item.id === sessionId);
+      if (!session) {
+        return;
+      }
+      const currentAgent = session.activeAgent;
+      const index = agentCatalog.findIndex((agent) => agent.id === currentAgent);
+      const nextIndex = (index + direction + agentCatalog.length) % agentCatalog.length;
+      const nextAgent = agentCatalog[nextIndex].id;
+      if (nextAgent === currentAgent) {
+        return;
+      }
+
+      // Save the current agent's scroll position before it becomes hidden.
+      snapshotActiveRuntimeViewport();
+
+      const runtime = getTerminalRuntime(sessionId, "agent", nextAgent);
+      // Lazy-spawn only for agents that have NEVER been spawned for this session.
+      // A previously-spawned-but-dead agent still has a recorded agentState (its
+      // pty-exit cleared runtime.ptyId), so gating on the runtime's live PTY would
+      // wrongly auto-respawn it. Reactivate its existing runtime instead.
+      const hasSpawned = Boolean(session.agentStates[nextAgent]);
+      const isStarting = Boolean(runtime?.starting);
+
+      // Flip the active agent and mirror the target agent's recorded status up to
+      // the session-level status. When the target has never spawned, optimistically
+      // show "running" so the Restart button does not flash before the lazy spawn.
+      setSessions((prev) =>
+        prev.map((item) => {
+          if (item.id !== sessionId) {
+            return item;
+          }
+          const targetState = item.agentStates[nextAgent];
+          return {
+            ...item,
+            activeAgent: nextAgent,
+            status: targetState ? targetState.status : "running",
+          };
+        })
+      );
+
+      pendingFocusRef.current = { sessionId, kind: "agent" };
+
+      if (!hasSpawned && !isStarting) {
+        const sessionCwd = resolveSessionCwd(session);
+        if (!sessionCwd) {
+          notify({ message: "Unable to resolve session path.", tone: "error" });
+          return;
+        }
+        // Reuse the already-resolved cwd (worktree path included); never re-create a worktree.
+        await spawnAgentForSession({
+          sessionId,
+          repo: session.repo,
+          agentId: nextAgent,
+          repoRoot: session.repo.repoPath,
+          sessionCwd,
+          failureMessage: "Failed to start agent",
+        });
+      } else if (runtime) {
+        // Already spawned (alive or dead). Reactivate so scrollback is preserved and,
+        // for a dead agent, the mirrored stopped/error state surfaces the Restart button.
+        activateVisibleRuntime(runtime, sessionId, "agent", { focus: true });
+      }
+    },
+    [activateVisibleRuntime, getTerminalRuntime, notify, snapshotActiveRuntimeViewport, spawnAgentForSession]
+  );
+
+  const switchActiveSessionAgent = useCallback(
+    (direction: 1 | -1) => {
+      const sessionId = activeSessionRef.current;
+      if (!sessionId || activePaneKindRef.current !== "agent") {
+        return;
+      }
+      void switchAgent(sessionId, direction);
+    },
+    [switchAgent]
   );
 
   const startSession = useCallback(
@@ -1892,6 +2055,8 @@ export function useAppState(
         cwd: normalizedRepo.repoPath,
         lastActivePaneKind: "agent",
         status: "stopped",
+        activeAgent: normalizedRepo.agent,
+        agentStates: {},
         branch: normalizedRepo.worktree?.branch?.trim() || undefined,
       };
 
@@ -1910,7 +2075,10 @@ export function useAppState(
         try {
           homeDir = await invoke<string>("get_home_dir");
         } catch (error) {
-          updateSession(sessionId, { status: "error", lastError: String(error) });
+          updateSessionAgentState(sessionId, normalizedRepo.agent, {
+            status: "error",
+            lastError: String(error),
+          });
           notify({ message: `Failed to resolve home directory: ${String(error)}`, tone: "error" });
           return null;
         }
@@ -1976,6 +2144,7 @@ export function useAppState(
       const started = await spawnAgentForSession({
         sessionId,
         repo: normalizedRepo,
+        agentId: normalizedRepo.agent,
         repoRoot,
         sessionCwd,
         initialCommands: initCommands,
@@ -1987,7 +2156,7 @@ export function useAppState(
 
       return sessionId;
     },
-    [setActiveSessionId, spawnAgentForSession, updateSession]
+    [setActiveSessionId, spawnAgentForSession, updateSession, updateSessionAgentState]
   );
 
   useEffect(() => {
@@ -2043,7 +2212,7 @@ export function useAppState(
     () =>
       sessions
         .filter((session) => !session.isTabClosed)
-        .map((session) => session.id)
+        .map((session) => `${session.id}:${session.activeAgent}`)
         .join("|"),
     [sessions]
   );
@@ -2093,7 +2262,7 @@ export function useAppState(
       if (!info) {
         return;
       }
-      const runtime = runtimeRef.current.get(info.sessionId)?.[info.kind];
+      const runtime = getTerminalRuntime(info.sessionId, info.kind, info.agentId);
       if (!runtime?.term) {
         return;
       }
@@ -2123,7 +2292,7 @@ export function useAppState(
       if (!info) {
         return;
       }
-      const runtime = runtimeRef.current.get(info.sessionId)?.[info.kind];
+      const runtime = getTerminalRuntime(info.sessionId, info.kind, info.agentId);
       if (runtime) {
         runtime.ptyId = undefined;
       }
@@ -2132,21 +2301,31 @@ export function useAppState(
       if (info.kind !== "agent") {
         return;
       }
-      clearAgentOutputting(info.sessionId);
 
-      setSessions((prev) =>
-        prev.map((session) => {
-          if (session.id !== info.sessionId) {
-            return session;
-          }
-          const elapsed = session.startedAt ? Date.now() - session.startedAt : null;
-          if (elapsed !== null && elapsed < 2000) {
-            notify({ message: "Agent exited unexpectedly. Check repository and agent configuration.", tone: "error" });
-            return { ...session, status: "error", lastError: "Agent exited unexpectedly.", ptyId: undefined };
-          }
-          return { ...session, status: "stopped", ptyId: undefined };
-        })
-      );
+      const session = sessionsRef.current.find((item) => item.id === info.sessionId);
+      const activeAgent: AgentId = session?.activeAgent ?? "claude";
+      const agentId = info.agentId ?? activeAgent;
+      const isActiveAgent = agentId === activeAgent;
+
+      // Only the active agent affects session-level state and the outputting flag.
+      if (isActiveAgent) {
+        clearAgentOutputting(info.sessionId);
+      }
+
+      const startedAt = session?.agentStates[agentId]?.startedAt;
+      const elapsed = startedAt ? Date.now() - startedAt : null;
+      if (elapsed !== null && elapsed < 2000) {
+        if (isActiveAgent) {
+          notify({ message: "Agent exited unexpectedly. Check repository and agent configuration.", tone: "error" });
+        }
+        updateSessionAgentState(info.sessionId, agentId, {
+          status: "error",
+          lastError: "Agent exited unexpectedly.",
+          ptyId: undefined,
+        });
+      } else {
+        updateSessionAgentState(info.sessionId, agentId, { status: "stopped", ptyId: undefined });
+      }
     }).then((unlisten) => {
       unlistenExit = unlisten;
     });
@@ -2164,7 +2343,7 @@ export function useAppState(
         return;
       }
       suppressAgentOutputting(sessionId, 250);
-      const runtime = runtimeRef.current.get(sessionId)?.[activePaneKindRef.current];
+      const runtime = getTerminalRuntime(sessionId, activePaneKindRef.current);
       if (!runtime) {
         return;
       }
@@ -2175,7 +2354,7 @@ export function useAppState(
     return () => {
       window.removeEventListener("resize", handler);
     };
-  }, [scheduleTerminalFit, suppressAgentOutputting]);
+  }, [getTerminalRuntime, scheduleTerminalFit, suppressAgentOutputting]);
 
   useEffect(() => {
     const sessionId = activeSessionId;
@@ -2183,7 +2362,7 @@ export function useAppState(
       return;
     }
     const kind = activePaneKindRef.current;
-    const runtime = runtimeRef.current.get(sessionId)?.[kind];
+    const runtime = getTerminalRuntime(sessionId, kind);
     if (runtime?.term) {
       activateVisibleRuntime(runtime, sessionId, kind, { focus: true, clearSelection: false });
       return;
@@ -2191,14 +2370,18 @@ export function useAppState(
     if (!focusSession(sessionId, kind)) {
       pendingFocusRef.current = { sessionId, kind };
     }
-  }, [activeSessionId, activateVisibleRuntime, focusSession]);
+  }, [activeSessionId, activateVisibleRuntime, focusSession, getTerminalRuntime]);
 
   const handleCloseRequest = useCallback(async () => {
     if (closeInProgressRef.current || closePromptInProgressRef.current) {
       return;
     }
     const visibleSessions = sessionsRef.current.filter((session) => !session.isTabClosed);
-    const hasRunning = visibleSessions.some((session) => session.status === "running");
+    const hasRunning = visibleSessions.some(
+      (session) =>
+        session.status === "running" ||
+        Object.values(session.agentStates).some((state) => state?.status === "running")
+    );
     const sessionCount = visibleSessions.length;
     if (!onConfirmClose && !hasRunning) {
       closeInProgressRef.current = true;
@@ -2307,9 +2490,47 @@ export function useAppState(
     }
   }, [handleCloseRequest, hasSavedConfig, shouldInterceptClose]);
 
+  const agentSwitchHotkeys = useMemo<HotkeyBinding[]>(
+    () => [
+      defineHotkey({
+        id: "agent-switch-prev",
+        combo: buildShortcutCombo(config.settings.shortcutModifier, "ArrowLeft"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: (event) => {
+          if (!event.repeat) {
+            switchActiveSessionAgent(-1);
+          }
+        },
+      }),
+      defineHotkey({
+        id: "agent-switch-next",
+        combo: buildShortcutCombo(config.settings.shortcutModifier, "ArrowRight"),
+        preventDefault: true,
+        stopPropagation: true,
+        handler: (event) => {
+          if (!event.repeat) {
+            switchActiveSessionAgent(1);
+          }
+        },
+      }),
+    ],
+    [config.settings.shortcutModifier, switchActiveSessionAgent]
+  );
+
+  useEffect(() => {
+    agentSwitchHotkeysRef.current = agentSwitchHotkeys;
+  }, [agentSwitchHotkeys]);
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
+        return;
+      }
+      if (
+        activePaneKindRef.current === "agent" &&
+        runHotkeys(event, agentSwitchHotkeysRef.current)
+      ) {
         return;
       }
       runHotkeys(event, globalHotkeys);

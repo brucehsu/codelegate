@@ -12,6 +12,10 @@
   --warning: #f6c945;
   --terminal-bg: #0b0e14;
   --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  /* Agent brand colors. Theme-invariant (no light-theme override), matching the
+     glyph tints used across the icon stack, settings, and picker. */
+  --agent-claude-color: #f59e0b;
+  --agent-codex-color: #ffffff;
 }
 
 body[data-theme="light"] {

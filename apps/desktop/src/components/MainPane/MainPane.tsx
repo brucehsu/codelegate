@@ -1,4 +1,4 @@
-import type { Session, PaneKind, ToastInput } from "../../types";
+import type { Session, PaneKind, ToastInput, AgentId } from "../../types";
 import AgentTab from "./tabs/AgentTab";
 import GitTab from "./tabs/GitTab";
 import TerminalTab from "./tabs/TerminalTab";
@@ -6,6 +6,7 @@ import styles from "./MainPane.module.css";
 import TabButton from "../ui/TabButton/TabButton";
 import { Copy } from "lucide-react";
 import appLogo from "../../assets/logo.png";
+import { unreadKey } from "../../utils/session";
 
 interface TabDefinition {
   kind: PaneKind;
@@ -18,7 +19,12 @@ interface MainPaneProps {
   activeSessionId: string | null;
   activePaneKind: PaneKind;
   onSelectPaneKind: (kind: PaneKind) => void;
-  onRegisterTerminal: (sessionId: string, kind: PaneKind, element: HTMLDivElement | null) => void;
+  onRegisterTerminal: (
+    sessionId: string,
+    kind: PaneKind,
+    element: HTMLDivElement | null,
+    agentId?: AgentId
+  ) => void;
   onRefreshSessionBranch: (sessionId: string) => Promise<void>;
   unreadOutput: Record<string, boolean>;
   onJumpToBottom: (sessionId: string, kind: PaneKind) => void;
@@ -44,8 +50,10 @@ export default function MainPane({
 }: MainPaneProps) {
   const showTabPane = Boolean(activeSessionId);
   const activeSession = sessions.find((session) => session.id === activeSessionId);
-  const activeAgentKey = activeSessionId ? `${activeSessionId}:agent` : null;
-  const activeTerminalKey = activeSessionId ? `${activeSessionId}:terminal` : null;
+  const activeAgentKey = activeSession
+    ? unreadKey(activeSession.id, "agent", activeSession.activeAgent)
+    : null;
+  const activeTerminalKey = activeSessionId ? unreadKey(activeSessionId, "terminal") : null;
   const showAgentUpdates =
     activePaneKind === "agent" && activeAgentKey ? Boolean(unreadOutput[activeAgentKey]) : false;
   const showTerminalUpdates =

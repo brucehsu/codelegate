@@ -50,11 +50,11 @@
 }
 
 .codex {
-  color: #ffffff;
+  color: var(--agent-codex-color);
 }
 
 .claude {
-  color: #f59e0b;
+  color: var(--agent-claude-color);
 }
 
 .label {

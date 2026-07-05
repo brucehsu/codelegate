@@ -175,11 +175,11 @@
 }
 
 .agentIconClaude {
-  color: #f59e0b;
+  color: var(--agent-claude-color);
 }
 
 .agentIconCodex {
-  color: #ffffff;
+  color: var(--agent-codex-color);
 }
 
 .agentLabel {

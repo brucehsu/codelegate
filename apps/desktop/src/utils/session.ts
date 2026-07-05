@@ -1,4 +1,13 @@
-import type { EnvVar, Session } from "../types";
+import type { AgentId, EnvVar, PaneKind, Session } from "../types";
+
+/**
+ * Canonical unread-output key. Agent panes are keyed per agent; git/terminal
+ * panes are keyed per session. Shared by the writer (useAppState) and the reader
+ * (MainPane) so the formats cannot drift.
+ */
+export function unreadKey(sessionId: string, kind: PaneKind, agentId?: AgentId) {
+  return kind === "agent" ? `${sessionId}:agent:${agentId}` : `${sessionId}:${kind}`;
+}
 
 export function getRepoName(path: string) {
   const cleaned = path.replace(/\/+$/, "");

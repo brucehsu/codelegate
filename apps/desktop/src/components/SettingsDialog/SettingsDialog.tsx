@@ -9,7 +9,7 @@ import {
   normalizeShortcutModifier,
 } from "../../utils/shortcutModifier";
 import { agentCatalog } from "../../constants";
-import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
+import { agentIconById } from "../ui/AgentIcon/agentIcons";
 import styles from "./SettingsDialog.module.css";
 
 interface SettingsDialogProps {
@@ -47,11 +47,6 @@ export default function SettingsDialog({
   const shortcutModifierRef = useRef(normalizeShortcutModifier(shortcutModifier));
   const shortcutModifierDraftRef = useRef(normalizeShortcutModifier(shortcutModifier));
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
-
-  const iconById: Record<string, JSX.Element> = {
-    claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
-    codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
-  };
 
   const iconClassById: Record<string, string> = {
     claude: styles.agentIconClaude,
@@ -251,7 +246,7 @@ export default function SettingsDialog({
                   <div className={styles.agentHeader}>
                     <div className={styles.agentMeta}>
                       <span className={`${styles.agentIcon} ${iconClassById[agent.id] ?? ""}`}>
-                        {iconById[agent.id]}
+                        {agentIconById[agent.id]}
                       </span>
                       <span className={styles.agentLabel}>{agent.label}</span>
                     </div>

@@ -1,8 +1,8 @@
-import { Bot, ChevronsLeft, ChevronsRight, MoreHorizontal, Plus, Settings } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, MoreHorizontal, Plus, Settings } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionGroup } from "../../utils/session";
 import type { Session } from "../../types";
-import { ClaudeIconIcon, OpenaiIconIcon } from "@codelegate/shared/icons";
+import AgentIconStack from "../ui/AgentIconStack/AgentIconStack";
 import IconButton from "../ui/IconButton/IconButton";
 import CollapsibleSection from "../ui/CollapsibleSection/CollapsibleSection";
 import { useStatusPopouts } from "./useStatusPopouts";
@@ -202,19 +202,6 @@ export default function Sidebar({
     popoutPositionsRef.current = popoutPositions;
   }, [popoutPositions]);
 
-  const iconById: Record<string, JSX.Element> = {
-    claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
-    codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
-  };
-
-  const classById: Record<string, string> = {
-    claude: styles.agentClaude,
-    codex: styles.agentCodex,
-  };
-
-  const resolveAgentIcon = (agentId: string) => iconById[agentId] ?? <Bot aria-hidden="true" />;
-  const resolveAgentClass = (agentId: string) => classById[agentId] ?? styles.agentDefault;
-
   const renderMenuShortcut = (key: string) => (
     <span className={styles.menuShortcut} aria-hidden="true">
       {shortcutModifierTokens.map((token, index) => (
@@ -339,7 +326,7 @@ export default function Sidebar({
               bodyClassName={styles.repoBody}
             >
               {group.sessions.map((session) => {
-                const agentId = session.repo.agent;
+                const agentId = session.activeAgent;
                 const shortcut = sessionShortcuts[session.id] ?? null;
                 const isOutputting = Boolean(agentOutputting[session.id]);
                 const isUnread = Boolean(unreadSessions[session.id]);
@@ -356,9 +343,7 @@ export default function Sidebar({
                       type="button"
                       onClick={() => onSelectSession(session.id)}
                     >
-                      <span className={`${styles.agentIcon} ${resolveAgentClass(agentId)}`}>
-                        {resolveAgentIcon(agentId)}
-                      </span>
+                      <AgentIconStack activeAgent={agentId} size="list" />
                       <div className={styles.sessionText}>
                         <div className={styles.sessionLabel}>{branchTitle}</div>
                       </div>
@@ -506,7 +491,7 @@ export default function Sidebar({
           {sessionGroups.map((group) => (
             <div key={group.key} className={styles.railGroup}>
               {group.sessions.map((session) => {
-                const agentId = session.repo.agent;
+                const agentId = session.activeAgent;
                 const isOutputting = Boolean(agentOutputting[session.id]);
                 const isUnread = Boolean(unreadSessions[session.id]);
                 const branchTitle = session.branch?.trim() || "Loading branch...";
@@ -531,9 +516,7 @@ export default function Sidebar({
                       }
                     }}
                   >
-                    <span className={`${styles.railAgentIcon} ${resolveAgentClass(agentId)}`}>
-                      {resolveAgentIcon(agentId)}
-                    </span>
+                    <AgentIconStack activeAgent={agentId} size="rail" />
                     <span className={`${resolveStatusClass(session, isOutputting, isUnread)} ${styles.railStatusBadge}`} />
                   </button>
                 );
@@ -560,7 +543,7 @@ export default function Sidebar({
               return null;
             }
             const { session, groupName } = info;
-            const agentId = session.repo.agent;
+            const agentId = session.activeAgent;
             const isOutputting = Boolean(agentOutputting[session.id]);
             const isUnread = Boolean(unreadSessions[session.id]);
             const branchTitle = session.branch?.trim() || "Loading branch...";
@@ -589,9 +572,7 @@ export default function Sidebar({
                       {shortcut}
                     </span>
                   ) : null}
-                  <span className={`${styles.agentIcon} ${resolveAgentClass(agentId)}`}>
-                    {resolveAgentIcon(agentId)}
-                  </span>
+                  <AgentIconStack activeAgent={agentId} size="list" />
                   <span className={styles.popoutRepo}>{groupName}</span>
                   <span className={styles.popoutBranch}>{branchTitle}</span>
                   <span className={resolveStatusClass(session, isOutputting, isUnread)} />

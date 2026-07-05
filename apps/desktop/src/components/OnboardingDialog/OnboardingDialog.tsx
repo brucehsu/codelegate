@@ -29,7 +29,9 @@ function createMockSession(
     },
     branch,
     lastActivePaneKind: "agent",
+    activeAgent: agent,
     status: "running",
+    agentStates: {},
   };
 }
 

@@ -50,16 +50,24 @@ export interface AppConfig {
 
 export type SessionStatus = "running" | "stopped" | "error";
 
+export interface AgentProcessState {
+  status: SessionStatus;
+  ptyId?: number;
+  startedAt?: number;
+  lastError?: string;
+}
+
 export interface Session {
   id: string;
   repo: RepoConfig;
   cwd?: string;
   branch?: string;
   lastActivePaneKind: PaneKind;
+  /** Agent currently visible in the session. Set at creation (from repo.agent). */
+  activeAgent: AgentId;
+  /** Per-agent process state. Session-level status mirrors the active agent. */
+  agentStates: Partial<Record<AgentId, AgentProcessState>>;
   status: SessionStatus;
-  ptyId?: number;
-  lastError?: string;
-  startedAt?: number;
   isTabClosed?: boolean;
 }
 

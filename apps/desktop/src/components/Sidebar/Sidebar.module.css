@@ -173,12 +173,35 @@
   color: inherit;
   transition: border 0.2s ease, background 0.2s ease;
   position: relative;
+  /* Agent-icon backing plate matches the surface behind the row. Default and
+     hover both sit on the repo section's --surface (hover only recolors the
+     border). */
+  --agent-stack-cover: var(--surface);
 }
 
 .sessionItemActive {
-  background: linear-gradient(135deg, rgba(79, 209, 197, 0.18), transparent 60%), var(--surface-2);
+  /* Single source for the active-row teal so the gradient and the icon plate
+     below cannot drift. Kept as a literal (not var(--accent)): the tint is
+     theme-invariant here, whereas --accent shifts in the light theme. */
+  --session-active-tint: rgb(79 209 197);
+  background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--session-active-tint) 18%, transparent),
+      transparent 60%
+    ),
+    var(--surface-2);
   border-color: var(--accent);
   box-shadow: 0 16px 40px rgba(15, 24, 41, 0.35);
+  /* Active row is a teal gradient over --surface-2. Instead of letting the
+     gradient bleed through a semi-transparent plate, use an OPAQUE tint that
+     approximates what the gradient actually paints where the icon stack sits.
+     The 135deg gradient (teal alpha 0.18 at the top-left, fading to 0 at 60% of
+     the gradient line) lands the stack ~28px in and vertically centered, at
+     roughly 25% of the way to the transparent stop -> ~0.13 effective teal
+     alpha over --surface-2. Compositing teal at ~0.13 over --surface-2 is a 13%
+     teal mix, so the plate matches the backdrop yet stays fully opaque and
+     occludes the back icon. Derived from --surface-2 so both themes adapt. */
+  --agent-stack-cover: color-mix(in srgb, var(--session-active-tint) 13%, var(--surface-2));
 }
 
 .sessionItem:hover {
@@ -354,33 +377,6 @@
   z-index: 2;
 }
 
-.agentIcon {
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-}
-
-.agentIcon svg,
-.agentIcon > * {
-  width: 24px;
-  height: 24px;
-  display: block;
-}
-
-.agentClaude {
-  color: #f59e0b;
-}
-
-.agentCodex {
-  color: #ffffff;
-}
-
-.agentDefault {
-  color: var(--accent);
-}
-
 .sessionMenu {
   position: relative;
   margin-right: 6px;
@@ -546,28 +542,18 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+  /* Rail button sits on the sidebar's --surface (active state only adds a ring,
+     no background change). */
+  --agent-stack-cover: var(--surface);
 }
 
 .railItem:hover {
   background: var(--surface-2);
+  --agent-stack-cover: var(--surface-2);
 }
 
 .railItemActive {
   box-shadow: 0 0 0 1px var(--accent);
-}
-
-.railAgentIcon {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-}
-
-.railAgentIcon svg,
-.railAgentIcon > * {
-  width: 20px;
-  height: 20px;
-  display: block;
 }
 
 .railStatusBadge {
@@ -627,6 +613,10 @@
   color: inherit;
   text-align: left;
   animation: popoutDrawer 180ms ease-out;
+  /* Card background is --surface; the error variant only recolors the border
+     and adds a 3px left strip (outside the icon's 12px padding), so the plate
+     stays --surface in both variants. */
+  --agent-stack-cover: var(--surface);
 }
 
 .popoutError {
