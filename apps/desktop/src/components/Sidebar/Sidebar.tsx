@@ -103,11 +103,12 @@ export default function Sidebar({
   const { popouts, dismiss } = useStatusPopouts({
     sessions: popoutSessions,
     agentOutputting,
+    unreadSessions,
     enabled: collapsed,
   });
 
   const visibleIds = useMemo(() => {
-    const ids = new Set<string>(popouts.keys());
+    const ids = new Set<string>(popouts);
     if (hoveredSessionId) {
       ids.add(hoveredSessionId);
     }

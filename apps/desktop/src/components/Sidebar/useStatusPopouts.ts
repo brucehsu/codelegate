@@ -8,30 +8,28 @@ export interface StatusPopoutSession {
   status: SessionStatus;
 }
 
-export interface StatusPopoutEntry {
-  persistent: boolean;
-}
-
 export interface UseStatusPopoutsArgs {
   sessions: readonly StatusPopoutSession[];
   agentOutputting: Record<string, boolean>;
+  unreadSessions: Record<string, boolean>;
   enabled: boolean;
 }
 
 export interface UseStatusPopoutsResult {
-  popouts: Map<string, StatusPopoutEntry>;
+  popouts: Set<string>;
   dismiss: (sessionId: string) => void;
 }
 
-export function useStatusPopouts({ sessions, agentOutputting, enabled }: UseStatusPopoutsArgs): UseStatusPopoutsResult {
-  const [popouts, setPopouts] = useState<Map<string, StatusPopoutEntry>>(new Map());
+export function useStatusPopouts({
+  sessions,
+  agentOutputting,
+  unreadSessions,
+  enabled,
+}: UseStatusPopoutsArgs): UseStatusPopoutsResult {
+  const [popouts, setPopouts] = useState<Set<string>>(new Set());
 
-  const prevStatusRef = useRef<Map<string, SessionStatus>>(new Map());
-  const prevOutputtingRef = useRef<Map<string, boolean>>(new Map());
+  const prevUnreadLightRef = useRef<Map<string, boolean>>(new Map());
   const timersRef = useRef<Map<string, number>>(new Map());
-  const acknowledgedErrorsRef = useRef<Set<string>>(new Set());
-  const seededRef = useRef(false);
-  const prevEnabledRef = useRef(enabled);
 
   const clearTimer = useCallback((id: string) => {
     const timer = timersRef.current.get(id);
@@ -48,7 +46,7 @@ export function useStatusPopouts({ sessions, agentOutputting, enabled }: UseStat
         if (!prev.has(id)) {
           return prev;
         }
-        const next = new Map(prev);
+        const next = new Set(prev);
         next.delete(id);
         return next;
       });
@@ -56,122 +54,69 @@ export function useStatusPopouts({ sessions, agentOutputting, enabled }: UseStat
     [clearTimer]
   );
 
-  const removePersistentPopout = useCallback((id: string) => {
-    setPopouts((prev) => {
-      const entry = prev.get(id);
-      if (!entry || !entry.persistent) {
-        return prev;
-      }
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-
   const addPopout = useCallback(
-    (id: string, persistent: boolean) => {
+    (id: string) => {
       clearTimer(id);
       setPopouts((prev) => {
-        const next = new Map(prev);
-        next.set(id, { persistent });
+        const next = new Set(prev);
+        next.add(id);
         return next;
       });
-      if (!persistent) {
-        const timer = window.setTimeout(() => {
-          removePopout(id);
-        }, POPOUT_DURATION_MS);
-        timersRef.current.set(id, timer);
-      }
+      const timer = window.setTimeout(() => {
+        removePopout(id);
+      }, POPOUT_DURATION_MS);
+      timersRef.current.set(id, timer);
     },
     [clearTimer, removePopout]
   );
 
-  const clearAll = useCallback(() => {
-    timersRef.current.forEach((timer) => window.clearTimeout(timer));
-    timersRef.current.clear();
-    setPopouts((prev) => (prev.size === 0 ? prev : new Map()));
-  }, []);
-
   const dismiss = useCallback(
     (sessionId: string) => {
-      if (prevStatusRef.current.get(sessionId) === "error") {
-        acknowledgedErrorsRef.current.add(sessionId);
-      }
       removePopout(sessionId);
     },
     [removePopout]
   );
 
   useEffect(() => {
-    const prevStatus = prevStatusRef.current;
-    const prevOutputting = prevOutputtingRef.current;
-
-    if (!seededRef.current) {
-      seededRef.current = true;
-      for (const session of sessions) {
-        prevStatus.set(session.id, session.status);
-        prevOutputting.set(session.id, agentOutputting[session.id] ?? false);
-      }
-      prevEnabledRef.current = enabled;
-      return;
-    }
-
-    const enabledTurnedOff = prevEnabledRef.current && !enabled;
-    const enabledTurnedOn = !prevEnabledRef.current && enabled;
-    prevEnabledRef.current = enabled;
-
+    const prevUnreadLight = prevUnreadLightRef.current;
     const currentIds = new Set<string>();
 
     for (const session of sessions) {
       const { id } = session;
       currentIds.add(id);
 
-      const nextStatus = session.status;
-      const prevSessionStatus = prevStatus.get(id);
-      const isNewSession = prevSessionStatus === undefined;
-      const statusChanged = !isNewSession && prevSessionStatus !== nextStatus;
+      const isOutputting = agentOutputting[id] ?? false;
+      const showsUnreadLight =
+        session.status === "running" && !isOutputting && Boolean(unreadSessions[id]);
+      const isNewSession = !prevUnreadLight.has(id);
+      const wasShowingUnreadLight = prevUnreadLight.get(id) ?? false;
 
-      const nextOutputting = agentOutputting[id] ?? false;
-      const outputtingStarted = !(prevOutputting.get(id) ?? false) && nextOutputting;
-
-      if (prevSessionStatus === "error" && nextStatus !== "error") {
-        acknowledgedErrorsRef.current.delete(id);
-        removePersistentPopout(id);
-      }
-
-      if (enabled && !isNewSession && (statusChanged || outputtingStarted)) {
-        if (nextStatus === "error") {
-          if (!acknowledgedErrorsRef.current.has(id)) {
-            addPopout(id, true);
-          }
-        } else {
-          addPopout(id, false);
+      if (!isNewSession) {
+        if (enabled && showsUnreadLight && !wasShowingUnreadLight) {
+          addPopout(id);
+        } else if (!showsUnreadLight && wasShowingUnreadLight) {
+          removePopout(id);
         }
       }
 
-      prevStatus.set(id, nextStatus);
-      prevOutputting.set(id, nextOutputting);
+      prevUnreadLight.set(id, showsUnreadLight);
     }
 
-    for (const id of Array.from(prevStatus.keys())) {
+    for (const id of Array.from(prevUnreadLight.keys())) {
       if (!currentIds.has(id)) {
-        prevStatus.delete(id);
-        prevOutputting.delete(id);
-        acknowledgedErrorsRef.current.delete(id);
+        prevUnreadLight.delete(id);
         removePopout(id);
       }
     }
+  }, [sessions, agentOutputting, unreadSessions, enabled, addPopout, removePopout]);
 
-    if (enabledTurnedOff) {
-      clearAll();
-    } else if (enabledTurnedOn) {
-      for (const session of sessions) {
-        if (session.status === "error" && !acknowledgedErrorsRef.current.has(session.id)) {
-          addPopout(session.id, true);
-        }
-      }
+  useEffect(() => {
+    if (!enabled) {
+      timersRef.current.forEach((timer) => window.clearTimeout(timer));
+      timersRef.current.clear();
+      setPopouts((prev) => (prev.size === 0 ? prev : new Set()));
     }
-  }, [sessions, agentOutputting, enabled, addPopout, removePopout, removePersistentPopout, clearAll]);
+  }, [enabled]);
 
   useEffect(() => {
     const timers = timersRef.current;
