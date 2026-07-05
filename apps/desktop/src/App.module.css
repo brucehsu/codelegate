@@ -1,6 +1,8 @@
 .shell {
   --sidebar-width: 360px;
-  --rail-width: 52px;
+  /* Rail icons match the drawer/list icon size (24px stack), so the rail is
+     sized for 40px rail items with the same side margins as before. */
+  --rail-width: 60px;
   display: grid;
   grid-template-columns: clamp(320px, var(--sidebar-width), 80%) 1fr;
   grid-template-rows: minmax(0, 1fr);

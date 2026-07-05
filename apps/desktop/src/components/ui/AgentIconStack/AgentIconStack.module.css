@@ -1,26 +1,20 @@
+/* One size everywhere (sidebar list, rail, drawer popouts) so the icon does
+   not change scale as the drawer slides out next to the rail.
+   --stack-offset is the "peek": how far the active (front) icon is shifted
+   right, which is also how much of the inactive (back) icon stays visible.
+   Keep it small so the back icon reads as a sliver, deck-of-cards style. */
 .stack {
   position: relative;
   flex-shrink: 0;
   display: inline-block;
+  --icon-size: 24px;
+  --stack-offset: 8px;
   width: calc(var(--icon-size) + var(--stack-offset));
   height: var(--icon-size);
   /* Contain the icons' z-indexes (1-3 during the swap) so they only order the
      deck internally and never paint over siblings, e.g. the rail status badge
      overlapping this stack's corner. */
   isolation: isolate;
-}
-
-/* --stack-offset is the "peek": how far the active (front) icon is shifted
-   right, which is also how much of the inactive (back) icon stays visible.
-   Keep it small so the back icon reads as a sliver, deck-of-cards style. */
-.list {
-  --icon-size: 24px;
-  --stack-offset: 8px;
-}
-
-.rail {
-  --icon-size: 20px;
-  --stack-offset: 6px;
 }
 
 .icon {

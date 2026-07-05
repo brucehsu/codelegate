@@ -11,7 +11,6 @@ const classById: Record<AgentId, string> = {
 
 interface AgentIconStackProps {
   activeAgent: AgentId;
-  size?: "list" | "rail";
 }
 
 interface SwapState {
@@ -20,7 +19,7 @@ interface SwapState {
   nonce: number;
 }
 
-export default function AgentIconStack({ activeAgent, size = "list" }: AgentIconStackProps) {
+export default function AgentIconStack({ activeAgent }: AgentIconStackProps) {
   // Track the previous active agent across renders so a change can replay the swap
   // animation. Updating during render (React's "store info from previous renders"
   // pattern) keeps the new icon from flashing in its resting spot before animating.
@@ -31,12 +30,11 @@ export default function AgentIconStack({ activeAgent, size = "list" }: AgentIcon
   }
 
   const { from, nonce } = swap;
-  const sizeClass = size === "rail" ? styles.rail : styles.list;
   // nonce === 0 is the initial mount, which must not animate.
   const animating = nonce > 0;
 
   return (
-    <span className={`${styles.stack} ${sizeClass}`} aria-hidden="true">
+    <span className={styles.stack} aria-hidden="true">
       {agentCatalog.map((agent) => {
         const isActive = agent.id === activeAgent;
         const animationClass = !animating

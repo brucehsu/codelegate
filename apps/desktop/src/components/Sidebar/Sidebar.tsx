@@ -344,7 +344,7 @@ export default function Sidebar({
                       type="button"
                       onClick={() => onSelectSession(session.id)}
                     >
-                      <AgentIconStack activeAgent={agentId} size="list" />
+                      <AgentIconStack activeAgent={agentId} />
                       <div className={styles.sessionText}>
                         <div className={styles.sessionLabel}>{branchTitle}</div>
                       </div>
@@ -517,7 +517,7 @@ export default function Sidebar({
                       }
                     }}
                   >
-                    <AgentIconStack activeAgent={agentId} size="rail" />
+                    <AgentIconStack activeAgent={agentId} />
                     <span className={`${resolveStatusClass(session, isOutputting, isUnread)} ${styles.railStatusBadge}`} />
                   </button>
                 );
@@ -573,7 +573,7 @@ export default function Sidebar({
                       {shortcut}
                     </span>
                   ) : null}
-                  <AgentIconStack activeAgent={agentId} size="list" />
+                  <AgentIconStack activeAgent={agentId} />
                   <span className={styles.popoutRepo}>{groupName}</span>
                   <span className={styles.popoutBranch}>{branchTitle}</span>
                   <span className={resolveStatusClass(session, isOutputting, isUnread)} />
