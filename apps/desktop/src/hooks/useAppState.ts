@@ -1841,6 +1841,7 @@ export function useAppState(
       repoRoot,
       sessionCwd,
       initialCommands = [],
+      skipPreCommands = false,
       failureMessage,
     }: {
       sessionId: string;
@@ -1849,6 +1850,7 @@ export function useAppState(
       repoRoot: string;
       sessionCwd: string;
       initialCommands?: string[];
+      skipPreCommands?: boolean;
       failureMessage: string;
     }) => {
       let shell = "";
@@ -1864,13 +1866,15 @@ export function useAppState(
       const envMap = ensureTermEnv(envListToMap(normalizedRepo.env));
 
       const initCommands: string[] = [...initialCommands, `cd ${escapeShellArg(sessionCwd)}`];
-      const preCommands = normalizedRepo.preCommands.trim();
-      if (preCommands) {
-        preCommands
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0)
-          .forEach((line) => initCommands.push(line));
+      if (!skipPreCommands) {
+        const preCommands = normalizedRepo.preCommands.trim();
+        if (preCommands) {
+          preCommands
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+            .forEach((line) => initCommands.push(line));
+        }
       }
       const agentCommand = agentCommandById[agentId];
       const agentArgs = configRef.current.settings.agentArgs?.[agentId]?.trim() ?? "";
@@ -2009,12 +2013,15 @@ export function useAppState(
           return;
         }
         // Reuse the already-resolved cwd (worktree path included); never re-create a worktree.
+        // preCommands already ran when the session first spawned; switching agents
+        // within the same session must not re-run them.
         await spawnAgentForSession({
           sessionId,
           repo: session.repo,
           agentId: nextAgent,
           repoRoot: session.repo.repoPath,
           sessionCwd,
+          skipPreCommands: true,
           failureMessage: "Failed to start agent",
         });
       } else if (runtime) {
