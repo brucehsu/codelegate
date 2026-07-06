@@ -216,6 +216,7 @@ const defaultSettings = {
   shortcutModifier: "Alt",
   repoDefaults: {},
   agentArgs: {},
+  agentCommands: {},
   sidebarCollapsed: false,
 };
 
@@ -773,6 +774,7 @@ export function useAppState(
             ),
             repoDefaults: loaded.settings?.repoDefaults ?? defaultSettings.repoDefaults,
             agentArgs: normalizeAgentArgs(loaded.settings?.agentArgs),
+            agentCommands: normalizeAgentArgs(loaded.settings?.agentCommands),
             sidebarCollapsed: loaded.settings?.sidebarCollapsed ?? false,
           },
         } as AppConfig;
@@ -967,10 +969,11 @@ export function useAppState(
   );
 
   const updateAgentSettings = useCallback(
-    (agentArgs: Record<string, string>) => {
+    (next: { agentArgs: Record<string, string>; agentCommands: Record<string, string> }) => {
       updateSettings((settings) => ({
         ...settings,
-        agentArgs,
+        agentArgs: next.agentArgs,
+        agentCommands: next.agentCommands,
       }));
     },
     [updateSettings]
@@ -1876,9 +1879,13 @@ export function useAppState(
             .forEach((line) => initCommands.push(line));
         }
       }
-      const agentCommand = agentCommandById[agentId];
       const agentArgs = configRef.current.settings.agentArgs?.[agentId]?.trim() ?? "";
-      initCommands.push(applyAgentArgs(agentCommand, agentArgs));
+      const customCommand = configRef.current.settings.agentCommands?.[agentId]?.trim() ?? "";
+      if (customCommand) {
+        initCommands.push(agentArgs ? `${customCommand} ${agentArgs}` : customCommand);
+      } else {
+        initCommands.push(applyAgentArgs(agentCommandById[agentId], agentArgs));
+      }
 
       const runtime = ensureTerminalRuntime(sessionId, "agent", agentId);
       if (runtime.starting) {

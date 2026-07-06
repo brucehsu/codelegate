@@ -155,6 +155,21 @@
   gap: 12px;
 }
 
+.agentField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.agentField span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .agentMeta {
   display: flex;
   align-items: center;

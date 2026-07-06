@@ -123,6 +123,8 @@ struct AppSettings {
   #[serde(default)]
   agent_args: HashMap<String, String>,
   #[serde(default)]
+  agent_commands: HashMap<String, String>,
+  #[serde(default)]
   sidebar_collapsed: bool,
 }
 
@@ -131,6 +133,8 @@ struct AppSettings {
 struct AgentCommandCheck {
   agent: String,
   commands: Vec<String>,
+  #[serde(default)]
+  custom_command: Option<String>,
 }
 
 #[tauri::command]
@@ -196,10 +200,23 @@ fn check_agent_commands(checks: Vec<AgentCommandCheck>) -> Result<HashMap<String
   let mut result = HashMap::new();
 
   for check in checks {
-    let available = check
-      .commands
-      .iter()
-      .any(|command| command_exists_in_shell(&shell, command.trim()));
+    let custom = check
+      .custom_command
+      .as_deref()
+      .map(str::trim)
+      .filter(|value| !value.is_empty());
+    let available = if let Some(custom) = custom {
+      match custom.split_whitespace().next() {
+        Some(token) if is_safe_command_name(token) => command_exists_in_shell(&shell, token),
+        // Paths, quoting, or env prefixes cannot be probed safely; assume present.
+        _ => true,
+      }
+    } else {
+      check
+        .commands
+        .iter()
+        .any(|command| command_exists_in_shell(&shell, command.trim()))
+    };
     result.insert(check.agent, available);
   }
 
@@ -735,6 +752,7 @@ fn default_config() -> AppConfig {
       shortcut_modifier: default_shortcut_modifier(),
       repo_defaults: HashMap::new(),
       agent_args: HashMap::new(),
+      agent_commands: HashMap::new(),
       sidebar_collapsed: false,
     },
   }

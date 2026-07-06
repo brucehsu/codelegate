@@ -12,6 +12,10 @@ export const agentCommandById: Record<AgentId, string> = {
     'if command -v codex >/dev/null 2>&1; then exec codex; elif command -v codex-cli >/dev/null 2>&1; then exec codex-cli; else echo "Codex CLI not found in PATH"; fi',
 };
 
+export const defaultAgentCommandById = Object.fromEntries(
+  agentCatalog.map((agent) => [agent.id, agent.commands[0]])
+) as Record<AgentId, string>;
+
 export function isSupportedAgentId(value: unknown): value is AgentId {
   return typeof value === "string" && agentCatalog.some((agent) => agent.id === value);
 }

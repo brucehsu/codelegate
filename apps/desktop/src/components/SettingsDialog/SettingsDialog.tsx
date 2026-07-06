@@ -8,7 +8,7 @@ import {
   modifierFromKeyboardEvent,
   normalizeShortcutModifier,
 } from "../../utils/shortcutModifier";
-import { agentCatalog } from "../../constants";
+import { agentCatalog, defaultAgentCommandById } from "../../constants";
 import { agentIconById } from "../ui/AgentIcon/agentIcons";
 import styles from "./SettingsDialog.module.css";
 
@@ -18,11 +18,13 @@ interface SettingsDialogProps {
   fontSize: number;
   shortcutModifier: string;
   agentArgs: Record<string, string>;
+  agentCommands: Record<string, string>;
   agentAvailability: AgentAvailability;
   onChangeFontFamily: (value: string) => void;
   onChangeFontSize: (value: number) => void;
   onCommitShortcutModifier: (value: string) => void;
   onAgentArgsChange: (next: Record<string, string>) => void;
+  onAgentCommandsChange: (next: Record<string, string>) => void;
   onClose: () => void;
   onSave: () => void;
 }
@@ -33,11 +35,13 @@ export default function SettingsDialog({
   fontSize,
   shortcutModifier,
   agentArgs,
+  agentCommands,
   agentAvailability,
   onChangeFontFamily,
   onChangeFontSize,
   onCommitShortcutModifier,
   onAgentArgsChange,
+  onAgentCommandsChange,
   onClose,
   onSave,
 }: SettingsDialogProps) {
@@ -102,6 +106,13 @@ export default function SettingsDialog({
   const handleAgentArgsChange = (agentId: string, value: string) => {
     onAgentArgsChange({
       ...agentArgs,
+      [agentId]: value,
+    });
+  };
+
+  const handleAgentCommandChange = (agentId: string, value: string) => {
+    onAgentCommandsChange({
+      ...agentCommands,
       [agentId]: value,
     });
   };
@@ -252,12 +263,24 @@ export default function SettingsDialog({
                     </div>
                     {agentAvailability[agent.id] === false ? <span className={styles.agentWarning}>Not Found</span> : null}
                   </div>
-                  <input
-                    className={styles.input}
-                    value={agentArgs[agent.id] ?? ""}
-                    onChange={(event) => handleAgentArgsChange(agent.id, event.target.value)}
-                    placeholder="--help"
-                  />
+                  <label className={styles.agentField}>
+                    <span>Command</span>
+                    <input
+                      className={styles.input}
+                      value={agentCommands[agent.id] ?? ""}
+                      onChange={(event) => handleAgentCommandChange(agent.id, event.target.value)}
+                      placeholder={defaultAgentCommandById[agent.id]}
+                    />
+                  </label>
+                  <label className={styles.agentField}>
+                    <span>Arguments</span>
+                    <input
+                      className={styles.input}
+                      value={agentArgs[agent.id] ?? ""}
+                      onChange={(event) => handleAgentArgsChange(agent.id, event.target.value)}
+                      placeholder="--help"
+                    />
+                  </label>
                 </div>
               ))}
             </div>

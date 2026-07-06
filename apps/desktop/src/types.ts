@@ -40,6 +40,7 @@ export interface AppSettings {
   shortcutModifier: string;
   repoDefaults?: Record<string, RepoSessionDefaults>;
   agentArgs?: Record<string, string>;
+  agentCommands?: Record<string, string>;
   sidebarCollapsed?: boolean;
 }
 

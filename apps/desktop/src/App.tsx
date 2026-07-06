@@ -38,9 +38,23 @@ import {
   getShortcutModifierTokens,
   matchesShortcutModifierState,
 } from "./utils/shortcutModifier";
-import { agentCatalog } from "./constants";
+import { agentCatalog, defaultAgentCommandById, isSupportedAgentId } from "./constants";
 
 const emptyEnv: EnvVar[] = [{ key: "", value: "" }];
+
+function cleanAgentEntries(
+  entries: Record<string, string>,
+  keep?: (id: AgentId, value: string) => boolean
+) {
+  const cleaned: Record<string, string> = {};
+  Object.entries(entries).forEach(([id, value]) => {
+    const trimmed = value.trim();
+    if (trimmed.length > 0 && isSupportedAgentId(id) && (!keep || keep(id, trimmed))) {
+      cleaned[id] = trimmed;
+    }
+  });
+  return cleaned;
+}
 
 function firstAvailableAgent(availability: AgentAvailability) {
   return agentCatalog.find((agent) => availability[agent.id] !== false)?.id ?? "claude";
@@ -176,6 +190,7 @@ export default function App() {
   const [fontFamily, setFontFamily] = useState(config.settings.terminalFontFamily);
   const [fontSize, setFontSize] = useState(config.settings.terminalFontSize);
   const [agentArgs, setAgentArgs] = useState<Record<string, string>>(config.settings.agentArgs ?? {});
+  const [agentCommands, setAgentCommands] = useState<Record<string, string>>(config.settings.agentCommands ?? {});
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -196,11 +211,15 @@ export default function App() {
   const selectedAgentAvailable = agentAvailability[selectedAgent] !== false;
   const showOnboarding = hasSavedConfig === false && !onboardingCompleted;
 
+  const agentCommandsKey = JSON.stringify(config.settings.agentCommands ?? {});
+
   useEffect(() => {
     let cancelled = false;
+    const agentCommands: Record<string, string> = JSON.parse(agentCommandsKey);
     const checks = agentCatalog.map((agent) => ({
       agent: agent.id,
       commands: agent.commands,
+      customCommand: agentCommands[agent.id]?.trim() || undefined,
     }));
 
     invoke<Record<string, boolean>>("check_agent_commands", { checks })
@@ -216,7 +235,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [pushToast]);
+  }, [pushToast, agentCommandsKey]);
 
   useEffect(() => {
     if (agentAvailability[selectedAgent] === false) {
@@ -499,9 +518,11 @@ export default function App() {
     setFontFamily(config.settings.terminalFontFamily);
     setFontSize(config.settings.terminalFontSize);
     setAgentArgs(config.settings.agentArgs ?? {});
+    setAgentCommands(config.settings.agentCommands ?? {});
     setSettingsOpen(true);
   }, [
     config.settings.agentArgs,
+    config.settings.agentCommands,
     config.settings.terminalFontFamily,
     config.settings.terminalFontSize,
   ]);
@@ -654,20 +675,18 @@ export default function App() {
   );
 
   const saveSettings = () => {
-    const allowedAgentIds = new Set(agentCatalog.map((agent) => agent.id));
-    const cleanedArgs: Record<string, string> = {};
-    Object.entries(agentArgs).forEach(([id, value]) => {
-      const trimmed = value.trim();
-      if (trimmed.length > 0 && allowedAgentIds.has(id as AgentId)) {
-        cleanedArgs[id] = trimmed;
-      }
-    });
+    const cleanedArgs = cleanAgentEntries(agentArgs);
+    const cleanedCommands = cleanAgentEntries(
+      agentCommands,
+      (id, value) => value !== defaultAgentCommandById[id]
+    );
     updateTerminalSettings({
       terminalFontFamily: fontFamily.trim() || config.settings.terminalFontFamily,
       terminalFontSize: Number.isNaN(fontSize) ? config.settings.terminalFontSize : fontSize,
     });
-    updateAgentSettings(cleanedArgs);
+    updateAgentSettings({ agentArgs: cleanedArgs, agentCommands: cleanedCommands });
     setAgentArgs(cleanedArgs);
+    setAgentCommands(cleanedCommands);
     setSettingsOpen(false);
     requestAnimationFrame(() => focusActiveSession());
   };
@@ -945,11 +964,13 @@ export default function App() {
         fontSize={fontSize}
         shortcutModifier={shortcutModifier}
         agentArgs={agentArgs}
+        agentCommands={agentCommands}
         agentAvailability={agentAvailability}
         onChangeFontFamily={setFontFamily}
         onChangeFontSize={setFontSize}
         onCommitShortcutModifier={handleShortcutModifierCommit}
         onAgentArgsChange={setAgentArgs}
+        onAgentCommandsChange={setAgentCommands}
         onClose={closeSettings}
         onSave={saveSettings}
       />
