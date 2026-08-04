@@ -95,6 +95,7 @@ export interface CloseConfirmResult {
 export interface PtyOutput {
   session_id: number;
   data_base64: string;
+  end_offset: number;
 }
 
 export interface PtyExit {

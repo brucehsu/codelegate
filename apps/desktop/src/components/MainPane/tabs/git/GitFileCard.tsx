@@ -56,6 +56,7 @@ const emptyCell = { __html: "&nbsp;" };
 const DIFF_ROW_HEIGHT = 30;
 const DIFF_ROW_OVERSCAN = 12;
 const DIFF_VIRTUALIZE_THRESHOLD = 120;
+const DIFF_LINE_HTML_CACHE_LIMIT = 1000;
 
 interface UnifiedDiffRow {
   oldLine: number | null;
@@ -84,6 +85,26 @@ function getLineHtml(text: string, language: string, plain = false) {
     return { __html: Prism.highlight(text, grammar, language) };
   }
   return { __html: escapeHtml(text) };
+}
+
+function cacheLineHtml(
+  cache: Map<string, { __html: string }>,
+  key: string,
+  create: () => { __html: string }
+) {
+  const cached = cache.get(key);
+  if (cached) {
+    return cached;
+  }
+  if (cache.size >= DIFF_LINE_HTML_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) {
+      cache.delete(oldestKey);
+    }
+  }
+  const value = create();
+  cache.set(key, value);
+  return value;
 }
 
 function getCellClass(type: DiffLineType) {
@@ -340,11 +361,9 @@ export default function GitFileCard({
       const cellClass = `${styles.diffCell} ${getCellClass(cell.type)}`;
       const gutterClass = `${styles.diffGutter} ${getGutterClass(cell.type)}`;
       const cacheKey = `${file?.language ?? "text"}:${usePlainText ? "plain" : "highlight"}:${cell.text}`;
-      let lineHtml = lineHtmlCacheRef.current.get(cacheKey);
-      if (!lineHtml) {
-        lineHtml = getLineHtml(cell.text, file?.language ?? "text", usePlainText);
-        lineHtmlCacheRef.current.set(cacheKey, lineHtml);
-      }
+      const lineHtml = cacheLineHtml(lineHtmlCacheRef.current, cacheKey, () =>
+        getLineHtml(cell.text, file?.language ?? "text", usePlainText)
+      );
 
       return (
         <div key={`${fileKey}-${side}-${index}`} className={styles.diffColumnRow} style={style}>
@@ -369,11 +388,9 @@ export default function GitFileCard({
       const cellClass = `${styles.diffCell} ${styles.diffUnifiedCell} ${getCellClass(row.cell.type)}`;
       const gutterClass = `${styles.diffGutter} ${styles.diffUnifiedGutter} ${getGutterClass(row.cell.type)}`;
       const cacheKey = `${file?.language ?? "text"}:${usePlainText ? "plain" : "highlight"}:${row.cell.text}`;
-      let lineHtml = lineHtmlCacheRef.current.get(cacheKey);
-      if (!lineHtml) {
-        lineHtml = getLineHtml(row.cell.text, file?.language ?? "text", usePlainText);
-        lineHtmlCacheRef.current.set(cacheKey, lineHtml);
-      }
+      const lineHtml = cacheLineHtml(lineHtmlCacheRef.current, cacheKey, () =>
+        getLineHtml(row.cell.text, file?.language ?? "text", usePlainText)
+      );
 
       return (
         <div key={`${fileKey}-unified-${index}`} className={styles.diffUnifiedRow} style={style}>

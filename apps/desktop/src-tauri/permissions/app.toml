@@ -31,6 +31,7 @@ commands.allow = [
   "spawn_pty",
   "write_pty",
   "resize_pty",
+  "ack_pty_output",
   "kill_pty"
 ]
 
@@ -67,5 +68,6 @@ commands.allow = [
   "spawn_pty",
   "write_pty",
   "resize_pty",
+  "ack_pty_output",
   "kill_pty"
 ]

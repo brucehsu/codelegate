@@ -794,17 +794,34 @@ export default function GitDiff({
   // staging or refreshing does not unmount cards the user has already scrolled to.
   const materializeContextRef = useRef("");
   useEffect(() => {
-    const seeded = activeTreeOrderedFiles
-      .slice(0, MATERIALIZE_SEED_COUNT)
-      .map((file) => summaryEntryKey(activeSectionData.key, file));
+    const currentKeys = new Set(
+      activeTreeOrderedFiles.map((file) => summaryEntryKey(activeSectionData.key, file))
+    );
+    const seeded = new Set(
+      activeTreeOrderedFiles
+        .slice(0, MATERIALIZE_SEED_COUNT)
+        .map((file) => summaryEntryKey(activeSectionData.key, file))
+    );
     const context = `${repoPath}|${activeSectionData.key}`;
     if (materializeContextRef.current !== context) {
       materializeContextRef.current = context;
-      setMaterializedKeys(new Set(seeded));
+      setMaterializedKeys(seeded);
       return;
     }
-    materializeKeys(seeded);
-  }, [activeSectionData.key, activeTreeOrderedFiles, materializeKeys, repoPath]);
+    setMaterializedKeys((previous) => {
+      const next = new Set<string>();
+      previous.forEach((key) => {
+        if (currentKeys.has(key)) {
+          next.add(key);
+        }
+      });
+      seeded.forEach((key) => next.add(key));
+      if (next.size === previous.size && Array.from(next).every((key) => previous.has(key))) {
+        return previous;
+      }
+      return next;
+    });
+  }, [activeSectionData.key, activeTreeOrderedFiles, repoPath]);
 
   useEffect(() => {
     if (!isActive) {
@@ -1562,7 +1579,11 @@ export default function GitDiff({
                       <div
                         key={fileKey}
                         ref={(element) => {
-                          cardRefs.current[fileKey] = element;
+                          if (element) {
+                            cardRefs.current[fileKey] = element;
+                          } else {
+                            delete cardRefs.current[fileKey];
+                          }
                         }}
                         data-file-key={fileKey}
                         data-diff-section={activeSectionData.key}

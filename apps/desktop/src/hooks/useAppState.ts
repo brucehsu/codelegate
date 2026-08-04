@@ -57,6 +57,8 @@ interface TerminalRuntime extends TerminalRendererRuntime {
   viewportRestoreRaf?: number;
   activationRaf?: number;
   notificationDisposables?: Array<{ dispose: () => void }>;
+  writeParsedDisposable?: { dispose: () => void };
+  pendingPtyAcks?: Map<number, number>;
 }
 
 interface SessionRuntime {
@@ -225,7 +227,7 @@ const defaultConfig: AppConfig = {
   settings: defaultSettings,
 };
 
-const TERMINAL_SCROLLBACK_LINES = 30000;
+const TERMINAL_SCROLLBACK_LINES = 10000;
 const BRANCH_MONITOR_INTERVAL_MS = 10_000;
 const SESSION_SNAPSHOT_DEBOUNCE_MS = 300;
 
@@ -473,6 +475,40 @@ export function useAppState(
       scheduleTerminalFit(runtime);
     },
     [scheduleTerminalFit]
+  );
+
+  const acknowledgePtyOutput = useCallback((ptyId: number, throughOffset: number) => {
+    void invoke("ack_pty_output", {
+      sessionId: ptyId,
+      throughOffset,
+    }).catch(() => {
+      // A failed acknowledgement safely stalls the bounded PTY window instead of
+      // allowing output to accumulate without limit.
+    });
+  }, []);
+
+  const queuePtyOutputAck = useCallback((runtime: TerminalRuntime, ptyId: number, throughOffset: number) => {
+    const pending = runtime.pendingPtyAcks ?? new Map<number, number>();
+    const currentOffset = pending.get(ptyId) ?? 0;
+    if (throughOffset > currentOffset) {
+      pending.set(ptyId, throughOffset);
+    }
+    runtime.pendingPtyAcks = pending;
+  }, []);
+
+  const flushPtyOutputAcks = useCallback(
+    (runtime: TerminalRuntime) => {
+      const pending = runtime.pendingPtyAcks;
+      if (!pending || pending.size === 0) {
+        return;
+      }
+      const acknowledgements = Array.from(pending.entries());
+      pending.clear();
+      acknowledgements.forEach(([ptyId, throughOffset]) => {
+        acknowledgePtyOutput(ptyId, throughOffset);
+      });
+    },
+    [acknowledgePtyOutput]
   );
 
   const getUnreadKey = useCallback(
@@ -1340,6 +1376,10 @@ export function useAppState(
       );
       term.open(element);
       attachTerminalHandlers(term, runtime, sessionId, kind);
+      runtime.writeParsedDisposable?.dispose();
+      runtime.writeParsedDisposable = term.onWriteParsed(() => {
+        flushPtyOutputAcks(runtime);
+      });
       runtime.term = term;
       runtime.fit = fit;
       applyTerminalAppearance(runtime, terminalAppearance);
@@ -1349,6 +1389,7 @@ export function useAppState(
       applyTerminalAppearance,
       attachTerminalHandlers,
       configureTerminalOptions,
+      flushPtyOutputAcks,
       isMac,
       refreshTerminalRows,
       terminalAppearance,
@@ -1426,19 +1467,23 @@ export function useAppState(
   const disposeTerminalRuntime = useCallback(
     (runtime: TerminalRuntime) => {
       detachTerminalRuntime(runtime);
+      flushPtyOutputAcks(runtime);
       runtime.notificationDisposables?.forEach((disposable) => disposable.dispose());
       runtime.notificationDisposables = undefined;
+      runtime.writeParsedDisposable?.dispose();
+      runtime.writeParsedDisposable = undefined;
       runtime.term?.dispose();
       runtime.term = undefined;
       runtime.fit = undefined;
       runtime.ptyId = undefined;
+      runtime.pendingPtyAcks = undefined;
       runtime.starting = false;
       runtime.isFollowing = undefined;
       runtime.savedViewportY = undefined;
       runtime.viewportRestoreRaf = undefined;
       runtime.activationRaf = undefined;
     },
-    [detachTerminalRuntime]
+    [detachTerminalRuntime, flushPtyOutputAcks]
   );
 
   const disposeSessionRuntime = useCallback(
@@ -2270,14 +2315,19 @@ export function useAppState(
   useEffect(() => {
     let unlistenOutput: (() => void) | undefined;
     let unlistenExit: (() => void) | undefined;
+    let disposed = false;
 
     listen<PtyOutput>("pty-output", (event) => {
-      const info = ptyToSessionRef.current.get(event.payload.session_id);
+      const ptyId = event.payload.session_id;
+      const endOffset = event.payload.end_offset;
+      const info = ptyToSessionRef.current.get(ptyId);
       if (!info) {
+        acknowledgePtyOutput(ptyId, endOffset);
         return;
       }
       const runtime = getTerminalRuntime(info.sessionId, info.kind, info.agentId);
       if (!runtime?.term) {
+        acknowledgePtyOutput(ptyId, endOffset);
         return;
       }
       if (info.kind === "agent") {
@@ -2292,14 +2342,25 @@ export function useAppState(
       const shouldFollow = runtime.isFollowing !== false;
       setFollowingState(runtime, info.sessionId, info.kind, shouldFollow);
       const data = decodeBase64ToUint8(event.payload.data_base64);
-      runtime.term.write(data, () => {
-        if (shouldFollow) {
-          runtime.term?.scrollToBottom();
+      try {
+        runtime.term.write(data, () => {
+          queuePtyOutputAck(runtime, ptyId, endOffset);
+          if (shouldFollow) {
+            runtime.term?.scrollToBottom();
+          }
+        });
+      } catch {
+        acknowledgePtyOutput(ptyId, endOffset);
+      }
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
         }
-      });
-    }).then((unlisten) => {
-      unlistenOutput = unlisten;
-    });
+        unlistenOutput = unlisten;
+      })
+      .catch(() => {});
 
     listen<PtyExit>("pty-exit", (event) => {
       const info = ptyToSessionRef.current.get(event.payload.session_id);
@@ -2340,11 +2401,18 @@ export function useAppState(
       } else {
         updateSessionAgentState(info.sessionId, agentId, { status: "stopped", ptyId: undefined });
       }
-    }).then((unlisten) => {
-      unlistenExit = unlisten;
-    });
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        unlistenExit = unlisten;
+      })
+      .catch(() => {});
 
     return () => {
+      disposed = true;
       unlistenOutput?.();
       unlistenExit?.();
     };
@@ -2456,6 +2524,7 @@ export function useAppState(
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     getCurrentWindow()
       .onCloseRequested(async (event) => {
         if (!shouldInterceptClose) {
@@ -2465,15 +2534,22 @@ export function useAppState(
         await handleCloseRequest();
       })
       .then((fn) => {
+        if (disposed) {
+          fn();
+          return;
+        }
         unlisten = fn;
-      });
+      })
+      .catch(() => {});
     return () => {
+      disposed = true;
       unlisten?.();
     };
   }, [handleCloseRequest, shouldInterceptClose]);
 
   useEffect(() => {
     let unlistenExit: (() => void) | undefined;
+    let disposed = false;
     listen("app-exit-requested", () => {
       if (hasSavedConfig === null) {
         pendingExitRequestRef.current = true;
@@ -2485,9 +2561,14 @@ export function useAppState(
         void invoke("exit_app");
       }
     }).then((fn) => {
+      if (disposed) {
+        fn();
+        return;
+      }
       unlistenExit = fn;
-    });
+    }).catch(() => {});
     return () => {
+      disposed = true;
       unlistenExit?.();
     };
   }, [handleCloseRequest, hasSavedConfig, shouldInterceptClose]);

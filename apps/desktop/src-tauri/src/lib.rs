@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{atomic::{AtomicU32, Ordering}, Arc, Mutex};
+use std::sync::{
+  atomic::{AtomicU32, Ordering},
+  Arc, Condvar, Mutex,
+};
 use tauri::{AppHandle, Emitter, RunEvent, State, WindowEvent};
 #[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
@@ -17,6 +20,144 @@ mod git;
 struct AppState {
   next_id: AtomicU32,
   sessions: Arc<Mutex<HashMap<u32, PtySession>>>,
+}
+
+const PTY_OUTPUT_WINDOW_BYTES: u64 = 256 * 1024;
+
+#[derive(Default)]
+struct PtyOutputFlowState {
+  sent_offset: u64,
+  acked_offset: u64,
+  closed: bool,
+}
+
+#[derive(Default)]
+struct PtyOutputFlow {
+  state: Mutex<PtyOutputFlowState>,
+  changed: Condvar,
+}
+
+impl PtyOutputFlow {
+  fn wait_for_capacity(&self) -> bool {
+    let mut state = self.state.lock().unwrap();
+    while !state.closed
+      && state.sent_offset.saturating_sub(state.acked_offset) >= PTY_OUTPUT_WINDOW_BYTES
+    {
+      state = self.changed.wait(state).unwrap();
+    }
+    !state.closed
+  }
+
+  fn record_sent(&self, byte_length: usize) -> Option<u64> {
+    let mut state = self.state.lock().unwrap();
+    if state.closed {
+      return None;
+    }
+    state.sent_offset = state.sent_offset.saturating_add(byte_length as u64);
+    Some(state.sent_offset)
+  }
+
+  fn acknowledge(&self, through_offset: u64) {
+    let mut state = self.state.lock().unwrap();
+    let next_offset = through_offset.min(state.sent_offset);
+    if next_offset <= state.acked_offset {
+      return;
+    }
+    state.acked_offset = next_offset;
+    self.changed.notify_all();
+  }
+
+  fn close(&self) {
+    let mut state = self.state.lock().unwrap();
+    state.closed = true;
+    self.changed.notify_all();
+  }
+
+  #[cfg(test)]
+  fn outstanding_bytes(&self) -> u64 {
+    let state = self.state.lock().unwrap();
+    state.sent_offset.saturating_sub(state.acked_offset)
+  }
+}
+
+#[cfg(test)]
+mod pty_output_flow_tests {
+  use super::{PtyOutputFlow, PTY_OUTPUT_WINDOW_BYTES};
+  use std::{
+    sync::{mpsc, Arc},
+    thread,
+    time::Duration,
+  };
+
+  #[test]
+  fn cumulative_acknowledgements_are_monotonic_and_bounded() {
+    let flow = PtyOutputFlow::default();
+    let first_offset = flow.record_sent(4096).expect("flow should be open");
+    let second_offset = flow.record_sent(4096).expect("flow should be open");
+
+    assert_eq!(first_offset, 4096);
+    assert_eq!(second_offset, 8192);
+    assert_eq!(flow.outstanding_bytes(), 8192);
+
+    flow.acknowledge(first_offset);
+    assert_eq!(flow.outstanding_bytes(), 4096);
+
+    flow.acknowledge(first_offset / 2);
+    assert_eq!(flow.outstanding_bytes(), 4096);
+
+    flow.acknowledge(second_offset + 4096);
+    assert_eq!(flow.outstanding_bytes(), 0);
+
+    flow.acknowledge(second_offset);
+    assert_eq!(flow.outstanding_bytes(), 0);
+  }
+
+  #[test]
+  fn acknowledgement_releases_a_blocked_reader() {
+    let flow = Arc::new(PtyOutputFlow::default());
+    flow
+      .record_sent(PTY_OUTPUT_WINDOW_BYTES as usize)
+      .expect("flow should be open");
+
+    let waiting_flow = flow.clone();
+    let (sender, receiver) = mpsc::channel();
+    let waiter = thread::spawn(move || {
+      sender
+        .send(waiting_flow.wait_for_capacity())
+        .expect("test receiver should stay open");
+    });
+
+    assert!(receiver.recv_timeout(Duration::from_millis(50)).is_err());
+    flow.acknowledge(4096);
+    assert!(receiver
+      .recv_timeout(Duration::from_secs(1))
+      .expect("reader should be released"));
+    waiter.join().expect("waiter should exit cleanly");
+  }
+
+  #[test]
+  fn close_releases_a_blocked_reader_and_rejects_new_output() {
+    let flow = Arc::new(PtyOutputFlow::default());
+    flow
+      .record_sent(PTY_OUTPUT_WINDOW_BYTES as usize)
+      .expect("flow should be open");
+
+    let waiting_flow = flow.clone();
+    let (sender, receiver) = mpsc::channel();
+    let waiter = thread::spawn(move || {
+      sender
+        .send(waiting_flow.wait_for_capacity())
+        .expect("test receiver should stay open");
+    });
+
+    assert!(receiver.recv_timeout(Duration::from_millis(50)).is_err());
+    flow.close();
+    assert!(!receiver
+      .recv_timeout(Duration::from_secs(1))
+      .expect("closed reader should be released"));
+    assert!(flow.record_sent(1).is_none());
+    waiter.join().expect("waiter should exit cleanly");
+  }
 }
 
 impl Default for AppState {
@@ -32,12 +173,14 @@ struct PtySession {
   master: Mutex<Box<dyn MasterPty + Send>>,
   writer: Mutex<Box<dyn Write + Send>>,
   killer: Mutex<Box<dyn ChildKiller + Send>>,
+  output_flow: Arc<PtyOutputFlow>,
 }
 
 #[derive(Debug, Serialize, Clone)]
 struct PtyOutput {
   session_id: u32,
   data_base64: String,
+  end_offset: u64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -663,6 +806,7 @@ fn spawn_pty(
     .map_err(|error| format!("Failed to open PTY writer: {error}"))?;
 
   let id = state.next_id.fetch_add(1, Ordering::Relaxed);
+  let output_flow = Arc::new(PtyOutputFlow::default());
   let sessions = state.sessions.clone();
   sessions.lock().unwrap().insert(
     id,
@@ -670,21 +814,41 @@ fn spawn_pty(
       master: Mutex::new(pair.master),
       writer: Mutex::new(writer),
       killer: Mutex::new(child.clone_killer()),
+      output_flow: output_flow.clone(),
     },
   );
 
   std::thread::spawn(move || {
     let mut buf = [0u8; 4096];
     loop {
+      if !output_flow.wait_for_capacity() {
+        break;
+      }
       match reader.read(&mut buf) {
         Ok(0) => break,
         Ok(n) => {
+          let Some(end_offset) = output_flow.record_sent(n) else {
+            break;
+          };
           let data_base64 = general_purpose::STANDARD.encode(&buf[..n]);
-          let _ = app.emit("pty-output", PtyOutput { session_id: id, data_base64 });
+          if app
+            .emit(
+              "pty-output",
+              PtyOutput {
+                session_id: id,
+                data_base64,
+                end_offset,
+              },
+            )
+            .is_err()
+          {
+            output_flow.acknowledge(end_offset);
+          }
         }
         Err(_) => break,
       }
     }
+    output_flow.close();
     let _ = app.emit("pty-exit", PtyExit { session_id: id });
     let _ = sessions.lock().unwrap().remove(&id);
   });
@@ -727,18 +891,36 @@ fn resize_pty(state: State<'_, AppState>, session_id: u32, cols: u16, rows: u16)
 }
 
 #[tauri::command]
+fn ack_pty_output(
+  state: State<'_, AppState>,
+  session_id: u32,
+  through_offset: u64,
+) -> Result<(), String> {
+  let output_flow = state
+    .sessions
+    .lock()
+    .unwrap()
+    .get(&session_id)
+    .map(|session| session.output_flow.clone());
+  if let Some(output_flow) = output_flow {
+    output_flow.acknowledge(through_offset);
+  }
+  Ok(())
+}
+
+#[tauri::command]
 fn kill_pty(state: State<'_, AppState>, session_id: u32) -> Result<(), String> {
   let mut sessions = state.sessions.lock().unwrap();
   let session = sessions
     .remove(&session_id)
     .ok_or_else(|| "Session not found".to_string())?;
-  session
+  let kill_result = session
     .killer
     .lock()
     .unwrap()
-    .kill()
-    .map_err(|error| format!("Failed to kill PTY: {error}"))?;
-  Ok(())
+    .kill();
+  session.output_flow.close();
+  kill_result.map_err(|error| format!("Failed to kill PTY: {error}"))
 }
 
 fn default_config() -> AppConfig {
@@ -889,6 +1071,7 @@ pub fn run() {
       spawn_pty,
       write_pty,
       resize_pty,
+      ack_pty_output,
       kill_pty,
     ]);
 
