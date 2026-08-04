@@ -1,22 +1,12 @@
 .dialog {
-  border: none;
-  border-radius: 16px;
-  padding: 0;
   width: min(520px, 92vw);
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow);
-}
-
-.dialog::backdrop {
-  background: rgba(10, 12, 18, 0.6);
 }
 
 .form {
-  padding: 20px 24px 24px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .header {
@@ -37,7 +27,7 @@
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 12px;
 }
 
 .field {
@@ -47,23 +37,34 @@
   font-size: 0.9rem;
 }
 
+/* Field labels: var(--accent-alt-strong), the blue structural secondary. */
+.field > span:first-of-type {
+  color: var(--accent-alt-strong);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .input {
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: inherit;
+  /* Recessed well: the field sits below the dialog surface. */
+  box-shadow: var(--shadow-inset);
 }
 
 .input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+  box-shadow: var(--shadow-inset), 0 0 0 2px var(--focus-ring);
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }

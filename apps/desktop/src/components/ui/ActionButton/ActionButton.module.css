@@ -2,11 +2,11 @@
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  border-radius: 12px;
-  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  padding: 7px 12px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 0.85rem;
   cursor: pointer;
   transition: border 0.2s ease, background 0.2s ease, color 0.2s ease;
@@ -19,22 +19,22 @@
 
 .button:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--text);
 }
 
 .ghost {
   border: none;
   background: none;
   padding: 4px;
+  color: var(--accent-alt-strong);
 }
 
 .ghost:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--accent-alt-soft);
 }
 
 .iconOnly {
   padding: 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .icon {

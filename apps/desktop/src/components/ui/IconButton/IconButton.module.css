@@ -22,32 +22,39 @@
 
 .variantGhost {
   background: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.variantGhost:hover {
+  background: var(--accent-alt-soft);
+  border-color: var(--accent-alt);
+  color: var(--accent-alt-strong);
 }
 
 .variantFab {
   background: var(--surface-2);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-2);
 }
 
 .variantFab:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15), var(--shadow);
+  box-shadow: 0 0 0 2px var(--focus-ring), var(--shadow-2);
 }
 
 .variantFab:active {
   background: var(--accent);
   border-color: transparent;
-  color: #ffffff;
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.2);
+  color: var(--accent-contrast);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .variantRaised {
   background: var(--surface-2);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-2);
 }
 
 .shapeRounded {
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .shapeCircle {

@@ -1,6 +1,6 @@
 .row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -11,8 +11,11 @@
 
 .trigger {
   width: 100%;
-  padding: 10px 36px 10px 12px;
-  border-radius: 10px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 32px 0 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: var(--text);
@@ -21,13 +24,23 @@
   position: relative;
 }
 
+/* Fixed-height trigger: clip the path instead of letting it push the control. */
+.trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* var(--accent-alt) marks the picker affordance; var(--accent) is reserved for
+   the open/active state. */
 .icon {
   position: absolute;
-  right: 12px;
+  right: 9px;
   top: 50%;
-  width: 16px;
-  height: 16px;
-  color: var(--muted);
+  width: 15px;
+  height: 15px;
+  color: var(--accent-alt-strong);
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -38,7 +51,7 @@
 
 .open .trigger {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .open .icon {
@@ -48,13 +61,14 @@
 
 .menuPanel {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  /* Overlay surface: edge-highlight stays here (large panel, top edge reads). */
+  box-shadow: var(--edge-highlight), var(--shadow-3);
   padding: 8px;
   display: none;
   flex-direction: column;
@@ -69,29 +83,31 @@
 .searchInput {
   width: 100%;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: inherit;
+  /* Recessed well inside the raised menu panel. */
+  box-shadow: var(--shadow-inset);
 }
 
 .searchInput:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+  box-shadow: var(--shadow-inset), 0 0 0 2px var(--focus-ring);
 }
 
 .menu {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 220px;
+  max-height: 240px;
   overflow: auto;
 }
 
 .item {
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
@@ -99,13 +115,18 @@
   cursor: pointer;
 }
 
+/* var(--accent-alt) = "pointed at, not chosen yet". Tinted overlay so it
+   lightens the L3 panel instead of darkening it. */
 .item:hover {
-  background: var(--surface-2);
+  background: var(--accent-alt-soft);
 }
 
-.itemActive {
+/* var(--accent) = the chosen row. */
+.itemActive,
+.item[aria-selected="true"] {
   border-color: var(--accent);
-  background: var(--surface-2);
+  background: var(--accent-soft);
+  color: var(--accent-2);
 }
 
 .disabled {
@@ -116,9 +137,10 @@
 .toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: var(--text);
@@ -126,18 +148,24 @@
   white-space: nowrap;
 }
 
+/* Secondary control: var(--accent-alt) hover, var(--accent) reserved for the
+   active state. */
 .toggle:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.1);
+  border-color: var(--accent-alt);
+  background: var(--accent-alt-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-alt) 26%, transparent);
 }
 
-.toggleActive {
+/* No edge-highlight: the inset top line ignores the radius and breaks the
+   corner on a control this small. */
+.toggleActive,
+.toggleActive:hover {
   border-color: var(--accent);
-  background: rgba(79, 209, 197, 0.12);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.2);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .toggleIcon {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }

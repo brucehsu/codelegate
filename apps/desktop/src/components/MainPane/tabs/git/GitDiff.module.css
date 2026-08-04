@@ -1,16 +1,19 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
 .commitSection {
-  border-radius: 16px;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-cast-down), var(--shadow-1);
   overflow: visible;
 }
 
@@ -18,20 +21,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--divider);
   background: var(--surface-2);
 }
 
 .commitTitle {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-alt-strong);
 }
 
 .commitMeta {
-  color: var(--muted);
-  font-size: 0.82rem;
+  color: var(--accent-alt-strong);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .commitBody {
@@ -48,49 +57,50 @@
 .commitInput {
   width: 100%;
   resize: vertical;
-  min-height: 72px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  min-height: 52px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: inherit;
   font: inherit;
+  box-shadow: var(--shadow-inset);
 }
 
 .commitInput:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+  box-shadow: var(--shadow-inset), 0 0 0 2px var(--focus-ring);
 }
 
 .commitInputInvalid {
   border-color: var(--danger);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
+  box-shadow: var(--shadow-inset), 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 .commitActions {
-  --commit-action-height: 40px;
+  --commit-action-height: 36px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 .commitRefreshButton {
   width: var(--commit-action-height);
   height: var(--commit-action-height);
   padding: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   justify-content: center;
   gap: 0;
 }
 
 .commitButtonGroup {
   --commit-action-bg: var(--accent);
-  --commit-action-fg: #0b0e14;
+  --commit-action-fg: var(--accent-contrast);
   position: relative;
   display: inline-block;
-  min-width: 168px;
+  min-width: 148px;
   height: var(--commit-action-height);
 }
 
@@ -101,7 +111,7 @@
 .commitSplitButton {
   width: 100%;
   height: var(--commit-action-height);
-  padding-right: 40px;
+  padding-right: 34px;
   background: var(--commit-action-bg);
   color: var(--commit-action-fg);
 }
@@ -121,11 +131,11 @@
   right: 0;
   bottom: 0;
   width: 20%;
-  min-width: 34px;
+  min-width: 30px;
   height: var(--commit-action-height);
   border: none;
   border-left: 1px solid color-mix(in srgb, var(--accent) 78%, #000 22%);
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: var(--commit-action-bg);
   color: var(--commit-action-fg);
   display: inline-flex;
@@ -148,30 +158,30 @@
 .commitMenu {
   position: absolute;
   right: 0;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   min-width: 132px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+  box-shadow: var(--edge-highlight), var(--shadow-3);
+  padding: 4px;
   z-index: 4;
 }
 
 .commitMenuItem {
   width: 100%;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   text-align: left;
-  padding: 7px 10px;
+  padding: 5px 9px;
   font: inherit;
   cursor: pointer;
 }
 
 .commitMenuItem:hover {
-  background: var(--surface-2);
+  background: var(--hover-overlay);
 }
 
 .commitMenuItemActive {
@@ -188,13 +198,14 @@
 }
 
 .commitStatusSuccess {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .diffSection {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
 }
 
@@ -203,26 +214,32 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
+  box-shadow: var(--shadow-2);
   overflow: hidden;
 }
 
 .diffWorkbenchHeader {
+  position: relative;
+  /* 2, not 1: .diffFileActions inside the scrolling body already claims z-index 1
+     in the same stacking context, so the cast shadow needs one step above it. */
+  z-index: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 10px 12px;
   background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
+  box-shadow: var(--shadow-cast-down);
 }
 
 .diffTabsMeta {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -232,9 +249,9 @@
   min-width: 0;
   width: fit-content;
   justify-self: start;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
 }
 
@@ -242,26 +259,30 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 34px;
-  min-width: 116px;
+  gap: 6px;
+  min-height: 28px;
+  min-width: 96px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--accent-alt-strong);
   font: inherit;
+  font-size: 0.7rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   cursor: pointer;
   transition: border 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .diffTab:hover {
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--accent-alt-soft);
+  border-color: var(--border-accent-alt-soft);
 }
 
-.diffTabActive {
+.diffTabActive,
+.diffTabActive:hover {
   color: var(--text);
   background: var(--surface);
   border-color: var(--accent);
@@ -272,13 +293,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: var(--bg-soft);
-  color: var(--muted);
-  font-size: 0.76rem;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-alt-soft);
+  color: var(--accent-alt-strong);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -292,9 +314,9 @@
   align-items: center;
   min-width: 0;
   width: fit-content;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
 }
 
@@ -302,25 +324,28 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--accent-alt-strong);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.7rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   cursor: pointer;
   transition: border 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .diffViewButton:hover {
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--accent-alt-soft);
+  border-color: var(--border-accent-alt-soft);
 }
 
-.diffViewButtonActive {
+.diffViewButtonActive,
+.diffViewButtonActive:hover {
   color: var(--text);
   background: var(--surface);
   border-color: var(--accent);
@@ -337,9 +362,9 @@
 
 .diffTreePane {
   min-width: 0;
-  padding: 12px;
+  padding: 8px;
   border-right: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg-soft);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -358,7 +383,7 @@
   bottom: 0;
   left: 3px;
   width: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--border);
   transition: background 0.2s ease;
 }
@@ -378,7 +403,7 @@
   height: 100%;
   min-height: 0;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -387,31 +412,31 @@
   --trees-bg-override: var(--surface);
   --trees-fg-override: var(--text);
   --trees-fg-muted-override: var(--muted);
-  --trees-bg-muted-override: color-mix(in srgb, var(--surface-2) 72%, var(--surface));
+  --trees-bg-muted-override: color-mix(in srgb, var(--accent-alt-soft) 55%, transparent);
   --trees-border-color-override: var(--border);
   --trees-accent-override: var(--accent);
   --trees-focus-ring-color-override: var(--accent);
   --trees-focus-ring-offset-override: 0;
   --trees-input-bg-override: var(--bg-soft);
-  --trees-selected-bg-override: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  --trees-selected-bg-override: var(--accent-alt-soft);
   --trees-selected-fg-override: var(--text);
   --trees-selected-focused-border-color-override: var(--accent);
   --trees-scrollbar-thumb-override: color-mix(in srgb, var(--muted) 28%, var(--surface));
   --trees-indent-guide-bg-override: color-mix(in srgb, var(--muted) 20%, transparent);
-  --trees-status-added-override: #22c55e;
-  --trees-status-untracked-override: #22c55e;
-  --trees-status-modified-override: #3b82f6;
-  --trees-status-deleted-override: #ef4444;
-  --trees-git-added-color-override: #22c55e;
-  --trees-git-untracked-color-override: #22c55e;
-  --trees-git-modified-color-override: #3b82f6;
-  --trees-git-deleted-color-override: #ef4444;
+  --trees-status-added-override: var(--diff-add);
+  --trees-status-untracked-override: var(--diff-add);
+  --trees-status-modified-override: var(--diff-mod);
+  --trees-status-deleted-override: var(--diff-del);
+  --trees-git-added-color-override: var(--diff-add);
+  --trees-git-untracked-color-override: var(--diff-add);
+  --trees-git-modified-color-override: var(--diff-mod);
+  --trees-git-deleted-color-override: var(--diff-del);
   --trees-search-bg-override: var(--bg-soft);
   --trees-search-fg-override: var(--text);
   --trees-search-font-weight-override: 400;
   --trees-file-icon-color: var(--muted);
-  --trees-border-radius-override: 10px;
-  --trees-font-family-override: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  --trees-border-radius-override: var(--radius-sm);
+  --trees-font-family-override: inherit;
   --trees-font-size-override: 0.85rem;
   --trees-font-weight-regular-override: 400;
   --trees-font-weight-semibold-override: 600;
@@ -429,17 +454,17 @@
 }
 
 .diffWorkbenchEmpty {
-  padding: 12px;
+  padding: 6px;
 }
 
 .diffSummary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 6px 10px;
   background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
   font-weight: 600;
 }
 
@@ -449,7 +474,7 @@
   color: inherit;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 0;
   margin: 0;
   cursor: pointer;
@@ -462,19 +487,33 @@
 .diffSummaryTitleWrap {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   overflow: visible;
 }
 
 .diffSummaryActions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .diffSummaryActionButton {
-  min-height: 34px;
+  min-height: 28px;
   line-height: 1;
+}
+
+.diffSummaryActionButton,
+.diffFileActionButton,
+.commitRefreshButton {
+  border-color: var(--border-accent-alt);
+}
+
+.diffSummaryActionButton:hover:not(:disabled),
+.diffFileActionButton:hover:not(:disabled),
+.commitRefreshButton:hover:not(:disabled) {
+  border-color: var(--accent-alt);
+  background: var(--accent-alt-soft);
+  color: var(--accent-alt-strong);
 }
 
 .shortcutBadgeWrap {
@@ -494,14 +533,14 @@
   font-size: 0.85rem;
   font-weight: 700;
   line-height: 1;
-  padding: 2px 6px;
-  border-radius: 8px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--muted);
   pointer-events: none;
   z-index: 2;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-2);
 }
 
 .discardAction {
@@ -530,22 +569,29 @@
 }
 
 .diffSummaryAdd {
-  color: #22c55e;
+  color: var(--diff-add);
 }
 
 .diffSummaryDel {
-  color: #ef4444;
+  color: var(--diff-del);
 }
 
 .diffSummaryDot,
-.diffSummarySlash,
-.diffSummaryFiles {
+.diffSummarySlash {
   color: var(--muted);
 }
 
+.diffSummaryFiles {
+  color: var(--accent-alt-strong);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .state {
-  padding: 16px;
-  border-radius: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px dashed var(--border);
   color: var(--muted);
@@ -560,27 +606,28 @@
 .diffList {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: 8px;
+  padding: 8px;
 }
 
 .diffFile {
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
-  scroll-margin-top: 12px;
+  scroll-margin-top: 6px;
 }
 
 /* Lazy-mount placeholder for a not-yet-materialized card; keep in step with the
    collapsed .diffFileToggle header height so scroll positions stay stable. */
 .diffCardPlaceholder {
-  min-height: 44px;
+  min-height: 38px;
 }
 
 .diffFileSelected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-1);
 }
 
 .diffFileSection {
@@ -590,25 +637,25 @@
 .diffFileHeader {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0;
   background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
   font-weight: 600;
   position: relative;
   width: 100%;
 }
 
 .diffFileHeaderUntracked {
-  background: color-mix(in srgb, var(--surface-2) 82%, rgba(14, 165, 233, 0.2));
+  background: color-mix(in srgb, var(--surface-2) 82%, var(--info) 18%);
 }
 
 .diffFileToggle {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 8px;
+  padding: 8px 12px;
   border: none;
   background: transparent;
   color: inherit;
@@ -621,15 +668,15 @@
 .diffFileTitle {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
-  padding-right: 118px;
+  padding-right: 108px;
 }
 
 .diffFileActions {
   position: absolute;
-  right: 46px;
+  right: 42px;
   top: 50%;
   z-index: 1;
   padding-right: 0;
@@ -637,8 +684,8 @@
 }
 
 .diffFileActionButton {
-  min-height: 32px;
-  padding: 0 11px;
+  min-height: 28px;
+  padding: 0 10px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -655,46 +702,46 @@
 
 .diffFileStats {
   display: inline-flex;
-  gap: 10px;
+  gap: 8px;
   font-size: 0.82rem;
   color: var(--muted);
   margin-left: auto;
 }
 
 .diffFileIcon svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .diffBadge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(14, 165, 233, 0.2);
-  color: #7dd3fc;
+  background: var(--info-bg);
+  color: var(--info);
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 
 .diffBadgeDeleted {
-  background: rgba(239, 68, 68, 0.2);
-  color: #fecaca;
+  background: var(--diff-del-bg);
+  color: var(--diff-del);
 }
 
 .diffBadgeRenamed {
-  background: rgba(59, 130, 246, 0.18);
-  color: #bfdbfe;
+  background: var(--diff-mod-bg);
+  color: var(--diff-mod);
 }
 
 .diffStatAdd {
-  color: #22c55e;
+  color: var(--diff-add);
 }
 
 .diffStatDel {
-  color: #ef4444;
+  color: var(--diff-del);
 }
 
 .diffGrid {
@@ -732,8 +779,8 @@
 }
 
 .diffTruncatedNotice {
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
+  padding: 6px 10px;
+  border-top: 1px solid var(--divider);
   background: var(--surface-2);
   color: var(--muted);
   font-size: 0.78rem;
@@ -796,8 +843,8 @@
 
 .diffGutter,
 .diffCell {
-  border-bottom: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
+  border-right: 1px solid var(--divider);
 }
 
 .diffGutter {
@@ -815,15 +862,15 @@
 }
 
 .diffGutterAdd {
-  color: #22c55e;
+  color: var(--diff-add);
 }
 
 .diffGutterDel {
-  color: #ef4444;
+  color: var(--diff-del);
 }
 
 .diffGutterMeta {
-  color: #60a5fa;
+  color: var(--diff-mod);
 }
 
 .diffColumnRow > :nth-child(2) {
@@ -841,15 +888,15 @@
 }
 
 .diffCellAdd {
-  background: rgba(34, 197, 94, 0.16);
+  background: var(--diff-add-bg);
 }
 
 .diffCellDel {
-  background: rgba(239, 68, 68, 0.16);
+  background: var(--diff-del-bg);
 }
 
 .diffCellMeta {
-  background: rgba(59, 130, 246, 0.12);
+  background: var(--diff-mod-bg);
   color: var(--muted);
   font-style: italic;
 }
@@ -875,11 +922,11 @@
 .diffCode :global(.token.prolog),
 .diffCode :global(.token.doctype),
 .diffCode :global(.token.cdata) {
-  color: #94a3b8;
+  color: #7c7fa6;
 }
 
 .diffCode :global(.token.punctuation) {
-  color: #cbd5f5;
+  color: #bfc0de;
 }
 
 .diffCode :global(.token.property),
@@ -889,7 +936,7 @@
 .diffCode :global(.token.constant),
 .diffCode :global(.token.symbol),
 .diffCode :global(.token.deleted) {
-  color: #fca5a5;
+  color: #efa35b;
 }
 
 .diffCode :global(.token.selector),
@@ -898,49 +945,30 @@
 .diffCode :global(.token.char),
 .diffCode :global(.token.builtin),
 .diffCode :global(.token.inserted) {
-  color: #a7f3d0;
+  color: #a9c9ab;
 }
 
 .diffCode :global(.token.operator),
 .diffCode :global(.token.entity),
 .diffCode :global(.token.url),
 .diffCode :global(.token.variable) {
-  color: #fcd34d;
+  color: #e0be7e;
 }
 
 .diffCode :global(.token.atrule),
 .diffCode :global(.token.attr-value),
 .diffCode :global(.token.function),
 .diffCode :global(.token.class-name) {
-  color: #7dd3fc;
+  color: #9fa8f0;
 }
 
 .diffCode :global(.token.keyword) {
-  color: #c4b5fd;
+  color: #afa3f0;
 }
 
 .diffCode :global(.token.regex),
 .diffCode :global(.token.important) {
-  color: #f9a8d4;
-}
-
-:global(body[data-theme="light"]) .diffCellAdd {
-  background: rgba(34, 197, 94, 0.12);
-}
-
-:global(body[data-theme="light"]) .diffCellDel {
-  background: rgba(239, 68, 68, 0.12);
-}
-
-:global(body[data-theme="light"]) .diffFileHeaderUntracked {
-  background: color-mix(in srgb, var(--surface-2) 84%, rgba(14, 165, 233, 0.16));
-}
-
-:global(body[data-theme="light"]) .diffCode :global(.token.comment),
-:global(body[data-theme="light"]) .diffCode :global(.token.prolog),
-:global(body[data-theme="light"]) .diffCode :global(.token.doctype),
-:global(body[data-theme="light"]) .diffCode :global(.token.cdata) {
-  color: #64748b;
+  color: #d998b4;
 }
 
 @media (max-width: 900px) {

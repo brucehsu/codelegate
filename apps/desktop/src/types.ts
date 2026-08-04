@@ -33,6 +33,7 @@ export interface RepoConfig {
 }
 
 export interface AppSettings {
+  /** Kept only for config-file shape compatibility with the Rust backend; no frontend consumer. */
   theme: "dark" | "light";
   recentDirs: string[];
   terminalFontFamily: string;

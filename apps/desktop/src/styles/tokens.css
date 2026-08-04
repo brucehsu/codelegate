@@ -1,35 +1,88 @@
 :root {
-  --bg: #0b0e14;
-  --bg-soft: #111827;
-  --surface: #151c2b;
-  --surface-2: #1b2436;
-  --border: #28324a;
-  --text: #e7ecf3;
-  --muted: #9aa6bb;
-  --accent: #4fd1c5;
-  --accent-2: #38b2ac;
-  --danger: #ef6a5f;
-  --warning: #f6c945;
-  --terminal-bg: #0b0e14;
-  --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
-  /* Agent brand colors. Theme-invariant (no light-theme override), matching the
-     glyph tints used across the icon stack, settings, and picker. */
+  /* Surface ramp (KON hue ~213deg, dark -> light) */
+  --bg: #080c14;            /* L0: app canvas, near-black navy */
+  --bg-soft: #0d1522;       /* recessed wells: inputs, git scroll region */
+  --surface: #121e32;       /* L1: panes, cards, sidebar */
+  --surface-2: #172642;     /* strips/headers, raised rows */
+  --surface-3: #1c2e51;     /* L3: menus, popouts, dialogs, toasts (~KON) */
+
+  /* Borders */
+  --border: #223753;        /* default hairline */
+  --divider: #1a283f;       /* subtle internal separators */
+  --border-strong: #35507c; /* overlay edges, hover borders */
+
+  /* Text */
+  --text: #e9edf5;
+  --muted: #94a3bb;
+
+  /* Accent system (USUAO) */
+  --accent: #91b493;
+  --accent-2: #a3c4a5;
+  --accent-contrast: #0e1826;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --focus-ring: color-mix(in srgb, var(--accent) 30%, transparent);
+
+  /* Secondary accent (KON blue) */
+  --accent-alt: #5a80ad;        /* KON-derived: structural secondary */
+  --accent-alt-strong: #9bb3d2; /* blue text on dark surfaces */
+  --accent-alt-soft: color-mix(in srgb, var(--accent-alt) 14%, transparent);
+  /* Opaque twin of --accent-alt-soft, for plates that must occlude what sits behind them. */
+  --accent-alt-soft-opaque: color-mix(in srgb, var(--accent-alt) 14%, var(--surface));
+  /* Resting border of secondary controls. */
+  --border-accent-alt: color-mix(in srgb, var(--accent-alt) 35%, var(--border));
+  /* Tinted border of hint badges. */
+  --border-accent-alt-soft: color-mix(in srgb, var(--accent-alt) 45%, transparent);
+  /* Hover on elevated (--surface-3) rows: lightens with the text color, never darkens. */
+  --hover-overlay: color-mix(in srgb, var(--text) 8%, transparent);
+
+  /* Semantic */
+  --success: #91b493;       /* USUAO verbatim */
+  --danger: #e2604f;
+  --warning: #edb35a;
+  --info: #93a5f5;
+
+  /* Diff */
+  --diff-add: #7cc383;
+  --diff-add-bg: rgba(124, 195, 131, 0.13);
+  --diff-del: #e2604f;
+  --diff-del-bg: rgba(226, 96, 79, 0.14);
+  --diff-mod: #7f92ee;
+  --diff-mod-bg: rgba(127, 146, 238, 0.13);
+  --info-bg: rgba(147, 165, 245, 0.16);
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(2, 5, 11, 0.5), 0 2px 8px rgba(2, 5, 11, 0.38);
+  --shadow-2: 0 6px 20px rgba(2, 5, 11, 0.55), 0 16px 44px rgba(2, 5, 11, 0.42);
+  --shadow-3: 0 16px 44px rgba(2, 5, 11, 0.65), 0 36px 90px rgba(2, 5, 11, 0.5);
+  --shadow-inset: inset 0 1px 3px rgba(2, 5, 11, 0.45); /* recessed wells: inputs, sunken scroll regions */
+  --shadow-cast-down: 0 3px 8px -5px rgba(2, 5, 11, 0.32); /* toolbar casting onto content below it */
+  --shadow-cast-up: 0 -3px 8px -5px rgba(2, 5, 11, 0.32); /* bottom bar casting onto content above it */
+  --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07); /* large surfaces only (panes, dialogs, menus, toasts); breaks the border line on small rounded controls */
+  --backdrop: rgba(3, 7, 15, 0.65);
+
+  /* Radius scale */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-full: 999px;
+
+  /* Ambient washes (body + MainPane gradients) */
+  --wash-1: rgba(34, 80, 150, 0.24);   /* navy glow */
+  --wash-2: rgba(90, 128, 173, 0.12);  /* blue */
+  --wash-3: rgba(145, 180, 147, 0.12); /* sage */
+  /* Full ambient background stack, shared by body and the boot screen. */
+  --ambient-wash: radial-gradient(circle at 12% 0%, var(--wash-1), transparent 46%),
+    radial-gradient(circle at 100% 12%, var(--wash-2), transparent 42%),
+    radial-gradient(circle at 80% 100%, var(--wash-3), transparent 50%);
+
+  /* Terminal + brand */
+  --terminal-bg: #060b12;  /* near-black navy; blends with untouched xterm canvas */
+  /* Active session tint, used by Sidebar: the USUAO sage accent. */
+  --session-active-tint: var(--accent);
+  /* Agent brand colors, matching the glyph tints used across the icon stack,
+     settings, and picker. */
   --agent-claude-color: #f59e0b;
   --agent-codex-color: #ffffff;
-}
-
-body[data-theme="light"] {
-  --bg: #f5f7fb;
-  --bg-soft: #e8edf6;
-  --surface: #ffffff;
-  --surface-2: #eef2f8;
-  --border: #d6dde8;
-  --text: #0f141d;
-  --muted: #5f6b7a;
-  --accent: #0a7c6f;
-  --accent-2: #0e8c7b;
-  --danger: #c84d40;
-  --warning: #b58900;
-  --terminal-bg: #f8f9fb;
-  --shadow: 0 20px 40px rgba(15, 20, 29, 0.12);
 }

@@ -1,42 +1,53 @@
 .picker {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px;
   justify-content: flex-start;
 }
 
 .card {
-  width: 128px;
-  height: 128px;
+  width: 116px;
+  height: 116px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 20px;
+  gap: 10px;
+  padding: 13px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: inherit;
   cursor: pointer;
-  transition: border 0.2s ease, transform 0.2s ease;
+  transition: border 0.2s ease, background 0.2s ease;
 }
 
+/* --accent-alt hover on the not-yet-chosen cards, --accent only on the chosen
+   one. */
+.card:hover:not(.cardActive):not(.cardDisabled) {
+  border-color: var(--accent-alt);
+  background: var(--accent-alt-soft);
+}
+
+/* No edge-highlight: its inset top line ignores the radius and reads as a
+   broken border on a card this size. Shadow alone carries the lift. */
 .cardActive {
   border-color: var(--accent);
-  box-shadow: var(--shadow);
+  background: var(--accent-soft);
+  box-shadow: var(--shadow-2);
 }
 
 .cardDisabled {
   cursor: not-allowed;
   opacity: 0.48;
-  transform: none;
 }
 
+/* Sized so logo + gap + label + padding fits inside the fixed 116px card
+   height without squeezing the label. */
 .logo {
-  width: 96px;
-  height: 96px;
-  border-radius: 18px;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-md);
   display: grid;
   place-items: center;
   color: var(--accent);

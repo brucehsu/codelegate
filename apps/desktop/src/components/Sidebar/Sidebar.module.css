@@ -1,11 +1,15 @@
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  --sidebar-edge-inset: 16px;
-  padding: 0 18px;
+  --sidebar-edge-inset: 10px;
+  padding: 0 10px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  /* Zero gap: the list sits FLUSH against the controls bar and the actions bar.
+     Any gap here leaves a strip of bare sidebar background that the dividers and
+     the list's inset shading frame into visible horizontal bands. Vertical
+     breathing room lives INSIDE .sessionList / .railList instead. */
+  gap: 0;
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -17,15 +21,17 @@
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
-  margin: 0 -18px;
-  padding: var(--sidebar-edge-inset) 18px 12px;
-  border-bottom: 1px solid var(--border);
+  margin: 0 -10px;
+  padding: var(--sidebar-edge-inset) 10px 12px;
+  /* Single 1px divider at the seam. No companion hairline shadow: at a flush
+     seam it stacks with the divider into a double dark line. */
+  border-bottom: 1px solid var(--divider);
 }
 
 .controlsRow {
-  --sidebar-control-height: 42px;
+  --sidebar-control-height: 38px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -43,10 +49,14 @@
   height: var(--sidebar-control-height);
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  /* Secondary/ghost control: a faint --accent-alt tint on the resting border and
+     icon, deepening on hover. No --edge-highlight: the inset top line ignores
+     the corner radius on small controls. */
+  border: 1px solid var(--border-accent-alt);
+  /* Raised plate: flat fill. */
   background: var(--bg-soft);
-  color: var(--muted);
+  color: var(--accent-alt-strong);
   cursor: pointer;
 }
 
@@ -63,29 +73,36 @@
 }
 
 .collapseToggle:hover {
-  background: var(--surface-2);
+  /* Secondary/ghost control: hover accent is --accent-alt, not a plain surface
+     step. */
+  background: color-mix(in srgb, var(--accent-alt) 16%, var(--bg-soft));
+  border-color: color-mix(in srgb, var(--accent-alt) 45%, var(--border));
   color: var(--text);
 }
 
 .collapseToggle:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .searchInput {
   width: 100%;
   height: var(--sidebar-control-height);
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: inherit;
+  /* Recessed well on the raised .controls plate. */
+  box-shadow: var(--shadow-inset);
 }
 
 .searchInput:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+  /* Keep the recess while the focus ring is on. */
+  box-shadow: var(--shadow-inset), 0 0 0 2px var(--focus-ring);
 }
 
 .searchShortcut {
@@ -96,12 +113,12 @@
   font-weight: 700;
   line-height: 1;
   padding: 2px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--muted);
   pointer-events: none;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-1);
 }
 
 .sessionList {
@@ -111,35 +128,52 @@
   overflow-y: auto;
   min-height: 0;
   overscroll-behavior: contain;
-  padding-right: 4px;
+  /* Sunken well between the two raised bars. Extended edge-to-edge with the
+     same negative-margin pattern the zones use; the horizontal padding is
+     added back (10px left, 10px + the original 4px scrollbar gutter right) so
+     card positions are unchanged. The vertical padding lives INSIDE this scroll
+     container so the container edge, where the inset shading paints, sits flush
+     against the dividers while the cards keep their spacing. */
+  margin: 0 -10px;
+  padding: 10px 14px 10px 10px;
+  /* micro inset shading (user-picked variant B): sunken feel, no band. */
+  box-shadow: inset 0 2px 3px -1px rgba(2, 5, 11, 0.4),
+    inset 0 -2px 3px -1px rgba(2, 5, 11, 0.28);
   flex: 1;
 }
 
 .repoSection {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
+  /* No --edge-highlight: its inset top line is drawn straight and ignores the
+     corner radius, which reads as a broken top border at this card size. */
+  box-shadow: var(--shadow-1);
   overflow: visible;
   gap: 0;
 }
 
 .repoHeader {
-  padding: 10px 12px;
+  padding: 9px 12px;
   background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
   font-weight: 600;
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
 }
 
 .repoToggle {
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .repoTitle {
-  font-size: 0.9rem;
-  color: var(--text);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  /* --accent-alt group-header label: repo grouping is secondary to the session
+     rows. */
+  color: var(--accent-alt-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -152,24 +186,24 @@
 .repoBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 10px;
-  border-bottom-left-radius: 16px;
-  border-bottom-right-radius: 16px;
+  gap: 6px;
+  padding: 0 8px;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
 }
 
 .repoBody > .sessionItem:first-child {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .repoBody > .sessionItem:last-child {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .sessionItem {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   color: inherit;
@@ -182,40 +216,35 @@
 }
 
 .sessionItemActive {
-  /* Single source for the active-row teal so the gradient and the icon plate
-     below cannot drift. Kept as a literal (not var(--accent)): the tint is
-     theme-invariant here, whereas --accent shifts in the light theme. */
-  --session-active-tint: rgb(79 209 197);
-  background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--session-active-tint) 18%, transparent),
-      transparent 60%
-    ),
-    var(--surface-2);
+  /* --session-active-tint is defined in tokens.css: a single source for the
+     active-row tint. */
+  background: color-mix(in srgb, var(--session-active-tint) 12%, var(--surface));
   border-color: var(--accent);
-  box-shadow: 0 16px 40px rgba(15, 24, 41, 0.35);
-  /* Active row is a teal gradient over --surface-2. Instead of letting the
-     gradient bleed through a semi-transparent plate, use an OPAQUE tint that
-     approximates what the gradient actually paints where the icon stack sits.
-     The 135deg gradient (teal alpha 0.18 at the top-left, fading to 0 at 60% of
-     the gradient line) lands the stack ~28px in and vertically centered, at
-     roughly 25% of the way to the transparent stop -> ~0.13 effective teal
-     alpha over --surface-2. Compositing teal at ~0.13 over --surface-2 is a 13%
-     teal mix, so the plate matches the backdrop yet stays fully opaque and
-     occludes the back icon. Derived from --surface-2 so both themes adapt. */
-  --agent-stack-cover: color-mix(in srgb, var(--session-active-tint) 13%, var(--surface-2));
+  /* --accent (sage) active treatment kept; --edge-highlight dropped because its
+     straight inset top line breaks the rounded top border on a row this
+     small. */
+  box-shadow: var(--shadow-2);
+  /* The agent-icon plate and the row share the exact same flat tint, so the
+     plate stays opaque (it must occlude the back icon) and cannot drift. */
+  --agent-stack-cover: color-mix(in srgb, var(--session-active-tint) 12%, var(--surface));
 }
 
-.sessionItem:hover {
-  border-color: var(--border);
+/* Hover is the secondary (--accent-alt) state; the active row keeps its
+   --accent tint. */
+.sessionItem:not(.sessionItemActive):hover {
+  background: var(--accent-alt-soft);
+  border-color: var(--border-strong);
+  /* Opaque equivalent of --accent-alt-soft over --surface, so the agent-icon
+     backing plate still occludes the back icon. */
+  --agent-stack-cover: var(--accent-alt-soft-opaque);
 }
 
 .sessionButton {
   flex: 1;
-  padding: 10px 12px;
+  padding: 9px 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: transparent;
   border: none;
   color: inherit;
@@ -241,7 +270,12 @@
 
 .sessionBranch {
   font-size: 0.75rem;
-  color: var(--muted);
+  /* Branch/worktree metadata sits below the row label in emphasis:
+     --accent-alt, slightly softened so it never competes with the session
+     name. */
+  color: var(--accent-alt-strong);
+  font-weight: 500;
+  opacity: 0.9;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -251,11 +285,13 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
-  margin: 0 -18px;
-  padding: 12px 18px var(--sidebar-edge-inset);
-  border-top: 1px solid var(--border);
+  margin: 0 -10px;
+  padding: 10px 12px var(--sidebar-edge-inset);
+  /* Single 1px divider at the seam; no companion hairline shadow (see
+     .controls). */
+  border-top: 1px solid var(--divider);
 }
 
 .actionButton {
@@ -267,7 +303,7 @@
 .sessionShortcut,
 .popoutShortcut {
   padding: 2px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--muted);
@@ -283,7 +319,7 @@
   right: -6px;
   font-size: 0.85rem;
   z-index: 2;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-1);
 }
 
 .actions > :last-child {
@@ -303,13 +339,15 @@
 }
 
 .statusRunning {
-  background: radial-gradient(100% 100% at 50% 50%, #38f1d4, #0a4c3f 70%);
-  box-shadow: 0 0 6px rgba(56, 241, 212, 0.6), 0 0 12px rgba(40, 195, 170, 0.45);
+  background: radial-gradient(100% 100% at 50% 50%, #a8d8ac, #2e5237 70%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--success) 65%, transparent),
+    0 0 12px color-mix(in srgb, var(--success) 40%, transparent);
 }
 
 .statusUnread {
-  background: radial-gradient(100% 100% at 50% 50%, var(--warning), #6b4f00 70%);
-  box-shadow: 0 0 6px rgba(246, 201, 69, 0.6), 0 0 12px rgba(214, 170, 40, 0.45);
+  background: radial-gradient(100% 100% at 50% 50%, var(--warning), #5c3a08 70%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 60%, transparent),
+    0 0 12px color-mix(in srgb, var(--warning) 45%, transparent);
 }
 
 .statusOutputting {
@@ -320,17 +358,17 @@
     ),
     radial-gradient(
       80% 80% at 70% 70%,
-      rgba(178, 129, 255, 0.7),
-      rgba(178, 129, 255, 0) 60%
+      color-mix(in srgb, var(--info) 70%, transparent),
+      transparent 60%
     ),
     radial-gradient(
       120% 120% at 20% 80%,
-      rgba(126, 87, 255, 0.6),
-      rgba(126, 87, 255, 0) 70%
+      rgba(122, 108, 235, 0.6),
+      rgba(122, 108, 235, 0) 70%
     ),
-    radial-gradient(100% 100% at 50% 50%, #a66bff, #3e1b7a 70%);
+    radial-gradient(100% 100% at 50% 50%, #8b7bf0, #2a2160 70%);
   background-size: 200% 200%;
-  box-shadow: 0 0 6px rgba(166, 107, 255, 0.8), 0 0 14px rgba(126, 87, 255, 0.7);
+  box-shadow: 0 0 6px rgba(139, 123, 240, 0.8), 0 0 14px rgba(122, 108, 235, 0.7);
   animation: statusMarble 2.4s linear infinite;
 }
 
@@ -381,13 +419,13 @@
 
 .sessionMenu {
   position: relative;
-  margin-right: 6px;
+  margin-right: 4px;
 }
 
 .menuTrigger {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: none;
   background: transparent;
   color: var(--muted);
@@ -407,10 +445,10 @@
   min-width: 180px;
   width: max-content;
   padding: 6px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--edge-highlight), var(--shadow-3);
   z-index: 12;
 }
 
@@ -418,8 +456,8 @@
   width: 100%;
   text-align: left;
   display: block;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text);
@@ -428,7 +466,8 @@
 }
 
 .menuItem:hover {
-  background: var(--surface-2);
+  /* Hover inside an L3 overlay must get LIGHTER than --surface-3, never darker. */
+  background: var(--hover-overlay);
 }
 
 .menuItemDanger {
@@ -436,7 +475,7 @@
 }
 
 .menuItemDanger:hover {
-  color: #ffffff;
+  color: #fff;
   background: var(--danger);
 }
 
@@ -469,9 +508,10 @@
   letter-spacing: 0.01em;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 1px 5px;
   background: var(--surface-2);
+  box-shadow: var(--shadow-1);
 }
 
 .menuShortcutPlus {
@@ -492,13 +532,21 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  padding: var(--sidebar-edge-inset) 0 8px;
+  padding: 10px 0 8px;
+  /* Collapsed-rail mirror of .controls: flush seam, one 1px divider, no
+     hairline shadow. */
+  width: 100%;
+  border-bottom: 1px solid var(--divider);
 }
 
 .railExpandToggle {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
+  /* Explicit clean 1px edge, no inset highlight (broken-top-border artifact).
+     --accent-alt-tinted --border-strong so the rail toggle still reads on the
+     collapsed rail's flat surface. */
+  border: 1px solid color-mix(in srgb, var(--accent-alt) 35%, var(--border-strong));
 }
 
 .railExpandToggle svg {
@@ -515,8 +563,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  /* Vertical breathing room lives inside the scroll container so its edges (and
+     the inset shading painted there) sit flush against the rail dividers. */
+  padding: 8px 0;
   scrollbar-width: none;
+  /* micro inset shading (user-picked variant B): sunken feel, no band. */
+  box-shadow: inset 0 2px 3px -1px rgba(2, 5, 11, 0.4),
+    inset 0 -2px 3px -1px rgba(2, 5, 11, 0.28);
 }
 
 .railList::-webkit-scrollbar {
@@ -533,25 +587,26 @@
 
 .railItem {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  /* Rail button sits on the sidebar's --surface (active state only adds a ring,
-     no background change). */
+  /* Rail button sits on the rail's --surface (active state only adds a ring, no
+     background change), so the icon backing plate matches that surface. */
   --agent-stack-cover: var(--surface);
 }
 
 .railItem:hover {
-  background: var(--surface-2);
-  --agent-stack-cover: var(--surface-2);
+  background: var(--accent-alt-soft);
+  /* Opaque equivalent of --accent-alt-soft over the sidebar's --surface. */
+  --agent-stack-cover: var(--accent-alt-soft-opaque);
 }
 
 .railItemActive {
@@ -565,8 +620,9 @@
   width: 12px;
   height: 12px;
   margin-left: 0;
+  /* Cut-out ring must match the surface the rail row sits on. */
   border: 2px solid var(--surface);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   /* Always above the agent icon stack it overlaps. */
   z-index: 1;
 }
@@ -582,7 +638,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  padding: 12px 0 var(--sidebar-edge-inset);
+  padding: 8px 0 var(--sidebar-edge-inset);
+  /* Collapsed-rail mirror of .actions: flush seam, one 1px divider, no
+     hairline shadow. */
+  width: 100%;
+  border-top: 1px solid var(--divider);
 }
 
 .popoutLayer {
@@ -603,11 +663,11 @@
 .popoutCard {
   position: relative;
   height: 32px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
   border-left: none;
-  border-radius: 0 10px 10px 0;
-  box-shadow: 4px 6px 16px rgba(0, 0, 0, 0.22);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  box-shadow: var(--edge-highlight), var(--shadow-3);
   padding: 0 12px;
   display: flex;
   gap: 8px;
@@ -617,10 +677,10 @@
   color: inherit;
   text-align: left;
   animation: popoutDrawer 180ms ease-out;
-  /* Card background is --surface; the error variant only recolors the border
+  /* Card background is --surface-3; the error variant only recolors the border
      and adds a 3px left strip (outside the icon's 12px padding), so the plate
-     stays --surface in both variants. */
-  --agent-stack-cover: var(--surface);
+     stays --surface-3 in both variants. */
+  --agent-stack-cover: var(--surface-3);
 }
 
 .popoutError {
@@ -638,7 +698,9 @@
 }
 
 .popoutRepo {
-  color: var(--muted);
+  /* --accent-alt repo/group metadata label, matching the expanded repo
+     headers. */
+  color: var(--accent-alt-strong);
   font-size: 0.75rem;
   flex-shrink: 0;
 }

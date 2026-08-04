@@ -13,17 +13,31 @@ body,
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: var(--text);
-  background: radial-gradient(circle at top left, rgba(79, 209, 197, 0.15), transparent 45%),
-    radial-gradient(circle at 20% 50%, rgba(56, 178, 172, 0.12), transparent 50%),
-    var(--bg);
+  background: var(--ambient-wash), var(--bg);
 }
 
 button,
 input,
 textarea {
   font: inherit;
+}
+
+/* Every app modal is a native <dialog>; this is the shared chrome for all of them. */
+dialog {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: var(--edge-highlight), var(--shadow-3);
+  padding: 0;
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
 }
 
 .xterm .xterm-accessibility-tree,

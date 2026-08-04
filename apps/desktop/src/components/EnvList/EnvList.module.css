@@ -1,7 +1,7 @@
 .wrapper {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .list {
@@ -19,25 +19,44 @@
 
 .input {
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: inherit;
+  /* Recessed well: the field sits below the surface it lives on. */
+  box-shadow: var(--shadow-inset);
 }
 
 .input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(79, 209, 197, 0.15);
+  box-shadow: var(--shadow-inset), 0 0 0 2px var(--focus-ring);
 }
 
 .addButton {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
   background: transparent;
-  color: inherit;
-  padding: 8px 10px;
-  border-radius: 10px;
+  color: var(--accent-alt-strong);
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+/* Secondary control: --accent-alt at rest and on hover, --accent stays on the
+   focus ring. */
+.addButton:hover {
+  border-color: var(--accent-alt);
+  background: var(--accent-alt-soft);
+}
+
+.addButton:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }

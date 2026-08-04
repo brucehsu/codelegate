@@ -9,9 +9,9 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-xl);
+  padding: 18px;
+  box-shadow: var(--edge-highlight), var(--shadow-2);
   max-width: 560px;
 }
 

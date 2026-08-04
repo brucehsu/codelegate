@@ -111,47 +111,6 @@ const CHANGE_TREE_UNSAFE_CSS = `
     color: var(--trees-fg-muted);
   }
 `;
-const CHANGE_TREE_STYLE: CSSProperties & Record<string, string | number> = {
-  backgroundColor: "var(--surface)",
-  borderColor: "var(--border)",
-  color: "var(--text)",
-  colorScheme: "inherit",
-  font: "inherit",
-  "--trees-bg-override": "var(--surface)",
-  "--trees-fg-override": "var(--text)",
-  "--trees-fg-muted-override": "var(--muted)",
-  "--trees-bg-muted-override": "color-mix(in srgb, var(--surface-2) 72%, var(--surface))",
-  "--trees-border-color-override": "var(--border)",
-  "--trees-accent-override": "var(--accent)",
-  "--trees-focus-ring-color-override": "var(--accent)",
-  "--trees-focus-ring-offset-override": 0,
-  "--trees-input-bg-override": "var(--bg-soft)",
-  "--trees-selected-bg-override": "color-mix(in srgb, var(--accent) 14%, var(--surface-2))",
-  "--trees-selected-fg-override": "var(--text)",
-  "--trees-selected-focused-border-color-override": "var(--accent)",
-  "--trees-scrollbar-thumb-override": "color-mix(in srgb, var(--muted) 28%, var(--surface))",
-  "--trees-indent-guide-bg-override": "color-mix(in srgb, var(--muted) 20%, transparent)",
-  "--trees-status-added-override": "#22c55e",
-  "--trees-status-untracked-override": "#22c55e",
-  "--trees-status-modified-override": "#3b82f6",
-  "--trees-status-deleted-override": "#ef4444",
-  "--trees-git-added-color-override": "#22c55e",
-  "--trees-git-untracked-color-override": "#22c55e",
-  "--trees-git-modified-color-override": "#3b82f6",
-  "--trees-git-deleted-color-override": "#ef4444",
-  "--trees-search-bg-override": "var(--bg-soft)",
-  "--trees-search-fg-override": "var(--text)",
-  "--trees-search-font-weight-override": 400,
-  "--trees-file-icon-color": "var(--muted)",
-  "--trees-border-radius-override": "10px",
-  "--trees-font-family-override": '"Space Grotesk", "Avenir Next", "Segoe UI", sans-serif',
-  "--trees-font-size-override": "0.85rem",
-  "--trees-font-weight-regular-override": 400,
-  "--trees-font-weight-semibold-override": 600,
-  "--trees-item-margin-x-override": "6px",
-  "--trees-padding-inline-override": "10px",
-};
-
 function isTextInputElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -501,7 +460,7 @@ function GitChangeTree({ files, selectedPath, onSelectFile }: GitChangeTreeProps
     selectedPathRef.current = selectedPath;
   }, [model, selectedPath]);
 
-  return <FileTree aria-label="Changed files" className={styles.changeTree} model={model} style={CHANGE_TREE_STYLE} />;
+  return <FileTree aria-label="Changed files" className={styles.changeTree} model={model} />;
 }
 
 interface GitDiffProps {

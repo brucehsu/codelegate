@@ -1,7 +1,8 @@
 .shell {
   --sidebar-width: 360px;
-  /* Rail icons match the drawer/list icon size (24px stack), so the rail is
-     sized for 40px rail items with the same side margins as before. */
+  /* Rail icons match the drawer/list icon size (24px stack). The rail keeps its
+     width while the rail items themselves are 36px, so the icons gain a little
+     more breathing room on each side. */
   --rail-width: 60px;
   display: grid;
   grid-template-columns: clamp(320px, var(--sidebar-width), 80%) 1fr;
@@ -20,7 +21,7 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: var(--bg);
+  background: var(--ambient-wash), var(--bg);
   color: var(--muted);
   font-weight: 600;
 }
@@ -55,14 +56,14 @@
   bottom: 0;
   left: 3px;
   width: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: transparent;
   transition: background 0.2s ease;
 }
 
 .sidebarResizeHandle:hover::after,
 .sidebarResizeHandle:focus-visible::after {
-  background: rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--text) 20%, transparent);
 }
 
 /* Breakpoint mirrors NARROW_LAYOUT_QUERY in src/hooks/useMediaQuery.ts */

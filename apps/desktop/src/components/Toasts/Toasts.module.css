@@ -1,25 +1,26 @@
 .container {
   position: fixed;
-  top: 16px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   z-index: 1000;
   align-items: center;
 }
 
 .toast {
-  min-width: 240px;
+  min-width: 220px;
   max-width: 360px;
   text-align: left;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: var(--surface);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
   color: var(--text);
-  box-shadow: var(--shadow);
+  /* Overlay surface: edge-highlight is allowed to stay here. */
+  box-shadow: var(--edge-highlight), var(--shadow-3);
   cursor: pointer;
   opacity: 1;
   transition: opacity 1s ease;
@@ -27,18 +28,18 @@
 }
 
 .error {
-  border-color: rgba(239, 106, 95, 0.5);
-  background: color-mix(in srgb, var(--surface) 82%, #ef6a5f 18%);
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+  background: color-mix(in srgb, var(--surface-3) 82%, var(--danger) 18%);
 }
 
 .info {
-  border-color: rgba(79, 209, 197, 0.5);
-  background: color-mix(in srgb, var(--surface) 84%, #4fd1c5 16%);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--surface-3) 84%, var(--accent) 16%);
 }
 
 .success {
-  border-color: rgba(34, 197, 94, 0.55);
-  background: color-mix(in srgb, var(--surface) 80%, #22c55e 20%);
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
+  background: color-mix(in srgb, var(--surface-3) 80%, var(--success) 20%);
 }
 
 .exiting {

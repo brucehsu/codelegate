@@ -232,6 +232,7 @@ function normalizeRepoConfig(repo: RepoConfig): RepoConfig {
 }
 
 const defaultSettings = {
+  // Kept only for config-file shape compatibility with the Rust backend; no frontend consumer.
   theme: "dark" as const,
   recentDirs: [],
   terminalFontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
@@ -864,10 +865,6 @@ export function useAppState(
     [saveConfig]
   );
 
-  const applyTheme = useCallback((theme: "dark" | "light") => {
-    document.body.dataset.theme = theme;
-  }, []);
-
   useEffect(() => {
     let mounted = true;
     Promise.all([
@@ -899,14 +896,12 @@ export function useAppState(
         } as AppConfig;
         setConfig(nextConfig);
         setHasSavedConfig(hasSaved);
-        applyTheme(nextConfig.settings.theme);
       })
       .catch(() => {
         if (!mounted) {
           return;
         }
         setHasSavedConfig(false);
-        applyTheme(defaultSettings.theme);
       })
       .finally(() => {
         markConfigReady();
@@ -914,7 +909,7 @@ export function useAppState(
     return () => {
       mounted = false;
     };
-  }, [applyTheme, markConfigReady]);
+  }, [markConfigReady]);
 
   const persistConfig = useCallback(async () => {
     try {
