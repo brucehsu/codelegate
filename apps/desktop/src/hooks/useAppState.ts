@@ -33,6 +33,13 @@ import { createSessionId, envListToMap, getRepoName, unreadKey } from "../utils/
 import { escapeShellArg, shellArgs } from "../utils/shell";
 import { defineHotkey, runHotkeys, type HotkeyBinding } from "../utils/hotkeys";
 import { buildShortcutCombo, normalizeShortcutModifier } from "../utils/shortcutModifier";
+import {
+  INACTIVE_TERMINAL_SCROLLBACK_LINES,
+  applyTerminalScrollbackLimit,
+  getTerminalScrollbackLines,
+  snapshotTerminalViewport,
+  type TerminalRetentionIdentity,
+} from "../utils/terminalRetention";
 
 interface TerminalRuntime extends TerminalRendererRuntime {
   agentId?: AgentId;
@@ -82,6 +89,20 @@ function forEachTerminalRuntime(
     apply(runtime.git);
     apply(runtime.terminal);
   });
+}
+
+function getTerminalRetentionIdentity(
+  sessionId: string,
+  kind: PaneKind,
+  agentId?: AgentId
+): TerminalRetentionIdentity | null {
+  if (kind === "git") {
+    return null;
+  }
+  if (kind === "agent") {
+    return { sessionId, kind, agentId };
+  }
+  return { sessionId, kind };
 }
 
 function isTextInputElement(element: Element | null) {
@@ -227,7 +248,6 @@ const defaultConfig: AppConfig = {
   settings: defaultSettings,
 };
 
-const TERMINAL_SCROLLBACK_LINES = 10000;
 const BRANCH_MONITOR_INTERVAL_MS = 10_000;
 const SESSION_SNAPSHOT_DEBOUNCE_MS = 300;
 
@@ -352,6 +372,10 @@ export function useAppState(
   const [unreadOutput, setUnreadOutput] = useState<Record<string, boolean>>({});
   const [agentOutputting, setAgentOutputting] = useState<Record<string, boolean>>({});
   const [agentUnread, setAgentUnread] = useState<Record<string, boolean>>({});
+  const terminalRetentionKey = useMemo(
+    () => sessions.map((session) => `${session.id}:${session.activeAgent}`).join("|"),
+    [sessions]
+  );
   const configRef = useRef(config);
   const configReadyResolveRef = useRef<(() => void) | null>(null);
   const configReadyPromiseRef = useRef(
@@ -388,6 +412,7 @@ export function useAppState(
   const sessionsRef = useRef<Session[]>([]);
   const activeSessionRef = useRef<string | null>(null);
   const activePaneKindRef = useRef<PaneKind>("agent");
+  const visibleTerminalIdentityRef = useRef<TerminalRetentionIdentity | null>(null);
   const closeInProgressRef = useRef(false);
   const closePromptInProgressRef = useRef(false);
   const pendingExitRequestRef = useRef(false);
@@ -414,6 +439,50 @@ export function useAppState(
       return runtime[kind];
     },
     [getActiveAgentId]
+  );
+
+  const applyTerminalRetention = useCallback((visibleIdentity: TerminalRetentionIdentity | null) => {
+    runtimeRef.current.forEach((sessionRuntime, sessionId) => {
+      const applyToRuntime = (runtime: TerminalRuntime, identity: TerminalRetentionIdentity) => {
+        const term = runtime.term;
+        if (!term) {
+          return;
+        }
+        const targetScrollback = getTerminalScrollbackLines(identity, visibleIdentity);
+        applyTerminalScrollbackLimit(term, runtime, targetScrollback);
+      };
+
+      sessionRuntime.agents.forEach((runtime, agentId) => {
+        applyToRuntime(runtime, { sessionId, kind: "agent", agentId });
+      });
+      applyToRuntime(sessionRuntime.terminal, { sessionId, kind: "terminal" });
+    });
+  }, []);
+
+  const getVisibleTerminalIdentity = useCallback(
+    (
+      sessionId = activeSessionRef.current,
+      kind = activePaneKindRef.current,
+      agentId?: AgentId
+    ): TerminalRetentionIdentity | null => {
+      if (!sessionId) {
+        return null;
+      }
+      return getTerminalRetentionIdentity(
+        sessionId,
+        kind,
+        kind === "agent" ? (agentId ?? getActiveAgentId(sessionId)) : undefined
+      );
+    },
+    [getActiveAgentId]
+  );
+
+  const setVisibleTerminalIdentity = useCallback(
+    (visibleIdentity: TerminalRetentionIdentity | null) => {
+      visibleTerminalIdentityRef.current = visibleIdentity;
+      applyTerminalRetention(visibleIdentity);
+    },
+    [applyTerminalRetention]
   );
 
   const scheduleTerminalFit = useCallback((runtime: TerminalRuntime, force = false) => {
@@ -639,9 +708,9 @@ export function useAppState(
   );
 
   const snapshotRuntimeViewport = useCallback((runtime: TerminalRuntime) => {
-    const viewportY = runtime.term?.buffer.active.viewportY;
-    if (runtime.isFollowing === false && viewportY !== undefined) {
-      runtime.savedViewportY = viewportY;
+    const term = runtime.term;
+    if (term) {
+      snapshotTerminalViewport(term, runtime);
       return;
     }
     runtime.savedViewportY = undefined;
@@ -735,6 +804,10 @@ export function useAppState(
     activeSessionRef.current = activeSessionId;
   }, [activeSessionId]);
 
+  useEffect(() => {
+    setVisibleTerminalIdentity(getVisibleTerminalIdentity());
+  }, [activeSessionId, getVisibleTerminalIdentity, setVisibleTerminalIdentity, terminalRetentionKey]);
+
   const setActiveSessionId = useCallback(
     (nextSessionId: string | null) => {
       if (activeSessionRef.current !== nextSessionId) {
@@ -743,13 +816,23 @@ export function useAppState(
       const nextSession = nextSessionId
         ? sessionsRef.current.find((session) => session.id === nextSessionId)
         : null;
-      activePaneKindRef.current = nextSession?.lastActivePaneKind ?? "agent";
+      const nextPaneKind = nextSession?.lastActivePaneKind ?? "agent";
+      activeSessionRef.current = nextSessionId;
+      activePaneKindRef.current = nextPaneKind;
+      setVisibleTerminalIdentity(
+        getVisibleTerminalIdentity(nextSessionId, nextPaneKind, nextSession?.activeAgent)
+      );
       if (nextSessionId) {
         setAgentUnreadFor(nextSessionId, false);
       }
       setActiveSessionIdState(nextSessionId);
     },
-    [setAgentUnreadFor, snapshotActiveRuntimeViewport]
+    [
+      getVisibleTerminalIdentity,
+      setAgentUnreadFor,
+      setVisibleTerminalIdentity,
+      snapshotActiveRuntimeViewport,
+    ]
   );
 
   const markConfigReady = useCallback(() => {
@@ -1352,13 +1435,16 @@ export function useAppState(
 
   const createTerminal = useCallback(
     (element: HTMLDivElement, runtime: TerminalRuntime, sessionId: string, kind: PaneKind) => {
+      const terminalIdentity = getTerminalRetentionIdentity(sessionId, kind, runtime.agentId);
       const term = new Terminal({
         allowProposedApi: true,
         cursorBlink: true,
         fontFamily: terminalAppearance.fontFamily,
         fontSize: terminalAppearance.fontSize,
         lineHeight: terminalAppearance.lineHeight,
-        scrollback: TERMINAL_SCROLLBACK_LINES,
+        scrollback: terminalIdentity
+          ? getTerminalScrollbackLines(terminalIdentity, visibleTerminalIdentityRef.current)
+          : INACTIVE_TERMINAL_SCROLLBACK_LINES,
       });
       configureTerminalOptions(term);
       const fit = new FitAddon();
@@ -1502,6 +1588,7 @@ export function useAppState(
       }
       activePaneKindRef.current = kind;
       const sessionId = activeSessionRef.current;
+      setVisibleTerminalIdentity(getVisibleTerminalIdentity(sessionId, kind));
       if (sessionId) {
         setSessions((prev) =>
           prev.map((session) =>
@@ -1523,7 +1610,14 @@ export function useAppState(
         pendingFocusRef.current = { sessionId, kind };
       }
     },
-    [activateVisibleRuntime, focusSession, getTerminalRuntime, snapshotActiveRuntimeViewport]
+    [
+      activateVisibleRuntime,
+      focusSession,
+      getTerminalRuntime,
+      getVisibleTerminalIdentity,
+      setVisibleTerminalIdentity,
+      snapshotActiveRuntimeViewport,
+    ]
   );
 
   const jumpToBottom = useCallback(
@@ -1571,6 +1665,7 @@ export function useAppState(
         if (!runtime.scrollDisposable) {
           runtime.scrollDisposable = term.onScroll(() => {
             updateFollowState(runtime, sessionId, kind, runtime.viewportEl ?? undefined);
+            snapshotRuntimeViewport(runtime);
           });
         }
         const viewport = element.querySelector(".xterm-viewport") as HTMLDivElement | null;
@@ -1650,6 +1745,7 @@ export function useAppState(
       getTerminalRuntime,
       registerPty,
       scheduleTerminalFit,
+      snapshotRuntimeViewport,
       updateFollowState,
       notify,
       activateRuntime,
@@ -2056,6 +2152,10 @@ export function useAppState(
         })
       );
 
+      if (activeSessionRef.current === sessionId && activePaneKindRef.current === "agent") {
+        setVisibleTerminalIdentity({ sessionId, kind: "agent", agentId: nextAgent });
+      }
+
       pendingFocusRef.current = { sessionId, kind: "agent" };
 
       if (!hasSpawned && !isStarting) {
@@ -2082,7 +2182,14 @@ export function useAppState(
         activateVisibleRuntime(runtime, sessionId, "agent", { focus: true });
       }
     },
-    [activateVisibleRuntime, getTerminalRuntime, notify, snapshotActiveRuntimeViewport, spawnAgentForSession]
+    [
+      activateVisibleRuntime,
+      getTerminalRuntime,
+      notify,
+      setVisibleTerminalIdentity,
+      snapshotActiveRuntimeViewport,
+      spawnAgentForSession,
+    ]
   );
 
   const switchActiveSessionAgent = useCallback(

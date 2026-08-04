@@ -51,6 +51,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Test desktop frontend
+        run: pnpm --filter @codelegate/desktop test
+
+      - name: Test desktop Rust
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -6,6 +6,8 @@ html,
 body,
 #app {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -29,6 +31,10 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
+}
+
+.xterm .xterm-viewport {
+  overscroll-behavior: none;
 }
 
 .hidden {
