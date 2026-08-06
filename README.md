@@ -154,7 +154,7 @@ pnpm --filter @codelegate/desktop tauri build --no-bundle
 ```
 
 ## Desktop Releases
-- Release workflow: `.github/workflows/release-desktop.yml`
+- Release workflow: `.github/workflows/desktop-release.yml`
 - Trigger: push a Git tag matching `v*` such as `v0.1.0`
 - Manual run: start the workflow from the Actions tab and provide `release_tag` with the same tag value, such as `v0.1.0`
 - The pushed tag must match `apps/desktop/src-tauri/Cargo.toml` `version`
