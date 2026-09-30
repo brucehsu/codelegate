@@ -1,6 +1,7 @@
 {
   "name": "codelegate",
   "private": true,
+  "packageManager": "pnpm@11.8.0",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -12,7 +13,8 @@
     "clean": "tsc -b --clean",
     "dev:desktop": "pnpm --filter @codelegate/desktop dev",
     "dev:website": "pnpm --filter @codelegate/website dev",
-    "tauri:desktop": "pnpm --filter @codelegate/desktop tauri",
+    "package:desktop": "pnpm --filter @codelegate/desktop package",
+    "test:desktop": "pnpm --filter @codelegate/desktop test",
     "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {

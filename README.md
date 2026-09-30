@@ -1,7 +1,9 @@
 # Codelegate Desktop
 
-Codelegate is a Tauri 2 desktop app for running coding-agent sessions and repository workflows in one place.  
+Codelegate is an Electron desktop app for running coding-agent sessions and repository workflows in one place.
 This repository currently targets **desktop only** (`apps/desktop`).
+
+The renderer is React + Vite. The main process is TypeScript on Node. PTY sessions and libgit2 diff/status run in a single Rust N-API addon (`apps/desktop/native`) loaded by the main process.
 
 ## Desktop Features
 - Multi-session workspace grouped by repository, with sidebar search and quick switching.
@@ -29,17 +31,23 @@ This repository currently targets **desktop only** (`apps/desktop`).
 - `Ctrl + Tab` = Cycle sessions
 
 ## Repository Layout
-- `apps/desktop`: Desktop app (React + Vite frontend, Tauri + Rust backend)
-- `apps/desktop/src`: Frontend UI and app logic (CSS Modules)
-- `apps/desktop/src-tauri`: Backend commands, permissions, and Tauri config
-- `packages/shared`: Shared TypeScript utilities/icons
-- `.github/workflows/desktop-build.yml`: CI workflow that verifies desktop build
+- `apps/desktop/src`: Renderer UI and app logic (React, CSS Modules). Never imports `electron`.
+- `apps/desktop/src/platform`: The only renderer entry point to the main process (`api`, `isMac`).
+- `apps/desktop/electron/main`: Main process (window, menu, lifecycle, `app://` protocol, IPC handlers).
+- `apps/desktop/electron/preload`: `contextBridge` surface plus the PTY `MessagePort` handoff.
+- `apps/desktop/electron/shared`: Domain types, the `CodelegateApi` interface, and IPC channel constants.
+- `apps/desktop/native`: Rust N-API addon (`src/pty.rs`, `src/git.rs`, `src/lib.rs`).
+- `apps/desktop/build`: Packaging resources (`icon.icns`, `icon.png`, `entitlements.mac.plist`).
+- `apps/desktop/electron-builder.yml`: Packaging configuration.
+- `packages/shared`: Shared TypeScript utilities/icons.
+- `.github/workflows/desktop-build.yml`: CI workflow that builds and packages the desktop app.
+- `.github/workflows/desktop-release.yml`: Release workflow.
 
 ## Prerequisites
-- Node.js 20+
-- `pnpm`
+- Node.js 24 (see `.node-version`)
+- pnpm 11 (pinned by `packageManager` in the root `package.json`)
 - Rust stable toolchain
-- On Linux, Tauri system dependencies (WebKitGTK/GTK stack) are required for desktop builds.
+- On Linux, `rpm` is required to produce the `.rpm` package (`sudo apt-get install -y rpm`). No GTK or WebKit development packages are needed.
 
 ## Command Reference
 Workspace-level scripts (`package.json`):
@@ -47,23 +55,30 @@ Workspace-level scripts (`package.json`):
 | Command | Purpose |
 | --- | --- |
 | `pnpm build` | Run root TypeScript build (`tsc -b`). |
-| `pnpm build:desktop` | Build desktop frontend (`@codelegate/desktop`). |
+| `pnpm build:desktop` | Build renderer, preload, and main into `apps/desktop/out`. |
 | `pnpm build:website` | Build website app workspace (if present). |
 | `pnpm clean` | Clean TypeScript build artifacts (`tsc -b --clean`). |
-| `pnpm dev:desktop` | Start desktop frontend Vite dev server. |
+| `pnpm dev:desktop` | Start the desktop app in development. |
 | `pnpm dev:website` | Start website dev server (if present). |
-| `pnpm tauri:desktop <args>` | Run Tauri CLI in desktop workspace. |
+| `pnpm package:desktop` | Build and package installers for the host platform. |
+| `pnpm test:desktop` | Run the desktop unit tests. |
 | `pnpm typecheck` | Typecheck all workspaces via TS project references. |
 
 Desktop workspace scripts (`apps/desktop/package.json`):
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm --filter @codelegate/desktop dev` | Start Vite dev server for desktop UI. |
-| `pnpm --filter @codelegate/desktop build` | Typecheck desktop TS + build frontend assets. |
-| `pnpm --filter @codelegate/desktop preview` | Preview built desktop frontend assets. |
-| `pnpm --filter @codelegate/desktop tauri <args>` | Run Tauri CLI directly in desktop workspace. |
-| `pnpm --filter @codelegate/desktop typecheck` | Typecheck desktop workspace only. |
+| `pnpm --filter @codelegate/desktop dev` | Run the app in development (electron-vite). |
+| `pnpm --filter @codelegate/desktop build` | Build renderer, preload, and main. |
+| `pnpm --filter @codelegate/desktop native:build` | Build the Rust addon in release mode. |
+| `pnpm --filter @codelegate/desktop native:build:debug` | Build the Rust addon in debug mode (much faster). |
+| `pnpm --filter @codelegate/desktop native:test` | Run the Rust test suite (`cargo test --features noop`). |
+| `pnpm --filter @codelegate/desktop test` | Run the desktop unit tests. |
+| `pnpm --filter @codelegate/desktop typecheck` | Typecheck the renderer and node projects. |
+| `pnpm --filter @codelegate/desktop smoke` | Headless main-process smoke check against a built `out/`. |
+| `pnpm --filter @codelegate/desktop package` | Package installers for the host platform. |
+| `pnpm --filter @codelegate/desktop package:mac` | Package macOS `.dmg` and `.zip`. |
+| `pnpm --filter @codelegate/desktop package:linux` | Package Linux `.AppImage`, `.deb`, and `.rpm`. |
 
 Common desktop workflows:
 
@@ -73,13 +88,13 @@ Common desktop workflows:
 pnpm install
 ```
 
-2. Run full desktop app (Tauri + Vite):
+2. Build the native addon once (and again whenever `apps/desktop/native` changes):
 
 ```bash
-pnpm tauri:desktop dev
+pnpm --filter @codelegate/desktop native:build
 ```
 
-3. Run frontend only:
+3. Run the app:
 
 ```bash
 pnpm dev:desktop
@@ -91,41 +106,54 @@ pnpm dev:desktop
 pnpm typecheck
 ```
 
-5. Frontend desktop build:
+5. Test:
+
+```bash
+pnpm test:desktop
+pnpm --filter @codelegate/desktop native:test
+```
+
+6. Build without packaging:
 
 ```bash
 pnpm build:desktop
 ```
 
-6. Full desktop app build (bundle enabled):
+7. Package installers for the host platform:
 
 ```bash
-pnpm tauri:desktop build
+pnpm package:desktop
 ```
 
-7. App-only macOS bundle (skip DMG):
+Build output goes to `apps/desktop/out`, installers to `apps/desktop/release`. Both are ignored by Git.
 
-```bash
-pnpm --filter @codelegate/desktop tauri build --bundles app
-```
+## Adding an IPC Method
+The renderer never imports `electron`. Every main-process capability goes through four files:
 
-8. CI-style backend compile check without packaging:
+1. Declare the signature in `apps/desktop/electron/shared/api.d.ts` and add the channel name to `apps/desktop/electron/shared/channels.ts`.
+2. Implement the handler in the matching `apps/desktop/electron/main/ipc/*.ts` file and register it in `register.ts`. If it needs Rust, add a `#[napi]` export in `apps/desktop/native/src/lib.rs`, rebuild the addon, and check in the regenerated `apps/desktop/native/index.d.ts`.
+3. Expose it in `apps/desktop/electron/preload/index.ts`.
+4. Call it from the renderer as `api.yourMethod(...)` via `import { api } from "../platform"`.
 
-```bash
-pnpm --filter @codelegate/desktop tauri build --no-bundle
-```
+Shared payload types live in `apps/desktop/electron/shared/types.ts`, which `src/types.ts` and `src/utils/gitDiff.ts` re-export.
 
 ## App Icon (Desktop Bundle)
-- Icon source image: `apps/desktop/src-tauri/icons/icon.png`.
-- Generate platform icon assets after icon changes:
+- Icon sources: `apps/desktop/build/icon.png` (512x512, used by Linux and as the master) and `apps/desktop/build/icon.icns` (macOS).
+- electron-builder picks both up automatically from `directories.buildResources`.
+- After replacing `icon.png`, regenerate `icon.icns` on macOS:
 
 ```bash
-pnpm --filter @codelegate/desktop tauri icon src-tauri/icons/icon.png
+cd apps/desktop
+rm -rf build/Codelegate.iconset && mkdir build/Codelegate.iconset
+for size in 16 32 128 256 512; do
+  sips -z "$size" "$size" build/icon.png --out "build/Codelegate.iconset/icon_${size}x${size}.png"
+  sips -z "$((size * 2))" "$((size * 2))" build/icon.png --out "build/Codelegate.iconset/icon_${size}x${size}@2x.png"
+done
+iconutil -c icns build/Codelegate.iconset -o build/icon.icns
+rm -rf build/Codelegate.iconset
 ```
 
-- `apps/desktop/src-tauri/tauri.conf.json` must include `bundle.icon` entries (including `icons/icon.icns` for macOS).
-- For release verification on macOS, build a bundled app (`pnpm tauri:desktop build` or `pnpm --filter @codelegate/desktop tauri build --bundles app`).
-- `--no-bundle` only verifies compile and does not produce packaged app icon metadata/resources.
+- Verify the result by packaging a real bundle (`pnpm --filter @codelegate/desktop package:mac`) rather than by running the dev app.
 
 ## CI Integration
 - Workflow file: `.github/workflows/desktop-build.yml`
@@ -133,34 +161,51 @@ pnpm --filter @codelegate/desktop tauri icon src-tauri/icons/icon.png
   - `pull_request`
   - `push` on `main`
   - `workflow_dispatch` (manual run)
-- Runner: `ubuntu-24.04`
+- Runners: `ubuntu-24.04` and `macos-latest`
 - CI pipeline steps:
   1. Checkout repository (`actions/checkout@v4`)
-  2. Setup pnpm (`pnpm/action-setup@v4`, version 9)
-  3. Setup Node.js (`actions/setup-node@v4`, node 20, pnpm cache)
-  4. Setup Rust (`dtolnay/rust-toolchain@stable`)
-  5. Install Linux Tauri dependencies (`apt-get` packages for GTK/WebKit and bundling tools)
+  2. Setup pnpm (`pnpm/action-setup@v4`, version taken from `packageManager`)
+  3. Setup Node.js (`actions/setup-node@v4`, `node-version-file: .node-version`, pnpm cache)
+  4. Setup Rust (`dtolnay/rust-toolchain@stable`) and restore the Cargo cache (`swatinem/rust-cache@v2`)
+  5. Install `rpm` on Linux
   6. Install dependencies: `pnpm install --frozen-lockfile`
-  7. Typecheck: `pnpm typecheck`
-  8. Build desktop frontend: `pnpm build:desktop`
-  9. Build desktop app without bundle: `pnpm --filter @codelegate/desktop tauri build --no-bundle`
+  7. Rust tests and release build of the native addon
+  8. On macOS, verify the addon does not link Homebrew libraries
+  9. Unit tests and typecheck
+  10. Package installers with `CSC_IDENTITY_AUTO_DISCOVERY=false`
+  11. On macOS, verify the packaged app ships the addon under `app.asar.unpacked/native`
+  12. On Linux, run the headless smoke check under `xvfb-run`
+  13. Upload the packaged artifacts
 
-Core CI verification commands:
+Core local equivalents:
 
 ```bash
+pnpm --filter @codelegate/desktop native:test
+pnpm --filter @codelegate/desktop native:build
+pnpm test:desktop
 pnpm typecheck
-pnpm build:desktop
-pnpm --filter @codelegate/desktop tauri build --no-bundle
+pnpm package:desktop
 ```
 
 ## Desktop Releases
 - Release workflow: `.github/workflows/desktop-release.yml`
 - Trigger: push a Git tag matching `v*` such as `v0.1.0`
 - Manual run: start the workflow from the Actions tab and provide `release_tag` with the same tag value, such as `v0.1.0`
-- The pushed tag must match `apps/desktop/src-tauri/Cargo.toml` `version`
-- The workflow builds the Tauri desktop app from `apps/desktop`, creates or updates the GitHub Release, uploads Linux and macOS artifacts, and enables GitHub-generated release notes
-- macOS bundles are signed and notarized in CI
-- Linux bundles are built on Ubuntu and published to the same GitHub Release
+- The pushed tag must match `version` in `apps/desktop/package.json`
+- Runners: `ubuntu-24.04` (x64), `macos-26` (arm64), `macos-26-intel` (x64), one at a time
+- Each runner builds the native addon for its own target, packages with electron-builder, and uploads to the same GitHub Release with generated release notes
+- macOS bundles are signed with a Developer ID identity, notarized, stapled, and verified with `codesign`, `spctl`, and `stapler validate`
+- Linux `.AppImage`, `.deb`, and `.rpm` are built on Ubuntu and published to the same Release
+
+Published assets:
+
+| Asset | Platform |
+| --- | --- |
+| `Codelegate-<version>-arm64.dmg` / `.zip` | macOS Apple Silicon |
+| `Codelegate-<version>-x64.dmg` / `.zip` | macOS Intel |
+| `Codelegate-<version>-x86_64.AppImage` | Linux x64 |
+| `Codelegate-<version>-amd64.deb` | Linux x64 |
+| `Codelegate-<version>-x86_64.rpm` | Linux x64 |
 
 Required GitHub Actions secrets:
 
@@ -175,7 +220,7 @@ Required GitHub Actions secrets:
 
 Release steps:
 
-1. Update `apps/desktop/src-tauri/Cargo.toml` to the release version.
+1. Update `version` in `apps/desktop/package.json` to the release version.
 2. Commit the version change and push it to the branch you want to release from.
 3. Create and push the matching tag:
 
@@ -184,9 +229,10 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-After the tag is pushed, GitHub Actions runs the desktop release workflow on GitHub-hosted macOS and Linux runners, builds Linux and macOS bundles, signs and notarizes the macOS artifacts with the configured Apple credentials, then publishes all generated assets to the GitHub Release page for that tag.
+After the tag is pushed, GitHub Actions runs the desktop release workflow on GitHub-hosted macOS and Linux runners, builds the native addon and installers per platform, signs and notarizes the macOS artifacts with the configured Apple credentials, then publishes all generated assets to the GitHub Release page for that tag.
 
 ## Data Locations
 - Settings: `~/.codelegate/config.json`
   - Recent directories are stored under `settings.recentDirs`.
+- Restored sessions: `~/.codelegate/previous_sessions.json`
 - Worktrees: `~/.codelegate/worktrees/<repo-slug>/<timestamp>-<agent>`

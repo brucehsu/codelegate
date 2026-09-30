@@ -1,6 +1,11 @@
 .turbo
 dist
 node_modules
-**/src-tauri/target/
+.pnpm-store/
+apps/desktop/out/
+apps/desktop/release/
+apps/desktop/native/target/
+apps/desktop/native/*.node
 *.tsbuildinfo
+apps/desktop/.tsbuild/
 .DS_Store

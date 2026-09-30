@@ -28,19 +28,26 @@ jobs:
         include:
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+            electron_arch: x64
             bundle_name: Linux x64
             platform: linux
           - runner: macos-26
             target: aarch64-apple-darwin
+            electron_arch: arm64
             bundle_name: Apple Silicon
             platform: macos
           - runner: macos-26-intel
             target: x86_64-apple-darwin
+            electron_arch: x64
             bundle_name: Intel
             platform: macos
     runs-on: ${{ matrix.runner }}
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.ref_name }}
+      # Electron 44 ships Mach-O binaries with minos 13.0 (verified with
+      # `otool -l` on the packaged Electron Framework), so the native addon
+      # is built against the same floor. Inert on the Linux runner.
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,13 +57,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -65,26 +70,16 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Linux dependencies for Tauri
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            patchelf
-
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: apps/desktop/native -> target
+
+      - name: Install Linux packaging dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -93,7 +88,7 @@ jobs:
         shell: bash
         run: |
           release_tag="$RELEASE_TAG"
-          app_version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' apps/desktop/src-tauri/Cargo.toml | head -n 1)"
+          app_version="$(node -p "require('./apps/desktop/package.json').version")"
           tag_version="${release_tag#v}"
 
           if [[ ! "$release_tag" =~ ^v[0-9] ]]; then
@@ -102,7 +97,7 @@ jobs:
           fi
 
           if [[ -z "$app_version" ]]; then
-            echo "Unable to determine desktop app version from apps/desktop/src-tauri/Cargo.toml"
+            echo "Unable to determine desktop app version from apps/desktop/package.json"
             exit 1
           fi
 
@@ -165,67 +160,110 @@ jobs:
             exit 1
           fi
 
+          # electron-builder prepends the certificate type itself, so CSC_NAME must be the name without the "Developer ID Application: " prefix.
+          signing_identity="${signing_identity#Developer ID Application: }"
+
           echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
 
-      - name: Verify macOS binary does not link Homebrew libraries
+      - name: Test native addon
+        run: pnpm --filter @codelegate/desktop native:test
+
+      - name: Build native addon
+        run: >-
+          pnpm --filter @codelegate/desktop exec
+          napi build --cwd native --release --platform --no-js --dts index.d.ts
+          --target ${{ matrix.target }}
+
+      - name: Verify native addon does not link Homebrew libraries
         if: matrix.platform == 'macos'
         shell: bash
         run: |
           set -euo pipefail
 
-          cargo build \
-            --manifest-path apps/desktop/src-tauri/Cargo.toml \
-            --release \
-            --target "${{ matrix.target }}"
+          addon_path="$(find apps/desktop/native -maxdepth 1 -name 'codelegate-native.*.node' -print -quit)"
 
-          binary_path="apps/desktop/src-tauri/target/${{ matrix.target }}/release/codelegate-desktop"
-
-          if [[ ! -f "$binary_path" ]]; then
-            echo "Unable to locate built macOS binary at $binary_path"
+          if [[ -z "$addon_path" ]]; then
+            echo "Unable to locate built native addon under apps/desktop/native"
             exit 1
           fi
 
-          echo "Inspecting $binary_path"
-          otool -L "$binary_path"
+          echo "Inspecting $addon_path"
+          otool -L "$addon_path"
 
-          if otool -L "$binary_path" | grep -q '/opt/homebrew/'; then
-            echo "macOS binary links against Homebrew libraries, which breaks signed distribution builds."
+          if otool -L "$addon_path" | grep -q '/opt/homebrew/'; then
+            echo "Native addon links against Homebrew libraries, which breaks signed distribution builds."
             exit 1
           fi
 
-      - name: Build and publish macOS release
+      - name: Test desktop
+        run: pnpm --filter @codelegate/desktop test
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build renderer, preload and main
+        run: pnpm --filter @codelegate/desktop build
+
+      - name: Package and sign macOS release
         if: matrix.platform == 'macos'
-        uses: tauri-apps/tauri-action@action-v0.6.0
         env:
+          CSC_NAME: ${{ env.APPLE_SIGNING_IDENTITY }}
+          CSC_KEYCHAIN: ${{ runner.temp }}/codelegate-release.keychain-db
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY_PATH }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tauriScript: pnpm tauri
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Codelegate ${{ env.RELEASE_TAG }}
-          releaseDraft: false
-          prerelease: false
-          generateReleaseNotes: true
-          args: --target ${{ matrix.target }}
+        run: >-
+          pnpm --filter @codelegate/desktop exec
+          electron-builder --mac --${{ matrix.electron_arch }} --publish never
 
-      - name: Build and publish Linux release
+      - name: Package Linux release
         if: matrix.platform == 'linux'
-        uses: tauri-apps/tauri-action@action-v0.6.0
+        run: >-
+          pnpm --filter @codelegate/desktop exec
+          electron-builder --linux --${{ matrix.electron_arch }} --publish never
+
+      - name: Verify macOS signature and notarization
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_path="$(find apps/desktop/release -maxdepth 2 -name 'Codelegate.app' -print -quit)"
+          dmg_path="$(find apps/desktop/release -maxdepth 1 -name '*.dmg' -print -quit)"
+
+          if [[ -z "$app_path" ]]; then
+            echo "Unable to locate packaged Codelegate.app under apps/desktop/release"
+            exit 1
+          fi
+
+          if [[ -z "$dmg_path" ]]; then
+            echo "Unable to locate packaged DMG under apps/desktop/release"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl -a -vv -t exec "$app_path"
+          # The notarization ticket is stapled to the .app by @electron/notarize
+          # before the DMG is assembled around it. The DMG itself is never
+          # submitted, so `stapler validate` on the disk image would always fail
+          # with "does not have a ticket stapled to it".
+          xcrun stapler validate "$app_path"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: apps/desktop
-          tauriScript: pnpm tauri
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Codelegate ${{ env.RELEASE_TAG }}
-          releaseDraft: false
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Codelegate ${{ env.RELEASE_TAG }}
+          draft: false
           prerelease: false
-          generateReleaseNotes: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          # One brace pattern, not one line per extension: each macOS job only
+          # produces dmg/zip and the Linux job only AppImage/deb/rpm, and
+          # fail_on_unmatched_files rejects any pattern that matches nothing.
+          files: apps/desktop/release/*.{dmg,zip,AppImage,deb,rpm}
 
       - name: Cleanup signing files
         if: always() && matrix.platform == 'macos'

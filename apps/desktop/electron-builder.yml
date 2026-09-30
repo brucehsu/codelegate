@@ -1,0 +1,65 @@
+appId: com.codelegate.app
+productName: Codelegate
+
+directories:
+  output: release
+  buildResources: build
+
+# Everything the renderer and main process need is bundled by electron-vite into
+# out/, so no node_modules are copied. The only runtime binary is the prebuilt
+# N-API addon, which must live outside the asar to be loadable by dlopen.
+files:
+  - out/**
+  - native/codelegate-native.*.node
+  - package.json
+
+asarUnpack:
+  - native/*.node
+
+npmRebuild: false
+
+artifactName: ${productName}-${version}-${arch}.${ext}
+
+electronFuses:
+  # Flipping fuses rewrites the Electron binary, which invalidates the ad-hoc
+  # signature the prebuilt macOS binaries carry, and an app with a broken
+  # signature will not launch. Release builds re-sign with a Developer ID right
+  # after this, but unsigned builds (CI, local `package:mac`) have nothing to
+  # repair it, so ask @electron/fuses to re-apply the ad-hoc signature itself.
+  # It runs before the DMG is assembled, so the disk image is runnable too, and
+  # it is a no-op off macOS.
+  resetAdHocDarwinSignature: true
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+
+linux:
+  target:
+    - AppImage
+    - deb
+    - rpm
+  category: Development
+  executableName: codelegate
+  icon: build/icon.png
+
+# No `deb.depends` / `rpm.depends` overrides on purpose: electron-builder's
+# `depends` REPLACES its default dependency list rather than extending it, so
+# naming a subset would silently drop the rest. The deb defaults it applies
+# (app-builder-lib FpmTarget.getDefaultDepends) are libgtk-3-0, libnotify4,
+# libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1 and
+# libsecret-1-0, which already cover everything Electron needs here.

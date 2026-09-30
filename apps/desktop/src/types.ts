@@ -1,54 +1,26 @@
-export type AgentId = "claude" | "codex";
+/**
+ * Renderer-only types. Everything shared with the main process now lives in
+ * `electron/shared/types.ts`; it is re-exported here so existing
+ * `from "../types"` imports keep working.
+ */
+export type {
+  AgentCommandCheck,
+  AgentId,
+  AppConfig,
+  AppSettings,
+  EnvVar,
+  GitBranchInfo,
+  PreviousSessionEntry,
+  PreviousSessionsPayload,
+  RepoConfig,
+  RepoSessionDefaults,
+  WorktreeConfig,
+} from "../electron/shared/types";
+
+import type { AgentId, RepoConfig } from "../electron/shared/types";
+
 export type AgentAvailability = Partial<Record<AgentId, boolean>>;
 export type PaneKind = "agent" | "git" | "terminal";
-
-export interface EnvVar {
-  key: string;
-  value: string;
-}
-
-export interface RepoSessionDefaults {
-  env: EnvVar[];
-  preCommands: string;
-}
-
-export interface WorktreeConfig {
-  enabled: boolean;
-  /** Existing local branch checked out directly in the worktree. Absent means git auto-creates a branch. */
-  branch?: string;
-}
-
-export interface GitBranchInfo {
-  name: string;
-  /** Set when the branch is checked out in a worktree (including the primary checkout). */
-  worktreePath?: string | null;
-}
-
-export interface RepoConfig {
-  repoPath: string;
-  agent: AgentId;
-  env: EnvVar[];
-  preCommands: string;
-  worktree?: WorktreeConfig;
-}
-
-export interface AppSettings {
-  /** Kept only for config-file shape compatibility with the Rust backend; no frontend consumer. */
-  theme: "dark" | "light";
-  recentDirs: string[];
-  terminalFontFamily: string;
-  terminalFontSize: number;
-  shortcutModifier: string;
-  repoDefaults?: Record<string, RepoSessionDefaults>;
-  agentArgs?: Record<string, string>;
-  agentCommands?: Record<string, string>;
-  sidebarCollapsed?: boolean;
-}
-
-export interface AppConfig {
-  version: number;
-  settings: AppSettings;
-}
 
 export type SessionStatus = "running" | "stopped" | "error";
 
@@ -73,16 +45,6 @@ export interface Session {
   isTabClosed?: boolean;
 }
 
-export interface PreviousSessionEntry {
-  repo: RepoConfig;
-  cwd?: string;
-}
-
-export interface PreviousSessionsPayload {
-  sessions: PreviousSessionEntry[];
-  activeIndex: number;
-}
-
 export interface CloseConfirmPayload {
   hasRunning: boolean;
   sessionCount: number;
@@ -91,16 +53,6 @@ export interface CloseConfirmPayload {
 export interface CloseConfirmResult {
   confirmed: boolean;
   remember: boolean;
-}
-
-export interface PtyOutput {
-  session_id: number;
-  data_base64: string;
-  end_offset: number;
-}
-
-export interface PtyExit {
-  session_id: number;
 }
 
 export interface ToastMessage {

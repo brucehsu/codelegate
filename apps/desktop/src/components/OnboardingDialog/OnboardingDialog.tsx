@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import appLogo from "../../assets/logo.png";
+import { isMac } from "../../platform";
 import type { AgentId, PaneKind, Session } from "../../types";
 import type { SessionGroup } from "../../utils/session";
 import Button from "../ui/Button/Button";
@@ -77,7 +78,6 @@ export default function OnboardingDialog({ shortcutModifier, onFinish }: Onboard
   const [collapsedRepoGroups, setCollapsedRepoGroups] = useState<Record<string, boolean>>({});
   const [sessionHotkeyPage, setSessionHotkeyPage] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState(onboardingSessionGroups[0]?.sessions[0]?.id ?? null);
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
   const modifierTokens = useMemo(() => getShortcutModifierTokens(shortcutModifier), [shortcutModifier]);
   const submitKeyLabel = isMac ? "Cmd+Enter" : "Ctrl+Enter";
   const modifierLabel = modifierTokens.length > 0 ? modifierTokens.join(" + ") : "Alt";
@@ -198,7 +198,7 @@ export default function OnboardingDialog({ shortcutModifier, onFinish }: Onboard
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [hotkeyPageCount, isMac, moveToNextStep, sessionHotkeyPage, shortcutModifier, step, visualSessions]);
+  }, [hotkeyPageCount, moveToNextStep, sessionHotkeyPage, shortcutModifier, step, visualSessions]);
 
   useEffect(() => {
     if (sessionHotkeyPage >= hotkeyPageCount) {

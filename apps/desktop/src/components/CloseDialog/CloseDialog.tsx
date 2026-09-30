@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { isMac } from "../../platform";
 import Button from "../ui/Button/Button";
 import IconButton from "../ui/IconButton/IconButton";
 import styles from "./CloseDialog.module.css";
@@ -24,7 +25,6 @@ export default function CloseDialog({
   onConfirm,
 }: CloseDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   const handleSubmitShortcut = (event: React.KeyboardEvent) => {
     if (event.defaultPrevented) {

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { api, isMac } from "../../platform";
 import type { AgentAvailability, AgentId, EnvVar, GitBranchInfo } from "../../types";
 import AgentPicker from "../AgentPicker/AgentPicker";
 import RepoPicker from "../RepoPicker/RepoPicker";
@@ -60,7 +60,6 @@ export default function NewSessionDialog({
   onSubmit,
 }: NewSessionDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
   const [branchList, setBranchList] = useState<GitBranchInfo[]>(EMPTY_BRANCHES);
   const [branchListLoading, setBranchListLoading] = useState(false);
   const [branchListError, setBranchListError] = useState<string | null>(null);
@@ -77,7 +76,7 @@ export default function NewSessionDialog({
     let cancelled = false;
     setBranchListLoading(true);
     setBranchListError(null);
-    invoke<GitBranchInfo[]>("list_git_branches", { path: trimmedRepoPath })
+    api.listGitBranches(trimmedRepoPath)
       .then((branches) => {
         if (!cancelled) {
           setBranchList(branches);

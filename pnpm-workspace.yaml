@@ -3,3 +3,8 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: true
+  electron: true
+  # Windows installer builder pulled in by electron-builder; we do not ship Windows.
+  electron-winstaller: false
+minimumReleaseAgeExclude:
+  - '@napi-rs/cli@3.9.0'

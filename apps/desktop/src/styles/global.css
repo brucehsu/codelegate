@@ -51,6 +51,14 @@ dialog::backdrop {
   overscroll-behavior: none;
 }
 
+/* The div xterm is mounted into. Containment keeps terminal reflow and repaint
+   off the rest of the layout, which matters once the WebGL renderer is live.
+   Selected via :has() so the CSS module that owns the element stays untouched. */
+div:has(> .xterm) {
+  contain: layout paint;
+  overflow: hidden;
+}
+
 .hidden {
   display: none;
 }

@@ -7,5 +7,5 @@ import type { AgentId } from "../../../types";
 // call site tint it via a CSS class.
 export const agentIconById: Record<AgentId, JSX.Element> = {
   claude: <ClaudeIconIcon color="currentColor" strokeWidth={0} />,
-  codex: <OpenaiIconIcon color="currentColor" strokeWidth={3.5} />,
+  codex: <OpenaiIconIcon color="currentColor" strokeWidth={0} />,
 };

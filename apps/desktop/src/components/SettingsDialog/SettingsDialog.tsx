@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { isMac } from "../../platform";
 import type { AgentAvailability } from "../../types";
 import IconButton from "../ui/IconButton/IconButton";
 import Button from "../ui/Button/Button";
@@ -50,7 +51,6 @@ export default function SettingsDialog({
   const shortcutModifierInputRef = useRef<HTMLInputElement>(null);
   const shortcutModifierRef = useRef(normalizeShortcutModifier(shortcutModifier));
   const shortcutModifierDraftRef = useRef(normalizeShortcutModifier(shortcutModifier));
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   const iconClassById: Record<string, string> = {
     claude: styles.agentIconClaude,

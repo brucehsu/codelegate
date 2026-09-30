@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { confirm } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { WebglAddon } from "@xterm/addon-webgl";
+import { api, isMac } from "../platform";
 import { agentCatalog, agentCommandById, isSupportedAgentId, normalizeAgentId } from "../constants";
 import { DEFAULT_TERMINAL_LINE_HEIGHT, useTerminalRenderer } from "./useTerminalRenderer";
 import type { TerminalAppearance, TerminalRendererRuntime } from "./useTerminalRenderer";
@@ -21,8 +18,6 @@ import type {
   CloseConfirmPayload,
   CloseConfirmResult,
   EnvVar,
-  PtyExit,
-  PtyOutput,
   PreviousSessionsPayload,
   RepoConfig,
   Session,
@@ -40,14 +35,26 @@ import {
   snapshotTerminalViewport,
   type TerminalRetentionIdentity,
 } from "../utils/terminalRetention";
+import {
+  PtyEventBuffer,
+  type PendingPtyChunk,
+  type PtyMapping,
+} from "../utils/ptyEventBuffer";
 
 interface TerminalRuntime extends TerminalRendererRuntime {
   agentId?: AgentId;
   container?: HTMLDivElement | null;
   term?: Terminal;
   fit?: FitAddon;
+  webgl?: WebglAddon;
   ptyId?: number;
   starting?: boolean;
+  /**
+   * When the spawn for this runtime was issued. Session state lags one render
+   * behind the refs, so this is what lets an instant death still be reported as
+   * an error rather than a clean stop.
+   */
+  spawnStartedAt?: number;
   resizeObserver?: ResizeObserver;
   resizeRaf?: number;
   lastFit?: {
@@ -137,6 +144,18 @@ function isTextInputElement(element: Element | null) {
   return role === "textbox" || role === "searchbox";
 }
 
+function isSameTerminalIdentity(
+  identity: TerminalRetentionIdentity,
+  visibleIdentity: TerminalRetentionIdentity | null
+) {
+  return (
+    visibleIdentity !== null &&
+    identity.sessionId === visibleIdentity.sessionId &&
+    identity.kind === visibleIdentity.kind &&
+    identity.agentId === visibleIdentity.agentId
+  );
+}
+
 function isRuntimeVisible(runtime?: TerminalRuntime) {
   const container = runtime?.container;
   if (!container || !container.isConnected) {
@@ -144,15 +163,6 @@ function isRuntimeVisible(runtime?: TerminalRuntime) {
   }
   const rect = container.getBoundingClientRect();
   return rect.width >= 8 && rect.height >= 8;
-}
-
-function decodeBase64ToUint8(data: string) {
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }
 
 function parseOsc777Notification(data: string) {
@@ -407,8 +417,33 @@ export function useAppState(
   }, [config]);
 
   const runtimeRef = useRef(new Map<string, SessionRuntime>());
-  const ptyToSessionRef = useRef(
-    new Map<number, { sessionId: string; kind: PaneKind; agentId?: AgentId }>()
+  // Live handlers for mapped PTY events, set by the PTY subscription effect so
+  // the buffer below can stay a plain object with a stable identity.
+  const ptyChunkWriterRef = useRef<
+    ((ptyId: number, info: PtyMapping, chunk: PendingPtyChunk) => void) | null
+  >(null);
+  const ptyExitHandlerRef = useRef<((ptyId: number, info: PtyMapping) => void) | null>(null);
+  // Owns the ptyId to session mapping plus the park/replay bookkeeping for
+  // events that arrive before the `spawnPty` reply creates that mapping.
+  const ptyEventBufferRef = useRef(
+    new PtyEventBuffer({
+      write: (ptyId, info, chunk) => {
+        const writer = ptyChunkWriterRef.current;
+        if (!writer) {
+          // No subscription is live, so nothing can display this chunk; ack it
+          // rather than stalling the addon's credit window.
+          api.ackPtyOutput(ptyId, chunk.endOffset);
+          return;
+        }
+        writer(ptyId, info, chunk);
+      },
+      exit: (ptyId, info) => {
+        ptyExitHandlerRef.current?.(ptyId, info);
+      },
+      ack: (ptyId, throughOffset) => {
+        api.ackPtyOutput(ptyId, throughOffset);
+      },
+    })
   );
   const sessionsRef = useRef<Session[]>([]);
   const activeSessionRef = useRef<string | null>(null);
@@ -421,7 +456,6 @@ export function useAppState(
   const branchMonitorInFlightRef = useRef(false);
   const pendingFocusRef = useRef<{ sessionId: string; kind: PaneKind } | null>(null);
   const agentSwitchHotkeysRef = useRef<HotkeyBinding[]>([]);
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   const getActiveAgentId = useCallback((sessionId: string): AgentId => {
     const session = sessionsRef.current.find((item) => item.id === sessionId);
@@ -442,49 +476,10 @@ export function useAppState(
     [getActiveAgentId]
   );
 
-  const applyTerminalRetention = useCallback((visibleIdentity: TerminalRetentionIdentity | null) => {
-    runtimeRef.current.forEach((sessionRuntime, sessionId) => {
-      const applyToRuntime = (runtime: TerminalRuntime, identity: TerminalRetentionIdentity) => {
-        const term = runtime.term;
-        if (!term) {
-          return;
-        }
-        const targetScrollback = getTerminalScrollbackLines(identity, visibleIdentity);
-        applyTerminalScrollbackLimit(term, runtime, targetScrollback);
-      };
-
-      sessionRuntime.agents.forEach((runtime, agentId) => {
-        applyToRuntime(runtime, { sessionId, kind: "agent", agentId });
-      });
-      applyToRuntime(sessionRuntime.terminal, { sessionId, kind: "terminal" });
-    });
-  }, []);
-
-  const getVisibleTerminalIdentity = useCallback(
-    (
-      sessionId = activeSessionRef.current,
-      kind = activePaneKindRef.current,
-      agentId?: AgentId
-    ): TerminalRetentionIdentity | null => {
-      if (!sessionId) {
-        return null;
-      }
-      return getTerminalRetentionIdentity(
-        sessionId,
-        kind,
-        kind === "agent" ? (agentId ?? getActiveAgentId(sessionId)) : undefined
-      );
-    },
-    [getActiveAgentId]
-  );
-
-  const setVisibleTerminalIdentity = useCallback(
-    (visibleIdentity: TerminalRetentionIdentity | null) => {
-      visibleTerminalIdentityRef.current = visibleIdentity;
-      applyTerminalRetention(visibleIdentity);
-    },
-    [applyTerminalRetention]
-  );
+  const {
+    applyTerminalAppearance,
+    refreshTerminalRows,
+  } = useTerminalRenderer();
 
   const scheduleTerminalFit = useCallback((runtime: TerminalRuntime, force = false) => {
     if (!runtime.term || !runtime.fit || !runtime.container) {
@@ -528,32 +523,144 @@ export function useAppState(
         const rows = runtime.term?.rows ?? term.rows ?? 0;
         runtime.lastFit = { width, height, cols, rows };
         if (runtime.ptyId && runtime.term && (!previous || cols !== previous.cols || rows !== previous.rows)) {
-          invoke("resize_pty", {
-            sessionId: runtime.ptyId,
-            cols,
-            rows,
+          void api.resizePty(runtime.ptyId, cols, rows).catch(() => {
+            // A dropped resize only leaves the PTY on its previous geometry.
           });
         }
       });
     });
   }, [notify, onConfirmClose]);
 
+  // WebGL renders only the terminal the user is looking at. Keeping one GPU
+  // context alive per visible terminal (instead of per session) bounds VRAM and
+  // matches the scrollback retention policy below.
+  const disableWebgl = useCallback((runtime: TerminalRuntime) => {
+    const addon = runtime.webgl;
+    if (!addon) {
+      return;
+    }
+    runtime.webgl = undefined;
+    try {
+      addon.dispose();
+    } catch {
+      // A context already torn down by the driver disposes with a throw.
+    }
+    refreshTerminalRows(runtime.term);
+  }, [refreshTerminalRows]);
+
+  const enableWebgl = useCallback((runtime: TerminalRuntime) => {
+    const term = runtime.term;
+    if (!term || runtime.webgl) {
+      return;
+    }
+    let addon: WebglAddon;
+    try {
+      addon = new WebglAddon();
+    } catch {
+      return;
+    }
+    try {
+      // Driver or GPU-process loss falls the terminal back to the DOM renderer.
+      addon.onContextLoss(() => {
+        disableWebgl(runtime);
+      });
+      term.loadAddon(addon);
+      runtime.webgl = addon;
+    } catch {
+      runtime.webgl = undefined;
+      try {
+        addon.dispose();
+      } catch {
+        // Nothing to clean up when activation never completed.
+      }
+      return;
+    }
+    refreshTerminalRows(term);
+    scheduleTerminalFit(runtime, true);
+  }, [disableWebgl, refreshTerminalRows, scheduleTerminalFit]);
+
+  const applyTerminalRetention = useCallback((visibleIdentity: TerminalRetentionIdentity | null) => {
+    runtimeRef.current.forEach((sessionRuntime, sessionId) => {
+      const applyToRuntime = (runtime: TerminalRuntime, identity: TerminalRetentionIdentity) => {
+        const term = runtime.term;
+        if (!term) {
+          return;
+        }
+        const targetScrollback = getTerminalScrollbackLines(identity, visibleIdentity);
+        applyTerminalScrollbackLimit(term, runtime, targetScrollback);
+        if (isSameTerminalIdentity(identity, visibleIdentity)) {
+          enableWebgl(runtime);
+        } else {
+          disableWebgl(runtime);
+        }
+      };
+
+      sessionRuntime.agents.forEach((runtime, agentId) => {
+        applyToRuntime(runtime, { sessionId, kind: "agent", agentId });
+      });
+      applyToRuntime(sessionRuntime.terminal, { sessionId, kind: "terminal" });
+    });
+  }, [disableWebgl, enableWebgl]);
+
+  const getVisibleTerminalIdentity = useCallback(
+    (
+      sessionId = activeSessionRef.current,
+      kind = activePaneKindRef.current,
+      agentId?: AgentId
+    ): TerminalRetentionIdentity | null => {
+      if (!sessionId) {
+        return null;
+      }
+      return getTerminalRetentionIdentity(
+        sessionId,
+        kind,
+        kind === "agent" ? (agentId ?? getActiveAgentId(sessionId)) : undefined
+      );
+    },
+    [getActiveAgentId]
+  );
+
+  const setVisibleTerminalIdentity = useCallback(
+    (visibleIdentity: TerminalRetentionIdentity | null) => {
+      visibleTerminalIdentityRef.current = visibleIdentity;
+      applyTerminalRetention(visibleIdentity);
+    },
+    [applyTerminalRetention]
+  );
+
   const registerPty = useCallback(
     (runtime: TerminalRuntime, sessionId: string, kind: PaneKind, ptyId: number, agentId?: AgentId) => {
       runtime.ptyId = ptyId;
-      ptyToSessionRef.current.set(ptyId, { sessionId, kind, agentId });
+      // Output that beat the spawn reply here is replayed before anything else
+      // reaches the terminal, so the session starts at byte zero.
+      ptyEventBufferRef.current.register(ptyId, { sessionId, kind, agentId });
       scheduleTerminalFit(runtime);
     },
     [scheduleTerminalFit]
   );
 
+  // A spawn is only still wanted while the runtime object it was issued for is
+  // the one `runtimeRef` holds. `terminateSession` drops the session's runtime
+  // entry, so a spawn reply that lands afterwards fails this check.
+  const isCurrentRuntime = useCallback(
+    (sessionId: string, kind: PaneKind, runtime: TerminalRuntime, agentId?: AgentId) =>
+      getTerminalRuntime(sessionId, kind, agentId) === runtime,
+    [getTerminalRuntime]
+  );
+
   const acknowledgePtyOutput = useCallback((ptyId: number, throughOffset: number) => {
-    void invoke("ack_pty_output", {
-      sessionId: ptyId,
-      throughOffset,
-    }).catch(() => {
-      // A failed acknowledgement safely stalls the bounded PTY window instead of
-      // allowing output to accumulate without limit.
+    // Fire and forget over the PTY port. Offsets are cumulative, so a lost ack
+    // only stalls the bounded window; it never drops output.
+    api.ackPtyOutput(ptyId, throughOffset);
+  }, []);
+
+  // A PTY whose session went away while its spawn was in flight has no terminal
+  // to write to and nothing that would ever kill it, so retire its id (dropping
+  // and acking whatever was parked) and kill the process.
+  const abandonSpawnedPty = useCallback((ptyId: number) => {
+    ptyEventBufferRef.current.retire(ptyId);
+    api.killPty(ptyId).catch(() => {
+      // The pty may have already exited on its own; nothing left to clean up.
     });
   }, []);
 
@@ -844,7 +951,8 @@ export function useAppState(
   const saveConfig = useCallback((updater: (prev: AppConfig) => AppConfig) => {
     setConfig((prev) => {
       const next = updater(prev);
-      invoke("save_config", { config: next })
+      api
+        .saveConfig(next)
         .then(() => {
           setHasSavedConfig(true);
         })
@@ -868,8 +976,8 @@ export function useAppState(
   useEffect(() => {
     let mounted = true;
     Promise.all([
-      invoke<AppConfig>("load_config"),
-      invoke<boolean>("has_saved_config").catch(() => false),
+      api.loadConfig(),
+      api.hasSavedConfig().catch(() => false),
     ])
       .then(([loaded, hasSaved]) => {
         if (!mounted) {
@@ -913,7 +1021,7 @@ export function useAppState(
 
   const persistConfig = useCallback(async () => {
     try {
-      await invoke("save_config", { config: configRef.current });
+      await api.saveConfig(configRef.current);
       setHasSavedConfig(true);
       return true;
     } catch (error) {
@@ -941,11 +1049,6 @@ export function useAppState(
     }),
     []
   );
-
-  const {
-    applyTerminalAppearance,
-    refreshTerminalRows,
-  } = useTerminalRenderer();
 
   const applyTerminalAppearanceToRuntime = useCallback(
     (runtime: TerminalRuntime, appearance: TerminalAppearance) => {
@@ -1207,7 +1310,7 @@ export function useAppState(
 
     let granted: boolean | null = null;
     try {
-      granted = await invoke<boolean | null>("plugin:notification|is_permission_granted");
+      granted = await api.isNotificationPermissionGranted();
     } catch {
       notificationPluginUnavailableRef.current = true;
       return "denied";
@@ -1221,8 +1324,9 @@ export function useAppState(
     }
 
     if (!notificationPermissionRequestRef.current) {
-      notificationPermissionRequestRef.current = invoke<string>("plugin:notification|request_permission")
-        .catch(() => "denied")
+      notificationPermissionRequestRef.current = api
+        .requestNotificationPermission()
+        .catch(() => "denied" as const)
         .finally(() => {
           notificationPermissionRequestRef.current = null;
         });
@@ -1248,11 +1352,9 @@ export function useAppState(
       const prefixedMessage = `[${repo} - ${branch}] ${trimmedMessage}`;
 
       try {
-        await invoke("plugin:notification|notify", {
-          options: {
-            title: title || "Codelegate",
-            body: prefixedMessage,
-          },
+        await api.showNotification({
+          title: title || "Codelegate",
+          body: prefixedMessage,
         });
       } catch {
         // Ignore notification publish failures to keep terminal output flow stable.
@@ -1344,7 +1446,7 @@ export function useAppState(
           suppressAgentOutputting(sessionId, 180);
         }
         if (runtime.ptyId) {
-          invoke("write_pty", { sessionId: runtime.ptyId, data });
+          api.writePty(runtime.ptyId, data);
         }
       });
 
@@ -1372,7 +1474,7 @@ export function useAppState(
           event.stopPropagation();
           const sequence = "\x1b[13;2u";
           if (runtime.ptyId) {
-            invoke("write_pty", { sessionId: runtime.ptyId, data: sequence });
+            api.writePty(runtime.ptyId, sequence);
           } else {
             term.write(sequence);
           }
@@ -1400,7 +1502,7 @@ export function useAppState(
           const sequence = sequenceMap[event.key];
           if (sequence) {
             if (runtime.ptyId) {
-              invoke("write_pty", { sessionId: runtime.ptyId, data: sequence });
+              api.writePty(runtime.ptyId, sequence);
             } else {
               term.write(sequence);
             }
@@ -1422,7 +1524,6 @@ export function useAppState(
       globalHotkeys,
       handleTerminalOscClipboard,
       handleTerminalOscNotification,
-      isMac,
       setFollowingState,
       suppressAgentOutputting,
     ]
@@ -1434,6 +1535,7 @@ export function useAppState(
       const term = new Terminal({
         allowProposedApi: true,
         cursorBlink: true,
+        rescaleOverlappingGlyphs: true,
         fontFamily: terminalAppearance.fontFamily,
         fontSize: terminalAppearance.fontSize,
         lineHeight: terminalAppearance.lineHeight,
@@ -1451,7 +1553,9 @@ export function useAppState(
       term.loadAddon(
         new WebLinksAddon((event, uri) => {
           if (isMac ? event.metaKey : event.ctrlKey) {
-            void openUrl(uri);
+            void api.openExternal(uri).catch(() => {
+              // Ignore failures for links the main process refuses to open.
+            });
           }
         })
       );
@@ -1465,13 +1569,16 @@ export function useAppState(
       runtime.fit = fit;
       applyTerminalAppearance(runtime, terminalAppearance);
       refreshTerminalRows(term);
+      if (terminalIdentity && isSameTerminalIdentity(terminalIdentity, visibleTerminalIdentityRef.current)) {
+        enableWebgl(runtime);
+      }
     },
     [
       applyTerminalAppearance,
       attachTerminalHandlers,
       configureTerminalOptions,
+      enableWebgl,
       flushPtyOutputAcks,
-      isMac,
       refreshTerminalRows,
       terminalAppearance,
     ]
@@ -1553,18 +1660,20 @@ export function useAppState(
       runtime.notificationDisposables = undefined;
       runtime.writeParsedDisposable?.dispose();
       runtime.writeParsedDisposable = undefined;
+      disableWebgl(runtime);
       runtime.term?.dispose();
       runtime.term = undefined;
       runtime.fit = undefined;
       runtime.ptyId = undefined;
       runtime.pendingPtyAcks = undefined;
       runtime.starting = false;
+      runtime.spawnStartedAt = undefined;
       runtime.isFollowing = undefined;
       runtime.savedViewportY = undefined;
       runtime.viewportRestoreRaf = undefined;
       runtime.activationRaf = undefined;
     },
-    [detachTerminalRuntime, flushPtyOutputAcks]
+    [detachTerminalRuntime, disableWebgl, flushPtyOutputAcks]
   );
 
   const disposeSessionRuntime = useCallback(
@@ -1708,10 +1817,11 @@ export function useAppState(
           runtime.starting = false;
           return;
         }
-        invoke<string>("get_default_shell")
+        api
+          .getDefaultShell()
           .then((shell) => {
             const envMap = ensureTermEnv(envListToMap(session.repo.env));
-            return invoke<number>("spawn_pty", {
+            return api.spawnPty({
               shell,
               args: shellArgs(shell),
               cwd: sessionCwd,
@@ -1721,6 +1831,11 @@ export function useAppState(
             });
           })
           .then((ptyId) => {
+            if (!isCurrentRuntime(sessionId, "terminal", runtime)) {
+              // The session was terminated while the spawn was in flight.
+              abandonSpawnedPty(ptyId);
+              return;
+            }
             registerPty(runtime, sessionId, "terminal", ptyId);
           })
           .catch((error) => {
@@ -1732,12 +1847,14 @@ export function useAppState(
       }
     },
     [
+      abandonSpawnedPty,
       createTerminal,
       detachTerminalRuntime,
       ensureTerminalRuntime,
       focusSession,
       getActiveAgentId,
       getTerminalRuntime,
+      isCurrentRuntime,
       registerPty,
       scheduleTerminalFit,
       snapshotRuntimeViewport,
@@ -1813,7 +1930,7 @@ export function useAppState(
         return false;
       }
       try {
-        const branch = await invoke<string>("rename_git_branch", { path: cwd, name: trimmed });
+        const branch = await api.renameGitBranch(cwd, trimmed);
         updateSessionBranchForPath(cwd, branch.trim() || trimmed);
         return true;
       } catch (error) {
@@ -1832,7 +1949,7 @@ export function useAppState(
         return;
       }
       try {
-        const branch = await invoke<string>("get_git_branch", { path: cwd });
+        const branch = await api.getGitBranch(cwd);
         updateSessionBranchForPath(cwd, branch);
       } catch {
         // Ignore refresh failures to avoid noisy toasts during manual refresh.
@@ -1862,7 +1979,7 @@ export function useAppState(
       await Promise.all(
         paths.map(async (path) => {
           try {
-            const branch = await invoke<string>("get_git_branch", { path });
+            const branch = await api.getGitBranch(path);
             updateSessionBranchForPath(path, branch);
           } catch {
             // Ignore monitor failures; missing paths and non-git dirs should stay silent.
@@ -1916,13 +2033,14 @@ export function useAppState(
       const nextActiveId = closingActive ? getNextVisibleSessionId(sessionsRef.current, sessionId) : null;
 
       const killTasks = Array.from(ptyIds).map((ptyId) =>
-        invoke("kill_pty", { sessionId: ptyId }).catch((error) => {
+        api.killPty(ptyId).catch((error) => {
           notify({ message: `Failed to terminate session: ${String(error)}`, tone: "error" });
         })
       );
 
       ptyIds.forEach((ptyId) => {
-        ptyToSessionRef.current.delete(ptyId);
+        ptyEventBufferRef.current.unmap(ptyId);
+        ptyEventBufferRef.current.retire(ptyId);
       });
 
       agentOutputtingSuppressUntilRef.current.delete(sessionId);
@@ -1952,7 +2070,7 @@ export function useAppState(
             await Promise.allSettled(killTasks);
           }
           try {
-            await invoke("remove_session_worktree", {
+            await api.removeSessionWorktree({
               repoPath,
               worktreePath,
               branch: keepBranch ? undefined : branch?.trim() || undefined,
@@ -1969,7 +2087,13 @@ export function useAppState(
         void Promise.allSettled(killTasks);
       }
     },
-    [clearAgentOutputting, disposeSessionRuntime, notify, setActiveSessionId, setAgentUnreadFor]
+    [
+      clearAgentOutputting,
+      disposeSessionRuntime,
+      notify,
+      setActiveSessionId,
+      setAgentUnreadFor,
+    ]
   );
 
   const spawnAgentForSession = useCallback(
@@ -1992,10 +2116,22 @@ export function useAppState(
       skipPreCommands?: boolean;
       failureMessage: string;
     }) => {
+      // Capture the runtime identity before the first await. `terminateSession`
+      // drops the session's runtime entry, so taking it later would let
+      // `ensureTerminalRuntime` re-create the entry it just deleted and the
+      // post-spawn `isCurrentRuntime` check would then pass for a dead session.
+      const runtime = ensureTerminalRuntime(sessionId, "agent", agentId);
+      if (runtime.starting) {
+        return false;
+      }
+      runtime.starting = true;
+      runtime.spawnStartedAt = Date.now();
+
       let shell = "";
       try {
-        shell = await invoke<string>("get_default_shell");
+        shell = await api.getDefaultShell();
       } catch (error) {
+        runtime.starting = false;
         updateSessionAgentState(sessionId, agentId, { status: "error", lastError: String(error) });
         notify({ message: String(error), tone: "error" });
         return false;
@@ -2023,15 +2159,9 @@ export function useAppState(
         initCommands.push(applyAgentArgs(agentCommandById[agentId], agentArgs));
       }
 
-      const runtime = ensureTerminalRuntime(sessionId, "agent", agentId);
-      if (runtime.starting) {
-        return false;
-      }
-
-      runtime.starting = true;
       let ptyId: number;
       try {
-        ptyId = await invoke<number>("spawn_pty", {
+        ptyId = await api.spawnPty({
           shell,
           args: shellArgs(shell, initCommands.join(" && ")),
           cwd: repoRoot,
@@ -2047,17 +2177,37 @@ export function useAppState(
         runtime.starting = false;
       }
 
+      if (!isCurrentRuntime(sessionId, "agent", runtime, agentId)) {
+        // The session was terminated (or the agent restarted) while the spawn
+        // was in flight, so nothing owns this pty any more.
+        abandonSpawnedPty(ptyId);
+        return false;
+      }
+
       registerPty(runtime, sessionId, "agent", ptyId, agentId);
       updateSession(sessionId, { cwd: sessionCwd });
-      updateSessionAgentState(sessionId, agentId, {
-        status: "running",
-        lastError: undefined,
-        startedAt: Date.now(),
-        ptyId,
-      });
+      const mapping = ptyEventBufferRef.current.mappingFor(ptyId);
+      if (runtime.ptyId === ptyId && mapping?.sessionId === sessionId && mapping.agentId === agentId) {
+        updateSessionAgentState(sessionId, agentId, {
+          status: "running",
+          lastError: undefined,
+          startedAt: Date.now(),
+          ptyId,
+        });
+      }
+      // Still a successful start: an exit replayed by `registerPty` has already
+      // written the terminal state (error plus Restart), and the session stays.
       return true;
     },
-    [ensureTerminalRuntime, notify, registerPty, updateSession, updateSessionAgentState]
+    [
+      abandonSpawnedPty,
+      ensureTerminalRuntime,
+      isCurrentRuntime,
+      notify,
+      registerPty,
+      updateSession,
+      updateSessionAgentState,
+    ]
   );
 
   const restartAgentSession = useCallback(
@@ -2080,11 +2230,19 @@ export function useAppState(
       const currentPtyId = runtime.ptyId;
       if (currentPtyId) {
         runtime.ptyId = undefined;
-        ptyToSessionRef.current.delete(currentPtyId);
+        ptyEventBufferRef.current.unmap(currentPtyId);
+        ptyEventBufferRef.current.retire(currentPtyId);
         try {
-          await invoke("kill_pty", { sessionId: currentPtyId });
+          await api.killPty(currentPtyId);
         } catch (error) {
           notify({ message: `Failed to terminate previous agent process: ${String(error)}`, tone: "error" });
+        }
+        if (
+          !isCurrentRuntime(sessionId, "agent", runtime, agentId) ||
+          !sessionsRef.current.some((item) => item.id === sessionId)
+        ) {
+          // The session was terminated while the old pty was being killed.
+          return false;
         }
       }
 
@@ -2101,7 +2259,14 @@ export function useAppState(
         failureMessage: "Failed to restart agent",
       });
     },
-    [clearAgentOutputting, ensureTerminalRuntime, notify, spawnAgentForSession, updateSessionAgentState]
+    [
+      clearAgentOutputting,
+      ensureTerminalRuntime,
+      isCurrentRuntime,
+      notify,
+      spawnAgentForSession,
+      updateSessionAgentState,
+    ]
   );
 
   const switchAgent = useCallback(
@@ -2234,7 +2399,7 @@ export function useAppState(
       if (normalizedRepo.worktree?.enabled) {
         let homeDir = "";
         try {
-          homeDir = await invoke<string>("get_home_dir");
+          homeDir = await api.getHomeDir();
         } catch (error) {
           updateSessionAgentState(sessionId, normalizedRepo.agent, {
             status: "error",
@@ -2250,7 +2415,7 @@ export function useAppState(
         const trimmed = options.cwd?.trim() ?? "";
         if (trimmed.length > 0 && trimmed.startsWith(worktreeRootWithSlash)) {
           try {
-            const exists = await invoke<boolean>("path_exists", { path: trimmed });
+            const exists = await api.pathExists(trimmed);
             if (exists) {
               sessionCwd = trimmed;
             }
@@ -2287,7 +2452,7 @@ export function useAppState(
 
       const resolveBranch = async (attempts: number) => {
         try {
-          const branch = await invoke<string>("get_git_branch", { path: sessionCwd });
+          const branch = await api.getGitBranch(sessionCwd);
           if (branch && branch.trim().length > 0) {
             updateSession(sessionId, { branch: branch.trim() });
             return;
@@ -2334,7 +2499,7 @@ export function useAppState(
       }
       let payload: PreviousSessionsPayload | null = null;
       try {
-        payload = await invoke<PreviousSessionsPayload | null>("load_previous_sessions");
+        payload = await api.loadPreviousSessions();
       } catch (error) {
         notify({ message: `Failed to load previous sessions: ${String(error)}`, tone: "error" });
         return;
@@ -2382,7 +2547,7 @@ export function useAppState(
     const timeoutId = window.setTimeout(() => {
       const visibleSessions = sessionsRef.current.filter((session) => !session.isTabClosed);
       const payload = buildPreviousSessionsPayload(visibleSessions, activeSessionRef.current);
-      invoke("save_previous_sessions_snapshot", { payload }).catch((error) => {
+      api.savePreviousSessionsSnapshot(payload).catch((error) => {
         console.error("Failed to save session snapshot:", error);
       });
     }, SESSION_SNAPSHOT_DEBOUNCE_MS);
@@ -2415,18 +2580,9 @@ export function useAppState(
   }, [pollSessionBranches]);
 
   useEffect(() => {
-    let unlistenOutput: (() => void) | undefined;
-    let unlistenExit: (() => void) | undefined;
-    let disposed = false;
+    const buffer = ptyEventBufferRef.current;
 
-    listen<PtyOutput>("pty-output", (event) => {
-      const ptyId = event.payload.session_id;
-      const endOffset = event.payload.end_offset;
-      const info = ptyToSessionRef.current.get(ptyId);
-      if (!info) {
-        acknowledgePtyOutput(ptyId, endOffset);
-        return;
-      }
+    const writePtyChunk = (ptyId: number, info: PtyMapping, data: Uint8Array, endOffset: number) => {
       const runtime = getTerminalRuntime(info.sessionId, info.kind, info.agentId);
       if (!runtime?.term) {
         acknowledgePtyOutput(ptyId, endOffset);
@@ -2443,7 +2599,6 @@ export function useAppState(
       }
       const shouldFollow = runtime.isFollowing !== false;
       setFollowingState(runtime, info.sessionId, info.kind, shouldFollow);
-      const data = decodeBase64ToUint8(event.payload.data_base64);
       try {
         runtime.term.write(data, () => {
           queuePtyOutputAck(runtime, ptyId, endOffset);
@@ -2454,26 +2609,17 @@ export function useAppState(
       } catch {
         acknowledgePtyOutput(ptyId, endOffset);
       }
-    })
-      .then((unlisten) => {
-        if (disposed) {
-          unlisten();
-          return;
-        }
-        unlistenOutput = unlisten;
-      })
-      .catch(() => {});
+    };
 
-    listen<PtyExit>("pty-exit", (event) => {
-      const info = ptyToSessionRef.current.get(event.payload.session_id);
-      if (!info) {
-        return;
-      }
+    const handlePtyExit = (ptyId: number, info: PtyMapping) => {
       const runtime = getTerminalRuntime(info.sessionId, info.kind, info.agentId);
+      // Read before clearing: the runtime knows when the spawn was issued even
+      // for a process that died before the "running" state was committed.
+      const runtimeStartedAt = runtime?.spawnStartedAt;
       if (runtime) {
         runtime.ptyId = undefined;
+        runtime.spawnStartedAt = undefined;
       }
-      ptyToSessionRef.current.delete(event.payload.session_id);
 
       if (info.kind !== "agent") {
         return;
@@ -2489,7 +2635,7 @@ export function useAppState(
         clearAgentOutputting(info.sessionId);
       }
 
-      const startedAt = session?.agentStates[agentId]?.startedAt;
+      const startedAt = runtimeStartedAt ?? session?.agentStates[agentId]?.startedAt;
       const elapsed = startedAt ? Date.now() - startedAt : null;
       if (elapsed !== null && elapsed < 2000) {
         if (isActiveAgent) {
@@ -2503,20 +2649,28 @@ export function useAppState(
       } else {
         updateSessionAgentState(info.sessionId, agentId, { status: "stopped", ptyId: undefined });
       }
-    })
-      .then((unlisten) => {
-        if (disposed) {
-          unlisten();
-          return;
-        }
-        unlistenExit = unlisten;
-      })
-      .catch(() => {});
+    };
+
+    // The buffer routes both live and replayed events through these, so acks,
+    // follow state and unread badges behave identically on either path.
+    ptyChunkWriterRef.current = (ptyId, info, chunk) => {
+      writePtyChunk(ptyId, info, chunk.data, chunk.endOffset);
+    };
+    ptyExitHandlerRef.current = handlePtyExit;
+
+    const offOutput = api.onPtyOutput((event) => {
+      buffer.onOutput(event.sessionId, { data: event.data, endOffset: event.endOffset });
+    });
+
+    const offExit = api.onPtyExit((event) => {
+      buffer.onExit(event.sessionId);
+    });
 
     return () => {
-      disposed = true;
-      unlistenOutput?.();
-      unlistenExit?.();
+      offOutput();
+      offExit();
+      ptyChunkWriterRef.current = null;
+      ptyExitHandlerRef.current = null;
     };
   }, []);
 
@@ -2570,7 +2724,7 @@ export function useAppState(
     if (!onConfirmClose && !hasRunning) {
       closeInProgressRef.current = true;
       try {
-        await invoke("exit_app");
+        await api.exitApp();
       } catch (error) {
         closeInProgressRef.current = false;
         notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
@@ -2583,7 +2737,7 @@ export function useAppState(
       if (onConfirmClose) {
         result = await onConfirmClose({ hasRunning, sessionCount });
       } else {
-        const confirmed = await confirm("You have active sessions. Close anyway?", {
+        const confirmed = await api.confirmDialog("You have active sessions. Close anyway?", {
           title: "Codelegate",
           kind: "warning",
         });
@@ -2603,9 +2757,9 @@ export function useAppState(
       try {
         if (result.remember) {
           const payload = buildPreviousSessionsPayload(visibleSessions, activeSessionRef.current);
-          await invoke("save_previous_sessions", { payload });
+          await api.savePreviousSessions(payload);
         } else {
-          await invoke("clear_previous_sessions");
+          await api.clearPreviousSessions();
         }
       } catch (error) {
         notify({
@@ -2615,7 +2769,7 @@ export function useAppState(
       }
     }
     try {
-      await invoke("exit_app");
+      await api.exitApp();
     } catch (error) {
       closeInProgressRef.current = false;
       notify({ message: `Unable to close app: ${String(error)}`, tone: "error" });
@@ -2624,35 +2778,10 @@ export function useAppState(
 
   const shouldInterceptClose = hasSavedConfig === true;
 
+  // Main intercepts window close, Cmd+Q, before-quit and Dock quit, and asks the
+  // renderer to run this flow through `app-exit-requested`.
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-    getCurrentWindow()
-      .onCloseRequested(async (event) => {
-        if (!shouldInterceptClose) {
-          return;
-        }
-        event.preventDefault();
-        await handleCloseRequest();
-      })
-      .then((fn) => {
-        if (disposed) {
-          fn();
-          return;
-        }
-        unlisten = fn;
-      })
-      .catch(() => {});
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [handleCloseRequest, shouldInterceptClose]);
-
-  useEffect(() => {
-    let unlistenExit: (() => void) | undefined;
-    let disposed = false;
-    listen("app-exit-requested", () => {
+    return api.onAppExitRequested(() => {
       if (hasSavedConfig === null) {
         pendingExitRequestRef.current = true;
         return;
@@ -2660,19 +2789,9 @@ export function useAppState(
       if (shouldInterceptClose) {
         void handleCloseRequest();
       } else {
-        void invoke("exit_app");
+        void api.exitApp();
       }
-    }).then((fn) => {
-      if (disposed) {
-        fn();
-        return;
-      }
-      unlistenExit = fn;
-    }).catch(() => {});
-    return () => {
-      disposed = true;
-      unlistenExit?.();
-    };
+    });
   }, [handleCloseRequest, hasSavedConfig, shouldInterceptClose]);
 
   useEffect(() => {
@@ -2683,7 +2802,7 @@ export function useAppState(
     if (shouldInterceptClose) {
       void handleCloseRequest();
     } else {
-      void invoke("exit_app");
+      void api.exitApp();
     }
   }, [handleCloseRequest, hasSavedConfig, shouldInterceptClose]);
 
@@ -2745,7 +2864,7 @@ export function useAppState(
         disposeTerminalRuntime(runtime);
       });
       runtimeRef.current.clear();
-      ptyToSessionRef.current.clear();
+      ptyEventBufferRef.current.clear();
       agentOutputtingTimersRef.current.forEach((timer) => {
         window.clearTimeout(timer);
       });

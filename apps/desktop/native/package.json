@@ -1,0 +1,22 @@
+{
+  "name": "codelegate-native",
+  "version": "1.6.0",
+  "private": true,
+  "description": "Rust N-API addon for Codelegate Desktop: PTY sessions and libgit2 diff/status.",
+  "license": "GPL-3.0-or-later",
+  "types": "index.d.ts",
+  "napi": {
+    "binaryName": "codelegate-native",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu"
+    ],
+    "dtsHeaderFile": "dts-header.txt"
+  },
+  "scripts": {
+    "build": "napi build --release --platform --no-js --dts index.d.ts",
+    "build:debug": "napi build --platform --no-js --dts index.d.ts",
+    "test": "cargo test --features noop"
+  }
+}

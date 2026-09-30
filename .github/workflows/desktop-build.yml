@@ -14,82 +14,157 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Same floor as .github/workflows/desktop-release.yml: Electron 44 ships
+      # Mach-O binaries with minos 13.0, so the native addon is built against
+      # it here too and CI cannot pass on a floor the release build rejects.
+      # Inert on the Linux runner.
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux dependencies for Tauri
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/native -> target
+
+      - name: Install Linux packaging dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            patchelf
+          sudo apt-get install -y rpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test desktop frontend
-        run: pnpm --filter @codelegate/desktop test
+      - name: Test native addon
+        run: pnpm --filter @codelegate/desktop native:test
 
-      - name: Test desktop Rust
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Build native addon
+        run: pnpm --filter @codelegate/desktop native:build
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Build desktop app bundle
-        run: pnpm --filter @codelegate/desktop tauri build
-
-      - name: Verify macOS bundle does not link Homebrew libraries
+      - name: Verify native addon does not link Homebrew libraries
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
 
-          binary_path="$(find apps/desktop/src-tauri/target -path '*/bundle/macos/Codelegate.app/Contents/MacOS/codelegate-desktop' -print -quit)"
+          addon_path="$(find apps/desktop/native -maxdepth 1 -name 'codelegate-native.*.node' -print -quit)"
 
-          if [[ -z "$binary_path" ]]; then
-            echo "Unable to locate built macOS app binary"
+          if [[ -z "$addon_path" ]]; then
+            echo "Unable to locate built native addon under apps/desktop/native"
             exit 1
           fi
 
-          echo "Inspecting $binary_path"
-          otool -L "$binary_path"
+          echo "Inspecting $addon_path"
+          otool -L "$addon_path"
 
-          if otool -L "$binary_path" | grep -q '/opt/homebrew/'; then
-            echo "macOS bundle links against Homebrew libraries, which breaks signed distribution builds."
+          if otool -L "$addon_path" | grep -q '/opt/homebrew/'; then
+            echo "Native addon links against Homebrew libraries, which breaks signed distribution builds."
             exit 1
           fi
+
+      - name: Test desktop
+        run: pnpm --filter @codelegate/desktop test
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Package desktop app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter @codelegate/desktop package
+
+      - name: Verify packaged macOS app layout
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_path="$(find apps/desktop/release -maxdepth 2 -name 'Codelegate.app' -print -quit)"
+
+          if [[ -z "$app_path" ]]; then
+            echo "Unable to locate packaged Codelegate.app under apps/desktop/release"
+            exit 1
+          fi
+
+          echo "Inspecting $app_path"
+
+          if [[ ! -d "$app_path/Contents/Frameworks" ]]; then
+            echo "Packaged app is missing Contents/Frameworks"
+            exit 1
+          fi
+
+          unpacked_addon="$(find "$app_path/Contents/Resources/app.asar.unpacked/native" -name '*.node' -print -quit || true)"
+
+          if [[ -z "$unpacked_addon" ]]; then
+            echo "Packaged app is missing the unpacked native addon under app.asar.unpacked/native"
+            exit 1
+          fi
+
+          echo "Found unpacked addon: $unpacked_addon"
+          otool -L "$unpacked_addon"
+
+          if otool -L "$unpacked_addon" | grep -q '/opt/homebrew/'; then
+            echo "Packaged native addon links against Homebrew libraries."
+            exit 1
+          fi
+
+      - name: Verify packaged macOS app signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_path="$(find apps/desktop/release -maxdepth 2 -name 'Codelegate.app' -print -quit)"
+
+          if [[ -z "$app_path" ]]; then
+            echo "Unable to locate packaged Codelegate.app under apps/desktop/release"
+            exit 1
+          fi
+
+          # Flipping the Electron fuses rewrites the main binary and so
+          # invalidates the ad-hoc signature the prebuilt Electron ships with.
+          # With CSC_IDENTITY_AUTO_DISCOVERY=false nothing re-signs afterwards,
+          # which left the packaged app (and the DMG built around it) refusing
+          # to launch. `electronFuses.resetAdHocDarwinSignature` in
+          # apps/desktop/electron-builder.yml makes @electron/fuses re-apply the
+          # ad-hoc signature right after flipping and before the DMG is
+          # assembled, so the uploaded DMG is runnable rather than only the
+          # staged .app. Config beats a re-signing shell step here: it runs
+          # inside packaging, so it fixes every artifact instead of one, and it
+          # needs no extra dependency or hook file. This step is the guard that
+          # the signature really survives packaging.
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+
+      - name: Smoke test packaged main process
+        if: runner.os == 'Linux'
+        env:
+          # CI-only: hosted runners restrict unprivileged user namespaces and the
+          # chrome-sandbox helper is not setuid under pnpm, so a sandboxed
+          # Electron aborts before bootstrap under xvfb.
+          ELECTRON_DISABLE_SANDBOX: "1"
+        run: xvfb-run --auto-servernum pnpm --filter @codelegate/desktop smoke
 
       - name: Upload Linux AppImage artifact
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: desktop-appimage-linux
-          path: apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          path: apps/desktop/release/*.AppImage
           if-no-files-found: error
 
       - name: Upload Linux DEB artifact
@@ -97,7 +172,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-deb-linux
-          path: apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          path: apps/desktop/release/*.deb
           if-no-files-found: error
 
       - name: Upload Linux RPM artifact
@@ -105,7 +180,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-rpm-linux
-          path: apps/desktop/src-tauri/target/release/bundle/rpm/*.rpm
+          path: apps/desktop/release/*.rpm
           if-no-files-found: error
 
       - name: Upload macOS DMG artifact
@@ -113,5 +188,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-dmg-macos
-          path: apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          path: apps/desktop/release/*.dmg
           if-no-files-found: error

@@ -6,8 +6,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { api } from "./platform";
 import styles from "./App.module.css";
 import Sidebar from "./components/Sidebar/Sidebar";
 import MainPane from "./components/MainPane/MainPane";
@@ -222,7 +221,8 @@ export default function App() {
       customCommand: agentCommands[agent.id]?.trim() || undefined,
     }));
 
-    invoke<Record<string, boolean>>("check_agent_commands", { checks })
+    api
+      .checkAgentCommands(checks)
       .then((result) => {
         if (!cancelled) {
           setAgentAvailability(result as AgentAvailability);
@@ -478,7 +478,7 @@ export default function App() {
         const branchPath = session.cwd?.trim();
         if (branchPath) {
           try {
-            const resolvedBranch = await invoke<string>("get_git_branch", { path: branchPath });
+            const resolvedBranch = await api.getGitBranch(branchPath);
             const trimmedBranch = resolvedBranch.trim();
             if (trimmedBranch) {
               branchName = trimmedBranch;
@@ -729,7 +729,7 @@ export default function App() {
         setPreCommands("");
         return;
       }
-      setEnvVars(defaults.env.length > 0 ? defaults.env : emptyEnv);
+      setEnvVars(defaults.env?.length ? defaults.env : emptyEnv);
       setPreCommands(defaults.preCommands ?? "");
     },
     [config.settings.repoDefaults]
@@ -762,8 +762,8 @@ export default function App() {
   };
 
   const handleBrowseRepo = async () => {
-    const selection = await open({ directory: true, multiple: false });
-    if (typeof selection === "string") {
+    const selection = await api.openDirectoryDialog();
+    if (selection) {
       handleSelectRepo(selection);
     }
   };

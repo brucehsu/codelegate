@@ -7,19 +7,17 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import type { GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import Button from "../../../ui/Button/Button";
 import ActionButton from "../../../ui/ActionButton/ActionButton";
+import { api, isMac } from "../../../../platform";
 import type { Session, ToastInput } from "../../../../types";
 import {
   type GitChangeSummary,
   type GitChangeSummaryPayload,
   type GitDiffSection,
-  type GitFileDiffPayload,
 } from "../../../../utils/gitDiff";
 import { defineHotkey, runHotkeys } from "../../../../utils/hotkeys";
 import { buildShortcutCombo } from "../../../../utils/shortcutModifier";
@@ -604,7 +602,7 @@ export default function GitDiff({
         setError(null);
 
         try {
-          const output = await invoke<GitChangeSummaryPayload>("get_git_change_summary", { path: targetRepoPath });
+          const output = await api.getGitChangeSummary(targetRepoPath);
           if (summaryRequestVersionRef.current === requestVersion) {
             const nextSummary = output ?? EMPTY_SUMMARY;
             detailGenerationRef.current += 1;
@@ -667,7 +665,7 @@ export default function GitDiff({
       setDetailMap((prev) => ({ ...prev, [fileKey]: { status: "loading" } }));
 
       try {
-        const detail = await invoke<GitFileDiffPayload>("get_git_file_diff", {
+        const detail = await api.getGitFileDiff({
           path: repoPath,
           section,
           filePath,
@@ -732,7 +730,6 @@ export default function GitDiff({
   const commitActionDisabled = !repoPath || isLoading || isCommitting;
   const refreshDisabled = !repoPath || isLoading;
   const bulkActionDisabled = !repoPath || isLoading || actionTarget !== null || fileActionTarget !== null;
-  const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform), []);
 
   const materializeKeys = useCallback((fileKeys: string[]) => {
     setMaterializedKeys((prev) => {
@@ -870,7 +867,7 @@ export default function GitDiff({
         return;
       }
       if (target === "discardAll") {
-        const confirmed = await confirm(
+        const confirmed = await api.confirmDialog(
           "Discard all unstaged changes? This removes unstaged edits and untracked files.",
           { title: "Codelegate", kind: "warning" }
         );
@@ -882,11 +879,11 @@ export default function GitDiff({
       setError(null);
       try {
         if (target === "unstageAll") {
-          await invoke("unstage_all_changes", { path: repoPath });
+          await api.unstageAllChanges(repoPath);
         } else if (target === "stageAll") {
-          await invoke("stage_all_changes", { path: repoPath });
+          await api.stageAllChanges(repoPath);
         } else {
-          await invoke("discard_all_changes", { path: repoPath });
+          await api.discardAllChanges(repoPath);
         }
         await loadSummary();
       } catch (err) {
@@ -916,7 +913,7 @@ export default function GitDiff({
     setIsCommitting(true);
     setError(null);
     try {
-      await invoke("commit_git_changes", {
+      await api.commitGitChanges({
         path: repoPath,
         message,
         amend: commitAmend,
@@ -949,7 +946,7 @@ export default function GitDiff({
         void handleCommit();
       }
     },
-    [commitActionDisabled, handleCommit, isMac]
+    [commitActionDisabled, handleCommit]
   );
 
   const gitHotkeys = useMemo(() => {
@@ -1073,7 +1070,7 @@ export default function GitDiff({
         return;
       }
       try {
-        const previousMessage = await invoke<string>("get_last_commit_message", { path: repoPath });
+        const previousMessage = await api.getLastCommitMessage(repoPath);
         setCommitMessage(previousMessage);
         setCommitMessageInvalid(previousMessage.trim().length === 0);
       } catch (err) {
@@ -1226,17 +1223,11 @@ export default function GitDiff({
       setError(null);
       try {
         if (section === "staged") {
-          const nextSummary = await invoke<GitChangeSummaryPayload>("unstage_file_change", {
-            path: repoPath,
-            filePath,
-          });
+          const nextSummary = await api.unstageFileChange(repoPath, filePath);
           applyActionSummary(section, filePath, nextSummary);
           onNotify({ tone: "success", message: "Unstaged." });
         } else {
-          const nextSummary = await invoke<GitChangeSummaryPayload>("stage_file_change", {
-            path: repoPath,
-            filePath,
-          });
+          const nextSummary = await api.stageFileChange(repoPath, filePath);
           applyActionSummary(section, filePath, nextSummary);
           onNotify({ tone: "success", message: "Staged." });
         }

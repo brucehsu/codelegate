@@ -1,57 +1,19 @@
-export type DiffLineType = "context" | "add" | "del" | "empty" | "meta";
-export type GitDiffSection = "staged" | "unstaged";
-export type GitFileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked";
-
-export interface DiffCell {
-  text: string;
-  type: DiffLineType;
-}
-
-export interface DiffRow {
-  left: DiffCell;
-  right: DiffCell;
-  leftLine: number | null;
-  rightLine: number | null;
-}
-
-export interface FileDiff {
-  path: string;
-  oldPath?: string;
-  newPath?: string;
-  rows: DiffRow[];
-  additions: number;
-  deletions: number;
-  language: string;
-  isBinary: boolean;
-  isDirectory: boolean;
-  isUntracked: boolean;
-  status: GitFileStatus;
-  truncated: boolean;
-}
-
-export interface GitChangeSummary {
-  path: string;
-  oldPath?: string;
-  newPath?: string;
-  additions: number;
-  deletions: number;
-  changedLineCount: number;
-  isBinary: boolean;
-  isDirectory: boolean;
-  isUntracked: boolean;
-  fromUntrackedDir: boolean;
-  status: GitFileStatus;
-}
-
-export interface GitChangeSummaryPayload {
-  staged: GitChangeSummary[];
-  unstaged: GitChangeSummary[];
-}
-
-export interface GitFileDiffPayload extends GitChangeSummary {
-  rows: DiffRow[];
-  truncated: boolean;
-}
+/**
+ * Git diff payload types moved to `electron/shared/types.ts` and re-exported
+ * here so existing `from "../utils/gitDiff"` imports keep working. The helpers
+ * below stay renderer-side.
+ */
+export type {
+  DiffCell,
+  DiffLineType,
+  DiffRow,
+  FileDiff,
+  GitChangeSummary,
+  GitChangeSummaryPayload,
+  GitDiffSection,
+  GitFileDiffPayload,
+  GitFileStatus,
+} from "../../electron/shared/types";
 
 const plainTextExtensions = new Set([
   "txt",
